@@ -283,3 +283,14 @@ button:hover {
     margin: 0;
   }
 }
+.menu-superior {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.botao-ranking {
+  margin: 0;
+  padding: 10px 16px;
+  background: #0f172a;
+}

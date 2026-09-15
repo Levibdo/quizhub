@@ -1,11 +1,22 @@
-function TelaInicial({ escolherCategoria }) {
+function TelaInicial({
+  escolherCategoria,
+  verRanking,
+}) {
   return (
     <>
-      <h1>Quiz</h1>
-      <p>Teste seus conhecimentos!</p>
+      <h1>Quiz Estágio 1</h1>
+
+      <p>
+        Teste seus conhecimentos e conquiste a maior
+        pontuação.
+      </p>
 
       <button onClick={escolherCategoria}>
-        Iniciar Quiz
+        Jogar
+      </button>
+
+      <button onClick={verRanking}>
+        Ver ranking
       </button>
     </>
   )

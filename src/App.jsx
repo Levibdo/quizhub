@@ -73,6 +73,10 @@ function App() {
     setRanking(carregarRanking())
     setTela('ranking')
   }
+  function voltarInicio() {
+    setTela('inicio')
+  }
+
   function identificarJogador() {
     setTela('jogador')
   }
@@ -134,7 +138,6 @@ function App() {
     setRespostaSelecionada(indiceSelecionado)
 
     const pergunta = perguntasDoQuiz[perguntaAtual]
-
     const respostaCorreta =
       indiceSelecionado === pergunta.correta
 
@@ -264,6 +267,8 @@ function App() {
       {tela === 'inicio' && (
         <TelaInicial
           escolherCategoria={identificarJogador}
+          verRanking={abrirRanking}
+
         />
       )}
 
@@ -302,18 +307,21 @@ function App() {
           categoriaSelecionada={categoriaSelecionada}
           iniciarQuiz={escolherCategoria}
           verRanking={abrirRanking}
-
+          voltarInicio={voltarInicio}
         />
       )}
       {tela === 'ranking' && (
         <TelaRanking
           ranking={ranking}
-          escolherCategoria={escolherCategoria}
+          voltarInicio={voltarInicio}
           trocarJogador={trocarJogador}
         />
       )}
+
     </main>
+
   )
+
 }
 
 export default App

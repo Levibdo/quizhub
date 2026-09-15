@@ -2,7 +2,7 @@ import { categorias } from '../data/categorias'
 
 function TelaRanking({
   ranking,
-  escolherCategoria,
+  voltarInicio,
   trocarJogador,
 }) {
   const rankingOrdenado = [...ranking].sort(
@@ -51,12 +51,12 @@ function TelaRanking({
       )}
 
       <div className="ranking-acoes">
-        <button onClick={escolherCategoria}>
-          Jogar novamente
+        <button onClick={voltarInicio}>
+          Início
         </button>
 
         <button onClick={trocarJogador}>
-          Trocar jogador
+          Jogar
         </button>
       </div>
     </>
