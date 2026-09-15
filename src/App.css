@@ -294,3 +294,33 @@ button:hover {
   padding: 10px 16px;
   background: #0f172a;
 }
+.ranking-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 25px 0;
+}
+
+.ranking-filtros button {
+  margin: 0;
+  padding: 10px 14px;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.ranking-filtros button.filtro-ativo {
+  background: #2563eb;
+  color: white;
+}
+
+.ranking-pontos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.ranking-pontos small {
+  color: #64748b;
+}
