@@ -1,0 +1,4 @@
+Database migrations are managed with Alembic.
+
+Set DATABASE_URL before running migrations. PostgreSQL URLs using either
+postgres:// or postgresql:// are normalized to the psycopg 3 dialect.
