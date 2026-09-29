@@ -43,5 +43,6 @@ class PartidaPublica(BaseModel):
 
 class ResultadoResposta(PartidaPublica):
     correta: bool | None
+    alternativa_correta: int
     timeout: bool
     pontos_ganhos: int

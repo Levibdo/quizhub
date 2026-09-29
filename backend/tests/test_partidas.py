@@ -30,13 +30,34 @@ def como_utc(valor):
     return valor if valor.tzinfo is not None else valor.replace(tzinfo=timezone.utc)
 
 
+def seed_catalogo_partidas(session):
+    seed_database(session)
+    proximo_id = 16
+    for categoria_id in ("geral", "tecnologia", "matematica"):
+        for numero in range(6, 11):
+            session.add(
+                Pergunta(
+                    id=proximo_id,
+                    categoria_id=categoria_id,
+                    enunciado=f"Pergunta {numero} de {categoria_id}",
+                    alternativa_a="A",
+                    alternativa_b="B",
+                    alternativa_c="C",
+                    alternativa_d="D",
+                    alternativa_correta=0,
+                )
+            )
+            proximo_id += 1
+    session.commit()
+
+
 class TestPartidasPersistentes(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         with self.sessions() as session:
-            seed_database(session)
+            seed_catalogo_partidas(session)
         self.relogio = Relogio()
         self.servico = PartidasPersistentes(self.relogio)
 
@@ -65,7 +86,7 @@ class TestPartidasPersistentes(unittest.TestCase):
                 session, partida_id, pergunta_id, alternativa
             )
 
-    def test_criacao_persiste_jogador_partida_e_tres_perguntas(self):
+    def test_criacao_persiste_jogador_partida_e_dez_perguntas(self):
         criada = self.criar()
         with self.sessions() as session:
             partida = session.get(Partida, UUID(criada.partida_id))
@@ -79,9 +100,9 @@ class TestPartidasPersistentes(unittest.TestCase):
 
             self.assertEqual(session.scalar(select(func.count()).select_from(Jogador)), 1)
             self.assertEqual(partida.status, "EM_ANDAMENTO")
-            self.assertEqual(len(ocorrencias), 3)
-            self.assertEqual([item.ordem for item in ocorrencias], [1, 2, 3])
-            self.assertEqual(len({item.pergunta_id for item in ocorrencias}), 3)
+            self.assertEqual(len(ocorrencias), 10)
+            self.assertEqual([item.ordem for item in ocorrencias], list(range(1, 11)))
+            self.assertEqual(len({item.pergunta_id for item in ocorrencias}), 10)
             self.assertTrue(
                 all(item.pergunta.categoria_id == "tecnologia" for item in ocorrencias)
             )
@@ -154,6 +175,7 @@ class TestPartidasPersistentes(unittest.TestCase):
         resultado = self.responder(criada.partida_id, pergunta_id, correta)
 
         self.assertIs(resultado.correta, True)
+        self.assertEqual(resultado.alternativa_correta, correta)
         self.assertFalse(resultado.timeout)
         self.assertEqual(resultado.pontos_ganhos, 230)
         self.assertEqual((resultado.pontuacao, resultado.acertos, resultado.erros), (230, 1, 0))
@@ -187,6 +209,7 @@ class TestPartidasPersistentes(unittest.TestCase):
 
         resultado = self.responder(criada.partida_id, pergunta_id, errada)
         self.assertIs(resultado.correta, False)
+        self.assertEqual(resultado.alternativa_correta, atual.pergunta.alternativa_correta)
         self.assertEqual(resultado.pontos_ganhos, 0)
         self.assertEqual((resultado.pontuacao, resultado.acertos, resultado.erros), (0, 0, 1))
 
@@ -196,7 +219,7 @@ class TestPartidasPersistentes(unittest.TestCase):
                 with self.sessions() as session:
                     Base.metadata.drop_all(session.bind)
                     Base.metadata.create_all(session.bind)
-                    seed_database(session)
+                    seed_catalogo_partidas(session)
                 self.relogio.agora = datetime(
                     2026, 9, 28, 12, 0, tzinfo=timezone.utc
                 )
@@ -207,6 +230,12 @@ class TestPartidasPersistentes(unittest.TestCase):
                 resultado = self.responder(criada.partida_id, pergunta_id, 3)
                 self.assertTrue(resultado.timeout)
                 self.assertIsNone(resultado.correta)
+                with self.sessions() as session:
+                    pergunta = session.get(Pergunta, pergunta_id)
+                    self.assertEqual(
+                        resultado.alternativa_correta,
+                        pergunta.alternativa_correta,
+                    )
                 self.assertEqual(resultado.pontos_ganhos, 0)
                 self.assertEqual(resultado.erros, 1)
                 with self.sessions() as session:
@@ -221,7 +250,7 @@ class TestPartidasPersistentes(unittest.TestCase):
                 with self.sessions() as session:
                     Base.metadata.drop_all(session.bind)
                     Base.metadata.create_all(session.bind)
-                    seed_database(session)
+                    seed_catalogo_partidas(session)
                 self.relogio.agora = datetime(
                     2026, 9, 28, 12, 0, tzinfo=timezone.utc
                 )
@@ -250,25 +279,29 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.responder("00000000-0000-0000-0000-000000000000", 1, 0)
         self.assertEqual(error.exception.status_code, 404)
 
-    def test_terceira_resposta_finaliza_e_rejeita_nova_resposta(self):
+    def test_decima_resposta_finaliza_e_rejeita_nova_resposta(self):
         criada = self.criar()
         resultado = None
         last_question_id = None
-        for _ in range(3):
+        for numero_resposta in range(1, 11):
             with self.sessions() as session:
                 atual = self.atual(session, criada.partida_id)
                 last_question_id = atual.pergunta_id
                 correta = atual.pergunta.alternativa_correta
             resultado = self.responder(criada.partida_id, last_question_id, correta)
+            if numero_resposta < 10:
+                self.assertEqual(resultado.status, "EM_ANDAMENTO")
+                self.assertIsNotNone(resultado.pergunta_atual)
 
         self.assertEqual(resultado.status, "FINALIZADA")
         self.assertIsNotNone(resultado.finalizada_em)
         self.assertIsNone(resultado.pergunta_atual)
-        self.assertEqual((resultado.acertos, resultado.erros), (3, 0))
+        self.assertEqual((resultado.acertos, resultado.erros), (10, 0))
+        self.assertEqual(resultado.pontuacao, 2500)
         with self.sessions() as session:
             partida = session.get(Partida, UUID(criada.partida_id))
             self.assertEqual(partida.status, "FINALIZADA")
-            self.assertEqual(session.scalar(select(func.count()).select_from(Resposta)), 3)
+            self.assertEqual(session.scalar(select(func.count()).select_from(Resposta)), 10)
         with self.assertRaises(HTTPException) as error:
             self.responder(criada.partida_id, last_question_id, 0)
         self.assertEqual(error.exception.status_code, 409)
@@ -308,13 +341,15 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.criar()
 
         with self.sessions() as session:
-            for item in session.scalars(
+            perguntas_tecnologia = list(session.scalars(
                 select(Pergunta).where(Pergunta.categoria_id == "tecnologia")
-            ):
-                item.ativa = item.id in (6, 7, 8)
+            ))
+            ids_disponiveis = {item.id for item in perguntas_tecnologia[:10]}
+            for item in perguntas_tecnologia:
+                item.ativa = item.id in ids_disponiveis
             session.commit()
         criada = self.criar()
-        self.assertIn(criada.pergunta_atual.id, (6, 7, 8))
+        self.assertIn(criada.pergunta_atual.id, ids_disponiveis)
         if criada.pergunta_atual.id == 6:
             self.assertEqual(criada.pergunta_atual.pergunta, "Texto exclusivamente persistido")
 
@@ -372,7 +407,7 @@ class TestPartidasEndpoints(unittest.TestCase):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine, expire_on_commit=False)
-        seed_database(self.session)
+        seed_catalogo_partidas(self.session)
 
     def tearDown(self):
         self.session.close()
@@ -385,6 +420,7 @@ class TestPartidasEndpoints(unittest.TestCase):
         self.assertIsInstance(created, PartidaPublica)
         match = created.model_dump()
         self.assertNotIn("correta", match["pergunta_atual"])
+        self.assertNotIn("alternativa_correta", match["pergunta_atual"])
 
         answered = enviar_resposta(
             match["partida_id"],
@@ -394,6 +430,7 @@ class TestPartidasEndpoints(unittest.TestCase):
             self.session,
         )
         self.assertIn("pontos_ganhos", answered.model_dump())
+        self.assertIn("alternativa_correta", answered.model_dump())
 
 
 if __name__ == "__main__":

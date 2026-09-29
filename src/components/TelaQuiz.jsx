@@ -20,7 +20,7 @@ function TelaQuiz({
       return ''
     }
 
-    if (indice === respostaSelecionada && resultadoResposta?.correta) {
+    if (indice === resultadoResposta?.alternativa_correta) {
       return 'correta'
     }
 

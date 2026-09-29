@@ -11,8 +11,8 @@ import { criarPartida, enviarResposta } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
-const TEMPO_FEEDBACK = 1000
-const TOTAL_PERGUNTAS = 3
+const TEMPO_FEEDBACK = 2000
+const TOTAL_PERGUNTAS = 10
 
 function App() {
   const [tela, setTela] = useState('inicio')
@@ -89,7 +89,6 @@ function App() {
         partida.pergunta_atual.id,
         indiceSelecionado,
       )
-      setPartida(resultado)
       setResultadoResposta(resultado)
     } catch (error) {
       setErro(error.message)
@@ -127,6 +126,7 @@ function App() {
         salvarEFinalizar(resultadoResposta)
         return
       }
+      setPartida(resultadoResposta)
       setPerguntaAtual((valorAtual) => valorAtual + 1)
       setTempoRestante(TEMPO_POR_PERGUNTA)
       setRespostaSelecionada(null)
@@ -163,7 +163,7 @@ function App() {
           pergunta={pergunta}
           perguntaAtual={perguntaAtual}
           totalPerguntas={TOTAL_PERGUNTAS}
-          pontuacao={partida.pontuacao}
+          pontuacao={resultadoResposta?.pontuacao ?? partida.pontuacao}
           tempoRestante={tempoRestante}
           responder={responder}
           respostaSelecionada={respostaSelecionada}

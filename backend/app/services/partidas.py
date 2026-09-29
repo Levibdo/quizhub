@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Categoria, Jogador, Partida, PartidaPergunta, Pergunta, Resposta
 from app.schemas.partidas import PartidaPublica, PerguntaPublica, ResultadoResposta
 
-QUANTIDADE_PERGUNTAS = 3
+QUANTIDADE_PERGUNTAS = 10
 PRAZO_RESPOSTA_SEGUNDOS = 15
 
 
@@ -247,6 +247,7 @@ class PartidasPersistentes:
             resposta_publica = ResultadoResposta(
                 **self._publica(partida, exibida).model_dump(),
                 correta=correta,
+                alternativa_correta=atual.pergunta.alternativa_correta,
                 timeout=timeout,
                 pontos_ganhos=pontos_ganhos,
             )
