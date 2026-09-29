@@ -116,7 +116,8 @@ class TestPartidaMetadata(unittest.TestCase):
             set(categoria.__mapper__.relationships.keys()), {"perguntas", "partidas"}
         )
         self.assertEqual(
-            set(partida.__mapper__.relationships.keys()), {"jogador", "categoria"}
+            set(partida.__mapper__.relationships.keys()),
+            {"jogador", "categoria", "perguntas_partida"},
         )
 
 

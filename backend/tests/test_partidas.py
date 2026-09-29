@@ -3,8 +3,9 @@ import unittest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from app.api.v1.partidas import criar_partida, enviar_resposta
 from app.data.perguntas import PERGUNTAS
-from app.schemas.partidas import CriarPartida, EnviarResposta
+from app.schemas.partidas import CriarPartida, EnviarResposta, PartidaPublica
 from app.services.partidas import PartidasEmMemoria
 
 
@@ -139,6 +140,25 @@ class TestPartidas(unittest.TestCase):
     def test_dados_coincidem_com_catalogo(self):
         self.assertEqual(len(PERGUNTAS), 15)
         self.assertEqual({p.categoria for p in PERGUNTAS}, {"geral", "tecnologia", "matematica"})
+
+
+class TestPartidasEndpoints(unittest.TestCase):
+    def test_criar_e_responder_continuam_usando_contrato_atual(self):
+        created = criar_partida(
+            CriarPartida(jogador="Levi", categoria="tecnologia")
+        )
+        self.assertIsInstance(created, PartidaPublica)
+        match = created.model_dump()
+        self.assertIn("pergunta_atual", match)
+        self.assertNotIn("correta", match["pergunta_atual"])
+
+        answered = enviar_resposta(
+            match["partida_id"],
+            EnviarResposta(
+                pergunta_id=match["pergunta_atual"]["id"], alternativa=0
+            ),
+        )
+        self.assertIn("pontos_ganhos", answered.model_dump())
 
 
 if __name__ == "__main__":

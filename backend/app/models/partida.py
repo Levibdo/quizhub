@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -15,6 +16,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.partida_pergunta import PartidaPergunta
 
 
 class Partida(Base):
@@ -63,6 +67,9 @@ class Partida(Base):
 
     jogador: Mapped["Jogador"] = relationship(back_populates="partidas")
     categoria: Mapped["Categoria"] = relationship(back_populates="partidas")
+    perguntas_partida: Mapped[list["PartidaPergunta"]] = relationship(
+        back_populates="partida"
+    )
 
 
 from app.models.categoria import Categoria  # noqa: E402

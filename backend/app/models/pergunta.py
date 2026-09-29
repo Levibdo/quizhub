@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -15,6 +16,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.partida_pergunta import PartidaPergunta
 
 
 class Pergunta(Base):
@@ -44,6 +48,9 @@ class Pergunta(Base):
     )
 
     categoria: Mapped["Categoria"] = relationship(back_populates="perguntas")
+    partidas_pergunta: Mapped[list["PartidaPergunta"]] = relationship(
+        back_populates="pergunta"
+    )
 
 
 from app.models.categoria import Categoria  # noqa: E402
