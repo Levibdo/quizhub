@@ -1,4 +1,5 @@
 import { categorias } from '../data/categorias'
+import { formatarAproveitamento } from '../utils/aproveitamento'
 
 function TelaResultado({
     jogador,
@@ -13,6 +14,7 @@ function TelaResultado({
     const categoria = categorias.find(
         (item) => item.id === categoriaSelecionada
     )
+    const aproveitamento = formatarAproveitamento(acertos, erros)
 
     return (
         <>
@@ -28,6 +30,7 @@ function TelaResultado({
 
             <p>Acertos: {acertos}</p>
             <p>Erros: {erros}</p>
+            <p>Aproveitamento: {aproveitamento}</p>
             <p>Pontuação: {pontuacao}</p>
             <button onClick={verRanking}>
                 Ver ranking
