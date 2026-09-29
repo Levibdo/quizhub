@@ -4,7 +4,7 @@ function TelaInicial({
 }) {
   return (
     <>
-      <h1>Quiz Estágio 1</h1>
+      <h1>QuizHub</h1>
 
       <p>
         Teste seus conhecimentos e conquiste a maior

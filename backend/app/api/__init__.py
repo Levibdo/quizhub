@@ -1,1 +1,1 @@
-"""API routers for the Quiz Estágio backend."""
+"""API routers for the QuizHub backend."""

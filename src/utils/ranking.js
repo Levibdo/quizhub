@@ -1,4 +1,4 @@
-const CHAVE_RANKING = 'quiz-estagio-ranking'
+const CHAVE_RANKING = 'quizhub-ranking'
 
 export function carregarRanking() {
   const dados = localStorage.getItem(CHAVE_RANKING)

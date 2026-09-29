@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from app.api.v1 import api_router
 
 app = FastAPI(
-    title="Quiz Estágio API",
+    title="QuizHub API",
     version="1.0.0",
 )
 
@@ -11,7 +11,7 @@ app = FastAPI(
 @app.get("/")
 def raiz():
     return {
-        "mensagem": "API do Quiz Estágio funcionando"
+        "mensagem": "API do QuizHub funcionando"
     }
 
 
