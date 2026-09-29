@@ -31,6 +31,7 @@ class TestDatabaseConfiguration(unittest.TestCase):
                 "partidas",
                 "partida_perguntas",
                 "respostas",
+                "usuarios",
             },
         )
 
@@ -101,9 +102,9 @@ class TestAlembicConfiguration(unittest.TestCase):
         revisions = list(scripts.walk_revisions())
         self.assertEqual(
             [revision.revision for revision in revisions],
-            ["0004", "0003", "0002", "0001"],
+            ["0005", "0004", "0003", "0002", "0001"],
         )
-        self.assertEqual(scripts.get_current_head(), "0004")
+        self.assertEqual(scripts.get_current_head(), "0005")
 
 
 if __name__ == "__main__":

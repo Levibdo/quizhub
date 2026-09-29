@@ -9,7 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Categoria, Jogador, Partida, PartidaPergunta, Pergunta, Resposta
+from app.models import (
+    Categoria,
+    Jogador,
+    Partida,
+    PartidaPergunta,
+    Pergunta,
+    Resposta,
+    Usuario,
+)
 from app.schemas.partidas import PartidaPublica, PerguntaPublica, ResultadoResposta
 
 QUANTIDADE_PERGUNTAS = 10
@@ -62,8 +70,21 @@ class PartidasPersistentes:
             ),
         )
 
-    def criar(self, db: Session, jogador: str, categoria_id: str) -> PartidaPublica:
+    def criar(
+        self,
+        db: Session,
+        jogador: str | None,
+        categoria_id: str,
+        usuario: Usuario | None = None,
+    ) -> PartidaPublica:
         try:
+            nome_jogador = usuario.nome if usuario is not None else jogador
+            if nome_jogador is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="jogador é obrigatório para partidas como convidado",
+                )
+
             categoria = db.get(Categoria, categoria_id)
             if categoria is None or not categoria.ativa:
                 raise HTTPException(
@@ -86,7 +107,10 @@ class PartidasPersistentes:
                 )
 
             agora = self.relogio()
-            jogador_db = Jogador(nome=jogador)
+            jogador_db = Jogador(
+                nome=nome_jogador,
+                usuario=usuario,
+            )
             partida = Partida(
                 jogador=jogador_db,
                 categoria=categoria,

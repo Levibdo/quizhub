@@ -13,7 +13,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.v1.partidas import criar_partida, enviar_resposta
 from app.db.base import Base
 from app.db.seed import seed_database
-from app.models import Categoria, Jogador, Partida, PartidaPergunta, Pergunta, Resposta
+from app.models import (
+    Categoria,
+    Jogador,
+    Partida,
+    PartidaPergunta,
+    Pergunta,
+    Resposta,
+    Usuario,
+)
 from app.schemas.partidas import CriarPartida, EnviarResposta, PartidaPublica
 from app.services.partidas import PartidasPersistentes
 
@@ -133,6 +141,51 @@ class TestPartidasPersistentes(unittest.TestCase):
             jogadores = list(session.scalars(select(Jogador).where(Jogador.nome == "João")))
         self.assertEqual(len(jogadores), 2)
         self.assertNotEqual(jogadores[0].id, jogadores[1].id)
+
+    def test_convidado_nao_possui_usuario(self):
+        criada = self.criar(jogador="Convidado")
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            self.assertEqual(partida.jogador.nome, "Convidado")
+            self.assertIsNone(partida.jogador.usuario_id)
+
+    def test_usuario_autenticado_associa_participacoes_e_ignora_nome_enviado(self):
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Nome da Conta",
+                email="conta@example.com",
+                senha_hash="hash",
+            )
+            session.add(usuario)
+            session.commit()
+            usuario_id = usuario.id
+
+        partidas_criadas = []
+        for _ in range(2):
+            with self.sessions() as session:
+                usuario = session.get(Usuario, usuario_id)
+                criada = self.servico.criar(
+                    session,
+                    "Nome não confiável",
+                    "tecnologia",
+                    usuario,
+                )
+                partidas_criadas.append(criada.partida_id)
+
+        with self.sessions() as session:
+            participacoes = list(
+                session.scalars(
+                    select(Jogador).where(Jogador.usuario_id == usuario_id)
+                )
+            )
+        self.assertEqual(len(participacoes), 2)
+        self.assertTrue(all(jogador.nome == "Nome da Conta" for jogador in participacoes))
+        self.assertEqual({jogador.usuario_id for jogador in participacoes}, {usuario_id})
+
+    def test_partida_sem_usuario_exige_nome_de_convidado(self):
+        with self.assertRaises(HTTPException) as error:
+            self.criar(jogador=None)
+        self.assertEqual(error.exception.status_code, 422)
 
     def test_criacao_rejeita_categoria_inexistente_inativa_ou_insuficiente(self):
         with self.assertRaises(HTTPException) as error:
@@ -415,7 +468,7 @@ class TestPartidasEndpoints(unittest.TestCase):
 
     def test_funcoes_de_endpoint_preservam_contrato(self):
         created = criar_partida(
-            CriarPartida(jogador="Levi", categoria="tecnologia"), self.session
+            CriarPartida(jogador="Levi", categoria="tecnologia"), self.session, None
         )
         self.assertIsInstance(created, PartidaPublica)
         match = created.model_dump()

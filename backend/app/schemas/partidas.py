@@ -4,12 +4,14 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class CriarPartida(BaseModel):
-    jogador: str
+    jogador: str | None = None
     categoria: str
 
     @field_validator("jogador")
     @classmethod
-    def validar_jogador(cls, valor: str) -> str:
+    def validar_jogador(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
         valor = valor.strip()
         if not valor:
             raise ValueError("jogador não pode ser vazio")

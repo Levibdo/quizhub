@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import config as _config  # noqa: F401
+
 DATABASE_URL_ENV = "DATABASE_URL"
 
 _engine: Engine | None = None
