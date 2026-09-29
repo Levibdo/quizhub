@@ -22,7 +22,10 @@ class TestDatabaseConfiguration(unittest.TestCase):
 
     def test_base_is_sqlalchemy_declarative_base(self):
         self.assertTrue(issubclass(Base, DeclarativeBase))
-        self.assertEqual(set(Base.metadata.tables), {"categorias", "perguntas"})
+        self.assertEqual(
+            set(Base.metadata.tables),
+            {"categorias", "perguntas", "jogadores", "partidas"},
+        )
 
     def test_import_succeeds_without_database_url(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -89,8 +92,10 @@ class TestAlembicConfiguration(unittest.TestCase):
 
         self.assertTrue(scripts.dir.endswith("alembic"))
         revisions = list(scripts.walk_revisions())
-        self.assertEqual([revision.revision for revision in revisions], ["0002", "0001"])
-        self.assertEqual(scripts.get_current_head(), "0002")
+        self.assertEqual(
+            [revision.revision for revision in revisions], ["0003", "0002", "0001"]
+        )
+        self.assertEqual(scripts.get_current_head(), "0003")
 
 
 if __name__ == "__main__":

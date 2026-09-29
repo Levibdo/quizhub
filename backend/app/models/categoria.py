@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.partida import Partida
     from app.models.pergunta import Pergunta
 
 
@@ -20,3 +21,4 @@ class Categoria(Base):
     )
 
     perguntas: Mapped[list["Pergunta"]] = relationship(back_populates="categoria")
+    partidas: Mapped[list["Partida"]] = relationship(back_populates="categoria")
