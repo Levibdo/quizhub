@@ -7,7 +7,8 @@ function TelaQuiz({
   responder,
   respostaSelecionada,
   respondido,
-  pontosUltimaResposta,
+  enviando,
+  resultadoResposta,
 }) {
   const progresso =
     ((perguntaAtual + 1) / totalPerguntas) * 100
@@ -19,11 +20,11 @@ function TelaQuiz({
       return ''
     }
 
-    if (indice === pergunta.correta) {
+    if (indice === respostaSelecionada && resultadoResposta?.correta) {
       return 'correta'
     }
 
-    if (indice === respostaSelecionada) {
+    if (indice === respostaSelecionada && resultadoResposta?.correta === false) {
       return 'errada'
     }
 
@@ -65,7 +66,7 @@ function TelaQuiz({
             key={indice}
             className={classeAlternativa(indice)}
             onClick={() => responder(indice)}
-            disabled={respondido}
+            disabled={respondido || enviando}
           >
             <span className="letra-alternativa">
               {letras[indice]}
@@ -76,15 +77,19 @@ function TelaQuiz({
         ))}
       </div>
 
-      {respondido && (
+      {enviando && !respondido && (
+        <div className="feedback">Enviando resposta...</div>
+      )}
+
+      {respondido && resultadoResposta && (
         <div className="feedback">
-          {respostaSelecionada === null ? (
+          {resultadoResposta.timeout ? (
             <strong>⏱ Tempo esgotado!</strong>
-          ) : respostaSelecionada === pergunta.correta ? (
+          ) : resultadoResposta.correta ? (
             <>
               <strong>✓ Resposta correta!</strong>
               <span>
-                +{pontosUltimaResposta} pontos
+                +{resultadoResposta.pontos_ganhos} pontos
               </span>
             </>
           ) : (

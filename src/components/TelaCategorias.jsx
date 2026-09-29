@@ -1,6 +1,6 @@
 import { categorias } from '../data/categorias'
 
-function TelaCategorias({ selecionarCategoria }) {
+function TelaCategorias({ selecionarCategoria, carregando }) {
   return (
     <>
       <h1>Escolha uma categoria</h1>
@@ -15,6 +15,7 @@ function TelaCategorias({ selecionarCategoria }) {
             key={categoria.id}
             className="categoria-card"
             onClick={() => selecionarCategoria(categoria.id)}
+            disabled={carregando}
           >
             <span className="categoria-icone">
               {categoria.icone}
@@ -27,6 +28,7 @@ function TelaCategorias({ selecionarCategoria }) {
           </button>
         ))}
       </div>
+      {carregando && <p>Iniciando partida...</p>}
     </>
   )
 }

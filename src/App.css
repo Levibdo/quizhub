@@ -165,6 +165,13 @@ button:hover {
 .timer-urgente {
   color: #dc2626;
 }
+
+.mensagem-erro {
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: #991b1b;
+  background: #fee2e2;
+}
 .categorias {
   display: grid;
   gap: 15px;
