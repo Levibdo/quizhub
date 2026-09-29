@@ -7,7 +7,9 @@ import TelaCategorias from './components/TelaCategorias'
 import TelaQuiz from './components/TelaQuiz'
 import TelaResultado from './components/TelaResultado'
 import TelaRanking from './components/TelaRanking'
-import { criarPartida, enviarResposta } from './services/api'
+import TelaLogin from './components/TelaLogin'
+import TelaCadastro from './components/TelaCadastro'
+import { criarPartida, enviarResposta, cadastrarUsuario, login, logout, obterUsuarioAtual } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
@@ -29,8 +31,86 @@ function App() {
   const enviandoRef = useRef(false)
   const timeoutEnviadoRef = useRef(false)
   const resultadoSalvoRef = useRef(false)
+  const [usuario, setUsuario] = useState(null)
+  const [statusSessao, setStatusSessao] = useState('carregando')
+  const [tentativaSessao, setTentativaSessao] = useState(0)
+  const [authCarregando, setAuthCarregando] = useState(false)
+  const [erroAuth, setErroAuth] = useState('')
+  const authRef = useRef(false)
+  const versaoSessao = useRef(0)
+
+  useEffect(() => {
+    const versao = ++versaoSessao.current
+    let ativo = true
+    obterUsuarioAtual().then((atual) => {
+      if (!ativo || versao !== versaoSessao.current) return
+      setUsuario(atual)
+      setStatusSessao('autenticado')
+    }).catch((error) => {
+      if (!ativo || versao !== versaoSessao.current) return
+      setStatusSessao(error.status === 401 ? 'anonimo' : 'erro')
+    })
+    return () => { ativo = false }
+  }, [tentativaSessao])
+
+  function navegar(destino) {
+    setErro('')
+    setErroAuth('')
+    setTela(destino)
+  }
+
+  async function autenticar(tipo, ...dados) {
+    if (authRef.current) return
+    authRef.current = true
+    ++versaoSessao.current
+    setAuthCarregando(true)
+    setErroAuth('')
+    try {
+      const atual = await (tipo === 'login' ? login(...dados) : cadastrarUsuario(...dados))
+      setUsuario(atual)
+      setStatusSessao('autenticado')
+      setJogador('')
+      navegar('categorias')
+    } catch (error) {
+      setErroAuth(error.status === 409 ? 'Este e-mail já está cadastrado.'
+        : error.status === 401 ? 'E-mail ou senha inválidos.' : error.message)
+    } finally {
+      authRef.current = false
+      setAuthCarregando(false)
+    }
+  }
+
+  async function sair(destino = 'inicio') {
+    if (authRef.current) return
+    authRef.current = true
+    ++versaoSessao.current
+    setAuthCarregando(true)
+    setErro('')
+    try {
+      await logout()
+      setUsuario(null)
+      setStatusSessao('anonimo')
+      setJogador('')
+      setPartida(null)
+      setResultadoResposta(null)
+      setRespostaSelecionada(null)
+      navegar(destino)
+    } catch (error) {
+      setErro(`Não foi possível encerrar a sessão. ${error.message}`)
+    } finally {
+      authRef.current = false
+      setAuthCarregando(false)
+    }
+  }
+
+  function jogarAtual() {
+    if (statusSessao === 'carregando' || statusSessao === 'erro' || authRef.current) return
+    if (usuario) navegar('categorias')
+    else sair('jogador') // Limpa também cookies inválidos antes de jogar como convidado.
+  }
 
   const salvarEFinalizar = useCallback((estadoFinal) => {
+    setPartida(estadoFinal)
     if (!resultadoSalvoRef.current) {
       salvarResultado({
         id: Date.now(),
@@ -58,7 +138,7 @@ function App() {
     setRequisicaoEmAndamento(true)
     setErro('')
     try {
-      const novaPartida = await criarPartida(jogador, categoria)
+      const novaPartida = await criarPartida(usuario ? undefined : jogador, categoria)
       setCategoriaSelecionada(novaPartida.categoria)
       setPartida(novaPartida)
       setPerguntaAtual(0)
@@ -70,6 +150,13 @@ function App() {
       setTela('jogando')
     } catch (error) {
       setErro(error.message)
+      if (error.status === 401 || (usuario && error.status === 422 &&
+        error.message === 'jogador é obrigatório para partidas como convidado')) {
+        setUsuario(null)
+        setStatusSessao('anonimo')
+        setErro('Sua sessão não está disponível. Entre novamente para iniciar a partida.')
+        setTela('login')
+      }
     } finally {
       enviandoRef.current = false
       setRequisicaoEmAndamento(false)
@@ -142,12 +229,39 @@ function App() {
   return (
     <main>
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
+      {statusSessao === 'carregando' && <p role="status">Verificando sessão...</p>}
+      {statusSessao === 'erro' && (
+        <div role="alert">
+          <p>Não foi possível verificar sua sessão.</p>
+          <button onClick={() => {
+            setStatusSessao('carregando')
+            setTentativaSessao((valor) => valor + 1)
+          }}>Tentar novamente</button>
+        </div>
+      )}
+      {authCarregando && tela === 'inicio' && <p role="status">Aguarde...</p>}
 
       {tela === 'inicio' && (
         <TelaInicial
-          escolherCategoria={() => { setErro(''); setTela('jogador') }}
+          usuario={usuario}
+          bloqueado={authCarregando || statusSessao === 'carregando' || statusSessao === 'erro'}
+          jogar={jogarAtual}
+          convidado={() => sair('jogador')}
+          entrar={() => navegar('login')}
+          cadastrar={() => navegar('cadastro')}
+          sair={() => sair()}
           verRanking={abrirRanking}
         />
+      )}
+      {tela === 'login' && (
+        <TelaLogin entrar={(...dados) => autenticar('login', ...dados)}
+          criarConta={() => navegar('cadastro')} voltar={() => navegar('inicio')}
+          carregando={authCarregando} erro={erroAuth} />
+      )}
+      {tela === 'cadastro' && (
+        <TelaCadastro cadastrar={(...dados) => autenticar('cadastro', ...dados)}
+          entrar={() => navegar('login')} voltar={() => navegar('inicio')}
+          carregando={authCarregando} erro={erroAuth} />
       )}
       {tela === 'jogador' && (
         <TelaJogador confirmarJogador={(nome) => { setJogador(nome); setTela('categorias') }} />
@@ -188,7 +302,7 @@ function App() {
         <TelaRanking
           ranking={ranking}
           voltarInicio={() => setTela('inicio')}
-          trocarJogador={() => { setJogador(''); setTela('jogador') }}
+          trocarJogador={jogarAtual}
         />
       )}
     </main>

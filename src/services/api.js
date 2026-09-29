@@ -1,4 +1,4 @@
-const apiUrlConfigurada = import.meta.env.VITE_API_URL?.trim()
+const apiUrlConfigurada = import.meta.env?.VITE_API_URL?.trim()
 
 const API_URL = (
   apiUrlConfigurada ||
@@ -10,6 +10,7 @@ async function requisitar(caminho, opcoes) {
   try {
     resposta = await fetch(`${API_URL}${caminho}`, {
       ...opcoes,
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...opcoes?.headers },
     })
   } catch {
@@ -21,13 +22,45 @@ async function requisitar(caminho, opcoes) {
     try {
       const corpo = await resposta.json()
       if (typeof corpo.detail === 'string') mensagem = corpo.detail
+      if (Array.isArray(corpo.detail)) {
+        const mensagens = {
+          nome: 'Informe um nome válido (até 100 caracteres).',
+          email: 'Informe um e-mail válido.',
+          senha: 'Verifique a senha informada (cadastro: 8 a 128 caracteres).',
+        }
+        mensagem = [...new Set(corpo.detail.map((item) =>
+          mensagens[item.loc?.at(-1)] || 'Verifique os campos informados.',
+        ))].join(' ')
+      }
     } catch {
       // Mantém a mensagem genérica quando a resposta não é JSON.
     }
-    throw new Error(mensagem)
+    const erro = new Error(mensagem)
+    erro.status = resposta.status
+    throw erro
   }
 
-  return resposta.json()
+  return resposta.status === 204 ? null : resposta.json()
+}
+
+export function cadastrarUsuario(nome, email, senha) {
+  return requisitar('/api/v1/auth/cadastro', {
+    method: 'POST', body: JSON.stringify({ nome, email, senha }),
+  })
+}
+
+export function login(email, senha) {
+  return requisitar('/api/v1/auth/login', {
+    method: 'POST', body: JSON.stringify({ email, senha }),
+  })
+}
+
+export function logout() {
+  return requisitar('/api/v1/auth/logout', { method: 'POST' })
+}
+
+export function obterUsuarioAtual() {
+  return requisitar('/api/v1/auth/me', { method: 'GET' })
 }
 
 export function criarPartida(jogador, categoria) {

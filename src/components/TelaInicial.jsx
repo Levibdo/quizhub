@@ -1,5 +1,5 @@
 function TelaInicial({
-  escolherCategoria,
+  usuario, bloqueado, jogar, convidado, entrar, cadastrar, sair,
   verRanking,
 }) {
   return (
@@ -11,11 +11,22 @@ function TelaInicial({
         pontuação.
       </p>
 
-      <button onClick={escolherCategoria}>
-        Jogar
-      </button>
+      {usuario ? (
+        <>
+          <p>Olá, {usuario.nome}</p>
+          <button disabled={bloqueado} onClick={jogar}>Jogar</button>
+          <button disabled={bloqueado} onClick={sair}>Sair</button>
+          <button disabled={bloqueado} onClick={convidado}>Sair e jogar como convidado</button>
+        </>
+      ) : (
+        <>
+          <button disabled={bloqueado} onClick={convidado}>Jogar como convidado</button>
+          <button disabled={bloqueado} onClick={entrar}>Entrar</button>
+          <button disabled={bloqueado} onClick={cadastrar}>Criar conta</button>
+        </>
+      )}
 
-      <button onClick={verRanking}>
+      <button disabled={bloqueado} onClick={verRanking}>
         Ver ranking
       </button>
     </>
