@@ -62,6 +62,62 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.assertEqual(pergunta.id, 16)
         self.assertEqual(pergunta.alternativa_correta, 2)
 
+    def test_pergunta_ja_existente_nao_e_criada_novamente(self):
+        relatorio = self.importar(
+            [("geral", "Qual é a capital do Brasil?", "X", "Y", "Z", "W", 1)]
+        )
+
+        self.assertEqual((relatorio.total, relatorio.criadas, relatorio.falhas), (1, 0, 1))
+        self.assertEqual(relatorio.erros[0].linha, 2)
+        self.assertIn("pergunta duplicada", relatorio.erros[0].motivo)
+        quantidade = self.session.scalar(select(func.count()).select_from(Pergunta))
+        self.assertEqual(quantidade, 15)
+
+    def test_duplicata_na_mesma_planilha_e_criada_uma_vez(self):
+        linha = ("tecnologia", "Pergunta repetida?", "A", "B", "C", "D", 2)
+        relatorio = self.importar([linha, linha])
+
+        self.assertEqual((relatorio.total, relatorio.criadas, relatorio.falhas), (2, 1, 1))
+        self.assertEqual(relatorio.erros[0].linha, 3)
+        self.assertIn("pergunta duplicada", relatorio.erros[0].motivo)
+        quantidade = self.session.scalar(
+            select(func.count())
+            .select_from(Pergunta)
+            .where(Pergunta.enunciado == "Pergunta repetida?")
+        )
+        self.assertEqual(quantidade, 1)
+
+    def test_reimportar_mesma_planilha_nao_aumenta_quantidade(self):
+        linhas = [
+            ("geral", "Nova geral?", "A", "B", "C", "D", 0),
+            ("matematica", "Nova matematica?", "1", "2", "3", "4", 1),
+        ]
+        primeira = self.importar(linhas)
+        segunda = self.importar(linhas)
+
+        self.assertEqual((primeira.criadas, primeira.falhas), (2, 0))
+        self.assertEqual((segunda.criadas, segunda.falhas), (0, 2))
+        self.assertTrue(
+            all("pergunta duplicada" in erro.motivo for erro in segunda.erros)
+        )
+        quantidade = self.session.scalar(select(func.count()).select_from(Pergunta))
+        self.assertEqual(quantidade, 17)
+
+    def test_comparacao_remove_espacos_mas_preserva_caixa(self):
+        primeira = self.importar(
+            [(" geral ", "  Mesma pergunta?  ", "A", "B", "C", "D", 0)]
+        )
+        duplicada = self.importar(
+            [("geral", "Mesma pergunta?", "A", "B", "C", "D", 0)]
+        )
+        caixa_diferente = self.importar(
+            [("geral", "mesma pergunta?", "A", "B", "C", "D", 0)]
+        )
+
+        self.assertEqual(primeira.criadas, 1)
+        self.assertEqual((duplicada.criadas, duplicada.falhas), (0, 1))
+        self.assertEqual(caixa_diferente.criadas, 1)
+
     def test_categoria_inexistente(self):
         relatorio = self.importar(
             [("nao-existe", "Nova?", "A", "B", "C", "D", 0)]

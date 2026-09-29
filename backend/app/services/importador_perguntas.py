@@ -68,8 +68,9 @@ class ImportadorPerguntas:
                         )
                     )
                 else:
-                    validadas.append(validada)
+                    validadas.append((numero_linha, validada))
 
+            novas = []
             if validadas:
                 if db.bind is not None and db.bind.dialect.name == "postgresql":
                     db.execute(
@@ -78,8 +79,34 @@ class ImportadorPerguntas:
                             "IN SHARE ROW EXCLUSIVE MODE"
                         )
                     )
+
+                # A identidade de importação é a categoria junto do enunciado,
+                # ambos já normalizados com strip durante a validação. A
+                # comparação permanece exata e sensível a maiúsculas/minúsculas.
+                chaves_conhecidas = set(
+                    db.execute(
+                        select(Pergunta.categoria_id, Pergunta.enunciado)
+                    ).tuples()
+                )
+
+                for numero_linha, dados in validadas:
+                    chave = (dados["categoria_id"], dados["enunciado"])
+                    if chave in chaves_conhecidas:
+                        erros.append(
+                            ErroImportacaoPergunta(
+                                linha=numero_linha,
+                                motivo=(
+                                    "pergunta duplicada: categoria_id e enunciado "
+                                    "já existentes"
+                                ),
+                            )
+                        )
+                        continue
+                    chaves_conhecidas.add(chave)
+                    novas.append(dados)
+
                 proximo_id = (db.scalar(select(func.max(Pergunta.id))) or 0) + 1
-                for dados in validadas:
+                for dados in novas:
                     db.add(Pergunta(id=proximo_id, **dados))
                     proximo_id += 1
 
@@ -87,7 +114,7 @@ class ImportadorPerguntas:
             db.commit()
             return RelatorioImportacaoPerguntas(
                 total=len(linhas),
-                criadas=len(validadas),
+                criadas=len(novas),
                 falhas=len(erros),
                 erros=erros,
             )
