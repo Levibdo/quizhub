@@ -1,4 +1,5 @@
 import AnswerOption from './quiz/AnswerOption'
+import FeedbackPanel from './quiz/FeedbackPanel'
 import QuestionCard from './quiz/QuestionCard'
 import QuizHud from './quiz/QuizHud'
 
@@ -68,22 +69,17 @@ function TelaQuiz({
       )}
 
       {respondido && resultadoResposta && (
-        <section className="feedback" aria-live="polite">
-          <strong>
-            {resultadoResposta.timeout ? 'Tempo esgotado.'
-              : resultadoResposta.correta ? 'Resposta correta!' : 'Resposta incorreta.'}
-          </strong>
-          <p>Resposta correta: {pergunta.alternativas[resultadoResposta.alternativa_correta]}</p>
-          <div className="explicacao">
-            <strong>Explicação:</strong>
-            <p>{resultadoResposta.explicacao}</p>
-          </div>
-          <span>+{resultadoResposta.pontos_ganhos} pontos</span>
-          <button className="proxima-pergunta" onClick={proximaPergunta} disabled={avancando}>
-            {avancando ? 'Aguarde...'
-              : resultadoResposta.status === 'FINALIZADA' ? 'Ver resultado' : 'Próxima pergunta'}
-          </button>
-        </section>
+        <FeedbackPanel
+          timeout={resultadoResposta.timeout}
+          correta={resultadoResposta.correta}
+          alternativaCorreta={resultadoResposta.alternativa_correta}
+          alternativas={pergunta.alternativas}
+          explicacao={resultadoResposta.explicacao}
+          pontos={resultadoResposta.pontos_ganhos}
+          ultimaPergunta={resultadoResposta.status === 'FINALIZADA'}
+          carregandoAvanco={avancando}
+          onAvancar={proximaPergunta}
+        />
       )}
     </section>
   )
