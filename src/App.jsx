@@ -316,8 +316,10 @@ function App() {
       {tela === 'jogando' && pergunta && (
         <TelaQuiz
           pergunta={pergunta}
+          categoria={categorias.find((item) => item.id === categoriaSelecionada)}
           perguntaAtual={perguntaAtual}
           totalPerguntas={TOTAL_PERGUNTAS}
+          tempoTotal={TEMPO_POR_PERGUNTA}
           pontuacao={resultadoResposta?.pontuacao ?? partida.pontuacao}
           tempoRestante={tempoRestante}
           responder={responder}

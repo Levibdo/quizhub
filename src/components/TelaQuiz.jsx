@@ -1,9 +1,17 @@
+import AnswerOption from './quiz/AnswerOption'
+import QuestionCard from './quiz/QuestionCard'
+import QuizHud from './quiz/QuizHud'
+
+const LETRAS = ['A', 'B', 'C', 'D']
+
 function TelaQuiz({
   pergunta,
+  categoria,
   perguntaAtual,
   totalPerguntas,
   pontuacao,
   tempoRestante,
+  tempoTotal,
   responder,
   respostaSelecionada,
   respondido,
@@ -12,14 +20,9 @@ function TelaQuiz({
   proximaPergunta,
   avancando,
 }) {
-  const progresso =
-    ((perguntaAtual + 1) / totalPerguntas) * 100
-
-  const letras = ['A', 'B', 'C', 'D']
-
-  function classeAlternativa(indice) {
+  function estadoAlternativa(indice) {
     if (!respondido) {
-      return ''
+      return enviando && indice === respostaSelecionada ? 'selecionada' : ''
     }
 
     if (indice === resultadoResposta?.alternativa_correta) {
@@ -30,57 +33,38 @@ function TelaQuiz({
       return 'errada'
     }
 
-    return ''
+    return 'atenuada'
   }
 
   return (
-    <>
-      <div className="info-quiz">
-        <span>
-          Pergunta {perguntaAtual + 1} de {totalPerguntas}
-        </span>
+    <section className="quiz-screen">
+      <QuizHud
+        categoria={categoria}
+        perguntaAtual={perguntaAtual + 1}
+        totalPerguntas={totalPerguntas}
+        pontuacao={pontuacao}
+        tempoRestante={tempoRestante}
+        tempoTotal={tempoTotal}
+      />
 
-        <span>
-          Pontuação: {pontuacao}
-        </span>
-
-        <span
-          className={`timer ${
-            tempoRestante <= 5 ? 'timer-urgente' : ''
-          }`}
-        >
-          ⏱ {tempoRestante}s
-        </span>
-      </div>
-
-      <div className="progresso">
-        <div
-          className="progresso-barra"
-          style={{ width: `${progresso}%` }}
-        />
-      </div>
-
-      <h2>{pergunta.pergunta}</h2>
+      <QuestionCard>{pergunta.pergunta}</QuestionCard>
 
       <div className="alternativas">
         {pergunta.alternativas.map((alternativa, indice) => (
-          <button
+          <AnswerOption
             key={indice}
-            className={classeAlternativa(indice)}
-            onClick={() => responder(indice)}
+            letra={LETRAS[indice]}
+            alternativa={alternativa}
+            indice={indice}
+            estado={estadoAlternativa(indice)}
             disabled={respondido || enviando}
-          >
-            <span className="letra-alternativa">
-              {letras[indice]}
-            </span>
-
-            <span>{alternativa}</span>
-          </button>
+            onSelect={responder}
+          />
         ))}
       </div>
 
       {enviando && !respondido && (
-        <div className="feedback">Enviando resposta...</div>
+        <div className="feedback" role="status">Enviando resposta...</div>
       )}
 
       {respondido && resultadoResposta && (
@@ -101,7 +85,7 @@ function TelaQuiz({
           </button>
         </section>
       )}
-    </>
+    </section>
   )
 }
 

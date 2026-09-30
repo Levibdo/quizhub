@@ -91,9 +91,19 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     assert.ok(!visivel().includes(resultado.explicacao))
     assert.equal(botao('Próxima pergunta'), undefined)
     const alternativas = () => renderer.root.findByProps({ className: 'alternativas' }).findAllByType('button')
+    const barraTempo = () => renderer.root.findByProps({ 'aria-label': 'Tempo restante' })
+    assert.equal(barraTempo().props.role, 'progressbar')
+    assert.equal(barraTempo().props['aria-valuemin'], '0')
+    assert.equal(barraTempo().props['aria-valuemax'], 15)
+    assert.equal(barraTempo().props['aria-valuenow'], 15)
+    assert.equal(renderer.root.findAllByProps({ className: 'answer-option__status' }).length, 0)
+    assert.ok(alternativas().every((alternativa) => alternativa.props.className === ''))
     const responder = alternativas()[0].props.onClick
     if (modo === 'timeout') {
-      for (let i = 0; i < 15; i++) await act(async () => t.mock.timers.tick(1000))
+      for (let i = 0; i < 10; i++) await act(async () => t.mock.timers.tick(1000))
+      assert.equal(barraTempo().props['aria-valuenow'], 5)
+      assert.ok(barraTempo().props.className.includes('timer-bar--urgente'))
+      for (let i = 0; i < 5; i++) await act(async () => t.mock.timers.tick(1000))
       await act(async () => t.mock.timers.tick(1))
     } else {
       await act(async () => { responder(); responder() })
@@ -107,6 +117,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     assert.ok(visivel().includes('Resposta correta: B'))
     assert.ok(visivel().includes('+170 pontos'))
     assert.ok(alternativas().every((b) => b.props.disabled))
+    assert.ok(renderer.root.findAllByProps({ className: 'answer-option__status' }).length >= 1)
     assert.equal(alternativas()[1].props.className, 'correta')
     if (modo === 'incorreta') assert.equal(alternativas()[0].props.className, 'errada')
     const congelado = renderer.root.findAllByType('span').find((s) => s.props.className?.startsWith('timer')).children.join('')
