@@ -1,0 +1,210 @@
+{
+  "modo": "quiz_classico",
+  "categoria_id": "entretenimento",
+  "perguntas": [
+    {
+      "enunciado": "Qual diretor comandou o filme Titanic, lançado em 1997?",
+      "alternativas": ["Steven Spielberg", "James Cameron", "Ridley Scott", "Martin Scorsese"],
+      "alternativa_correta": 1,
+      "explicacao": "James Cameron dirigiu, escreveu e coproduziu Titanic, lançado em 1997."
+    },
+    {
+      "enunciado": "Em Friends, qual é o nome do café frequentado pelos personagens principais?",
+      "alternativas": ["Central Perk", "Monk's Café", "Luke's Diner", "Café Nervosa"],
+      "alternativa_correta": 0,
+      "explicacao": "Central Perk é o café de Nova York onde os seis protagonistas de Friends se encontram frequentemente."
+    },
+    {
+      "enunciado": "Qual banda lançou a música Bohemian Rhapsody em 1975?",
+      "alternativas": ["Led Zeppelin", "Pink Floyd", "Queen", "The Who"],
+      "alternativa_correta": 2,
+      "explicacao": "Bohemian Rhapsody foi lançada pelo Queen em 1975 no álbum A Night at the Opera."
+    },
+    {
+      "enunciado": "Qual atriz interpretou Hermione Granger nos oito filmes principais da série Harry Potter?",
+      "alternativas": ["Keira Knightley", "Emma Stone", "Natalie Portman", "Emma Watson"],
+      "alternativa_correta": 3,
+      "explicacao": "Emma Watson interpretou Hermione Granger nos oito filmes principais de Harry Potter."
+    },
+    {
+      "enunciado": "Qual animação da Pixar acompanha brinquedos que ganham vida quando os humanos não estão presentes?",
+      "alternativas": ["Toy Story", "Monstros S.A.", "Carros", "Os Incríveis"],
+      "alternativa_correta": 0,
+      "explicacao": "Toy Story acompanha Woody, Buzz Lightyear e outros brinquedos que possuem vida própria."
+    },
+    {
+      "enunciado": "Qual cantor ficou conhecido como o 'Rei do Pop'?",
+      "alternativas": ["Prince", "Michael Jackson", "Elton John", "George Michael"],
+      "alternativa_correta": 1,
+      "explicacao": "Michael Jackson tornou-se mundialmente conhecido pelo título de 'Rei do Pop'."
+    },
+    {
+      "enunciado": "Em Stranger Things, qual é o nome da cidade fictícia onde se passa grande parte da série?",
+      "alternativas": ["Sunnydale", "Riverdale", "Hawkins", "Hill Valley"],
+      "alternativa_correta": 2,
+      "explicacao": "A maior parte dos acontecimentos de Stranger Things ocorre na cidade fictícia de Hawkins, Indiana."
+    },
+    {
+      "enunciado": "Qual filme sul-coreano venceu o Oscar de Melhor Filme na cerimônia de 2020?",
+      "alternativas": ["Oldboy", "Em Chamas", "A Criada", "Parasita"],
+      "alternativa_correta": 3,
+      "explicacao": "Parasita, dirigido por Bong Joon-ho, tornou-se o primeiro filme em língua não inglesa a vencer o Oscar de Melhor Filme."
+    },
+    {
+      "enunciado": "Qual artista lançou o álbum 21, que inclui canções como Rolling in the Deep e Someone Like You?",
+      "alternativas": ["Adele", "Amy Winehouse", "Dua Lipa", "Florence Welch"],
+      "alternativa_correta": 0,
+      "explicacao": "Adele lançou o álbum 21, que contém sucessos como Rolling in the Deep e Someone Like You."
+    },
+    {
+      "enunciado": "Na série Breaking Bad, qual é a profissão de Walter White no início da história?",
+      "alternativas": ["Farmacêutico", "Professor de química", "Médico", "Engenheiro químico"],
+      "alternativa_correta": 1,
+      "explicacao": "No início de Breaking Bad, Walter White trabalha como professor de química do ensino médio."
+    },
+    {
+      "enunciado": "Quem dirigiu Pulp Fiction, lançado em 1994?",
+      "alternativas": ["David Fincher", "Joel Coen", "Quentin Tarantino", "Paul Thomas Anderson"],
+      "alternativa_correta": 2,
+      "explicacao": "Pulp Fiction foi dirigido por Quentin Tarantino e lançado em 1994."
+    },
+    {
+      "enunciado": "Qual grupo sueco venceu o Festival Eurovisão da Canção de 1974 com Waterloo?",
+      "alternativas": ["Roxette", "Ace of Base", "Europe", "ABBA"],
+      "alternativa_correta": 3,
+      "explicacao": "O ABBA venceu a Eurovisão de 1974 representando a Suécia com a música Waterloo."
+    },
+    {
+      "enunciado": "Qual personagem é o alter ego do super-herói Batman?",
+      "alternativas": ["Bruce Wayne", "Clark Kent", "Peter Parker", "Tony Stark"],
+      "alternativa_correta": 0,
+      "explicacao": "Bruce Wayne é a identidade civil de Batman nas histórias da DC."
+    },
+    {
+      "enunciado": "Em Game of Thrones, qual família tem como lema 'Winter is Coming'?",
+      "alternativas": ["Lannister", "Stark", "Targaryen", "Baratheon"],
+      "alternativa_correta": 1,
+      "explicacao": "'Winter is Coming' é o lema da Casa Stark."
+    },
+    {
+      "enunciado": "Qual cineasta dirigiu O Labirinto do Fauno?",
+      "alternativas": ["Alfonso Cuarón", "Alejandro González Iñárritu", "Guillermo del Toro", "Pedro Almodóvar"],
+      "alternativa_correta": 2,
+      "explicacao": "O Labirinto do Fauno foi escrito e dirigido pelo cineasta mexicano Guillermo del Toro."
+    },
+    {
+      "enunciado": "Qual álbum dos Beatles apresenta a famosa capa em que os integrantes atravessam uma faixa de pedestres?",
+      "alternativas": ["Revolver", "Let It Be", "Sgt. Pepper's Lonely Hearts Club Band", "Abbey Road"],
+      "alternativa_correta": 3,
+      "explicacao": "A capa de Abbey Road mostra os quatro Beatles atravessando uma faixa de pedestres em Londres."
+    },
+    {
+      "enunciado": "Qual estúdio japonês produziu A Viagem de Chihiro?",
+      "alternativas": ["Studio Ghibli", "Toei Animation", "Madhouse", "Production I.G"],
+      "alternativa_correta": 0,
+      "explicacao": "A Viagem de Chihiro é uma produção do Studio Ghibli dirigida por Hayao Miyazaki."
+    },
+    {
+      "enunciado": "Qual cantora lançou o álbum Back to Black em 2006?",
+      "alternativas": ["Lily Allen", "Amy Winehouse", "Duffy", "Norah Jones"],
+      "alternativa_correta": 1,
+      "explicacao": "Amy Winehouse lançou Back to Black em 2006, seu segundo e último álbum de estúdio."
+    },
+    {
+      "enunciado": "Em The Office, versão norte-americana, qual empresa emprega os personagens do escritório de Scranton?",
+      "alternativas": ["Sabre", "Vance Refrigeration", "Dunder Mifflin", "Athlead"],
+      "alternativa_correta": 2,
+      "explicacao": "A série acompanha principalmente funcionários da filial de Scranton da empresa de papel Dunder Mifflin."
+    },
+    {
+      "enunciado": "Qual filme de Christopher Nolan apresenta personagens que entram nos sonhos de outras pessoas para implantar uma ideia?",
+      "alternativas": ["Interestelar", "O Grande Truque", "Tenet", "A Origem"],
+      "alternativa_correta": 3,
+      "explicacao": "A Origem acompanha uma equipe que invade sonhos e recebe a missão de implantar uma ideia na mente de um alvo."
+    },
+    {
+      "enunciado": "Qual cantora brasileira ficou conhecida internacionalmente por interpretar canções como Garota de Ipanema?",
+      "alternativas": ["Astrud Gilberto", "Elis Regina", "Gal Costa", "Nara Leão"],
+      "alternativa_correta": 0,
+      "explicacao": "Astrud Gilberto ganhou projeção internacional com sua interpretação de Garota de Ipanema na década de 1960."
+    },
+    {
+      "enunciado": "Em Star Wars: Episódio V — O Império Contra-Ataca, quem revela ser o pai de Luke Skywalker?",
+      "alternativas": ["Obi-Wan Kenobi", "Darth Vader", "Imperador Palpatine", "Yoda"],
+      "alternativa_correta": 1,
+      "explicacao": "Darth Vader revela a Luke Skywalker que é seu pai durante o confronto em Bespin."
+    },
+    {
+      "enunciado": "Qual série acompanha a família Roy e a disputa pelo controle do conglomerado Waystar Royco?",
+      "alternativas": ["Billions", "Industry", "Succession", "Mad Men"],
+      "alternativa_correta": 2,
+      "explicacao": "Succession acompanha Logan Roy e seus filhos em disputas pelo controle da Waystar Royco."
+    },
+    {
+      "enunciado": "Qual músico compôs e interpretou Purple Rain, lançada em 1984?",
+      "alternativas": ["David Bowie", "Stevie Wonder", "Lionel Richie", "Prince"],
+      "alternativa_correta": 3,
+      "explicacao": "Purple Rain foi composta e interpretada por Prince e também dá nome ao álbum e ao filme lançados em 1984."
+    },
+    {
+      "enunciado": "Qual filme de Steven Spielberg apresenta um parque habitado por dinossauros clonados a partir de material genético?",
+      "alternativas": ["Jurassic Park", "E.T. — O Extraterrestre", "Tubarão", "Contatos Imediatos do Terceiro Grau"],
+      "alternativa_correta": 0,
+      "explicacao": "Jurassic Park apresenta um parque temático onde dinossauros foram recriados por técnicas de engenharia genética."
+    },
+    {
+      "enunciado": "Qual artista lançou o álbum Lemonade em 2016?",
+      "alternativas": ["Rihanna", "Beyoncé", "Solange", "Alicia Keys"],
+      "alternativa_correta": 1,
+      "explicacao": "Beyoncé lançou Lemonade em 2016 como um álbum visual e seu sexto trabalho solo de estúdio."
+    },
+    {
+      "enunciado": "Na série Dark, qual é o nome da cidade fictícia alemã onde ocorrem os principais acontecimentos?",
+      "alternativas": ["Windenburg", "Dresden", "Winden", "Essen"],
+      "alternativa_correta": 2,
+      "explicacao": "Dark se passa principalmente na cidade fictícia alemã de Winden."
+    },
+    {
+      "enunciado": "Qual diretor é responsável pela trilogia cinematográfica O Senhor dos Anéis lançada entre 2001 e 2003?",
+      "alternativas": ["Sam Raimi", "George Miller", "James Cameron", "Peter Jackson"],
+      "alternativa_correta": 3,
+      "explicacao": "Peter Jackson dirigiu os três filmes da trilogia O Senhor dos Anéis lançados entre 2001 e 2003."
+    },
+    {
+      "enunciado": "Qual movimento musical brasileiro do fim da década de 1960 teve entre seus principais nomes Caetano Veloso e Gilberto Gil?",
+      "alternativas": ["Tropicália", "Jovem Guarda", "Clube da Esquina", "Manguebeat"],
+      "alternativa_correta": 0,
+      "explicacao": "Caetano Veloso e Gilberto Gil estiveram entre os principais representantes da Tropicália no fim dos anos 1960."
+    },
+    {
+      "enunciado": "Em Black Mirror, qual episódio apresenta um sistema social em que as pessoas avaliam umas às outras de uma a cinco estrelas?",
+      "alternativas": ["San Junipero", "Nosedive", "White Bear", "Hang the DJ"],
+      "alternativa_correta": 1,
+      "explicacao": "Nosedive apresenta uma sociedade em que avaliações constantes influenciam o status social das pessoas."
+    },
+    {
+      "enunciado": "Qual ator interpretou o personagem principal Travis Bickle em Taxi Driver?",
+      "alternativas": ["Al Pacino", "Dustin Hoffman", "Robert De Niro", "Jack Nicholson"],
+      "alternativa_correta": 2,
+      "explicacao": "Robert De Niro interpretou Travis Bickle em Taxi Driver, dirigido por Martin Scorsese."
+    },
+    {
+      "enunciado": "Qual álbum do Pink Floyd, lançado em 1973, tem uma capa com um prisma decompondo um feixe de luz?",
+      "alternativas": ["Wish You Were Here", "The Wall", "Animals", "The Dark Side of the Moon"],
+      "alternativa_correta": 3,
+      "explicacao": "The Dark Side of the Moon foi lançado em 1973 e sua capa apresenta o conhecido prisma atravessado por luz."
+    },
+    {
+      "enunciado": "Qual filme de 1941 dirigido por Orson Welles acompanha a ascensão e a queda do magnata Charles Foster Kane?",
+      "alternativas": ["Cidadão Kane", "Casablanca", "O Falcão Maltês", "Pacto de Sangue"],
+      "alternativa_correta": 0,
+      "explicacao": "Cidadão Kane, dirigido por Orson Welles, acompanha a vida do magnata fictício Charles Foster Kane."
+    },
+    {
+      "enunciado": "Qual rapper lançou o álbum To Pimp a Butterfly em 2015?",
+      "alternativas": ["Outkast", "Kendrick Lamar", "A Tribe Called Quest", "Run the Jewels"],
+      "alternativa_correta": 1,
+      "explicacao": "To Pimp a Butterfly é o terceiro álbum de estúdio do rapper Kendrick Lamar, lançado em 2015."
+    }
+  ]
+}
