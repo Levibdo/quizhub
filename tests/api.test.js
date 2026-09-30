@@ -71,3 +71,17 @@ test('avançar pergunta usa o endpoint, partida e pergunta respondida corretos',
   assert.deepEqual(JSON.parse(chamada.opcoes.body), { pergunta_id: 11 })
   assert.equal(resultado.pergunta_atual.id, 22)
 })
+
+test('listar categorias consulta o endpoint público', async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify([
+      { id: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.' },
+    ]), { status: 200 })
+  }
+  const categorias = await api.listarCategorias()
+  assert.equal(chamada.url, 'http://localhost:8001/api/v1/categorias')
+  assert.equal(chamada.opcoes.method, 'GET')
+  assert.equal(categorias[0].id, 'geral')
+})

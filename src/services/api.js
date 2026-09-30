@@ -63,6 +63,10 @@ export function obterUsuarioAtual() {
   return requisitar('/api/v1/auth/me', { method: 'GET' })
 }
 
+export function listarCategorias() {
+  return requisitar('/api/v1/categorias', { method: 'GET' })
+}
+
 export function criarPartida(jogador, categoria) {
   return requisitar('/api/v1/partidas', {
     method: 'POST',

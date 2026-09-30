@@ -66,6 +66,9 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
       chamadas.push({ url, options })
       let value
       if (url.endsWith('/auth/me')) value = { nome: 'Jogador' }
+      else if (url.endsWith('/categorias')) value = [
+        { id: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.' },
+      ]
       else if (url.endsWith('/respostas')) value = await new Promise((resolve) => { confirmarResposta = () => resolve(resultado) })
       else if (url.endsWith('/proxima')) value = await new Promise((resolve) => {
         confirmarProxima = () => resolve({ ...partida, pontuacao: 1234, acertos: 7, erros: 3, pergunta_atual: seguinte })
@@ -138,3 +141,81 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     }
   })
 }
+
+test('categorias da API incluem categoria desconhecida com ícone padrão e id correto', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  globalThis.localStorage = { getItem: () => null, setItem: () => {} }
+  let resolverCategorias
+  const chamadas = []
+  globalThis.fetch = async (url, options) => {
+    chamadas.push({ url, options })
+    if (url.endsWith('/auth/me')) {
+      return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
+    }
+    if (url.endsWith('/categorias')) {
+      const categorias = await new Promise((resolve) => { resolverCategorias = resolve })
+      return new Response(JSON.stringify(categorias), { status: 200 })
+    }
+    return new Response(JSON.stringify({
+      partida_id: 'nova', jogador: 'Jogador', categoria: 'ciencias',
+      status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0,
+      pergunta_atual: { id: 1, pergunta: 'Ciência?', alternativas: ['A', 'B', 'C', 'D'] },
+    }), { status: 200 })
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((b) => texto(b) === label)
+  await act(async () => botao('Jogar').props.onClick())
+  assert.ok(texto(renderer.root).includes('Carregando categorias...'))
+  assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
+  await act(async () => resolverCategorias([
+    { id: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.' },
+  ]))
+  assert.ok(texto(renderer.root).includes('Ciências'))
+  assert.ok(texto(renderer.root).includes('❓'))
+  await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
+  const criacao = chamadas.find((item) => item.url.endsWith('/partidas'))
+  assert.deepEqual(JSON.parse(criacao.options.body), { categoria: 'ciencias' })
+})
+
+test('erro ao carregar categorias permite tentar novamente', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  globalThis.localStorage = { getItem: () => null, setItem: () => {} }
+  let tentativas = 0
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/auth/me')) {
+      return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
+    }
+    if (url.endsWith('/categorias')) {
+      tentativas += 1
+      if (tentativas === 1) {
+        return new Response(JSON.stringify({ detail: 'Falha temporária' }), { status: 503 })
+      }
+      return new Response(JSON.stringify([
+        { id: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.' },
+      ]), { status: 200 })
+    }
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((b) => texto(b) === label)
+  await act(async () => botao('Jogar').props.onClick())
+  assert.ok(texto(renderer.root).includes('Não foi possível carregar as categorias.'))
+  assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
+  await act(async () => botao('Tentar novamente').props.onClick())
+  assert.ok(texto(renderer.root).includes('Geral'))
+  assert.equal(tentativas, 2)
+})

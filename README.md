@@ -141,6 +141,19 @@ export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_esta
 
 O seed é idempotente e cadastra as três categorias e as 15 perguntas-base que ainda não existirem.
 
+As categorias exibidas no frontend são carregadas do PostgreSQL pela API. Para
+administrá-las localmente, execute os comandos abaixo dentro de `backend`, com
+`DATABASE_URL` configurada:
+
+```powershell
+python -m app.cli categoria listar
+python -m app.cli categoria criar
+```
+
+O comando `criar` solicita nome, código e descrição, mostra uma confirmação e
+só então persiste a categoria. O código deve começar com uma letra minúscula e
+usar somente letras minúsculas ASCII, números e hífens, com até 50 caracteres.
+
 ### 3. Frontend
 
 Em outro terminal, a partir da raiz do projeto:
@@ -198,6 +211,7 @@ Principais endpoints:
 | --- | --- | --- |
 | `POST` | `/api/v1/partidas` | Cria uma partida e disponibiliza a primeira pergunta. |
 | `POST` | `/api/v1/partidas/{partida_id}/respostas` | Processa uma resposta ou timeout e devolve o novo estado autoritativo. |
+| `GET` | `/api/v1/categorias` | Lista as categorias ativas disponíveis para partidas. |
 | `POST` | `/api/v1/perguntas/importar` | Importa perguntas de uma planilha XLSX. |
 | `GET` | `/health` | Informa se a API está ativa. |
 

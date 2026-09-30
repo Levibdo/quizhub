@@ -1,4 +1,3 @@
-import { categorias } from '../data/categorias'
 import { formatarAproveitamento } from '../utils/aproveitamento'
 
 function TelaResultado({
@@ -6,14 +5,11 @@ function TelaResultado({
     acertos,
     erros,
     pontuacao,
-    categoriaSelecionada,
+    categoria,
     iniciarQuiz,
     verRanking,
     voltarInicio,
 }) {
-    const categoria = categorias.find(
-        (item) => item.id === categoriaSelecionada
-    )
     const aproveitamento = formatarAproveitamento(acertos, erros)
 
     return (

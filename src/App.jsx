@@ -9,7 +9,7 @@ import TelaResultado from './components/TelaResultado'
 import TelaRanking from './components/TelaRanking'
 import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
-import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual } from './services/api'
+import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategorias } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
@@ -18,6 +18,9 @@ const TOTAL_PERGUNTAS = 10
 function App() {
   const [tela, setTela] = useState('inicio')
   const [categoriaSelecionada, setCategoriaSelecionada] = useState(null)
+  const [categorias, setCategorias] = useState([])
+  const [carregandoCategorias, setCarregandoCategorias] = useState(false)
+  const [erroCategorias, setErroCategorias] = useState('')
   const [jogador, setJogador] = useState('')
   const [partida, setPartida] = useState(null)
   const [perguntaAtual, setPerguntaAtual] = useState(0)
@@ -61,6 +64,25 @@ function App() {
     setTela(destino)
   }
 
+  const carregarCategorias = useCallback(async () => {
+    setCarregandoCategorias(true)
+    setErroCategorias('')
+    try {
+      setCategorias(await listarCategorias())
+    } catch (error) {
+      setCategorias([])
+      setErroCategorias(`Não foi possível carregar as categorias. ${error.message}`)
+    } finally {
+      setCarregandoCategorias(false)
+    }
+  }, [])
+
+  function abrirCategorias() {
+    setErro('')
+    setTela('categorias')
+    carregarCategorias()
+  }
+
   async function autenticar(tipo, ...dados) {
     if (authRef.current) return
     authRef.current = true
@@ -72,7 +94,7 @@ function App() {
       setUsuario(atual)
       setStatusSessao('autenticado')
       setJogador('')
-      navegar('categorias')
+      abrirCategorias()
     } catch (error) {
       setErroAuth(error.status === 409 ? 'Este e-mail já está cadastrado.'
         : error.status === 401 ? 'E-mail ou senha inválidos.' : error.message)
@@ -107,7 +129,7 @@ function App() {
 
   function jogarAtual() {
     if (statusSessao === 'carregando' || statusSessao === 'erro' || authRef.current) return
-    if (usuario) navegar('categorias')
+    if (usuario) abrirCategorias()
     else sair('jogador') // Limpa também cookies inválidos antes de jogar como convidado.
   }
 
@@ -275,12 +297,16 @@ function App() {
           carregando={authCarregando} erro={erroAuth} />
       )}
       {tela === 'jogador' && (
-        <TelaJogador confirmarJogador={(nome) => { setJogador(nome); setTela('categorias') }} />
+        <TelaJogador confirmarJogador={(nome) => { setJogador(nome); abrirCategorias() }} />
       )}
       {tela === 'categorias' && (
         <TelaCategorias
+          categorias={categorias}
           selecionarCategoria={iniciarQuiz}
           carregando={requisicaoEmAndamento}
+          carregandoCategorias={carregandoCategorias}
+          erroCategorias={erroCategorias}
+          tentarNovamente={carregarCategorias}
         />
       )}
       {tela === 'jogando' && pergunta && (
@@ -305,8 +331,8 @@ function App() {
           acertos={partida.acertos}
           erros={partida.erros}
           pontuacao={partida.pontuacao}
-          categoriaSelecionada={categoriaSelecionada}
-          iniciarQuiz={() => { setErro(''); setTela('categorias') }}
+          categoria={categorias.find((item) => item.id === categoriaSelecionada)}
+          iniciarQuiz={abrirCategorias}
           verRanking={abrirRanking}
           voltarInicio={() => { setErro(''); setTela('inicio') }}
         />
