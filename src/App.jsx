@@ -9,6 +9,7 @@ import TelaResultado from './components/TelaResultado'
 import TelaRanking from './components/TelaRanking'
 import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
+import AppShell from './components/layout/AppShell'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategorias } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
@@ -260,7 +261,7 @@ function App() {
   const pergunta = partida?.pergunta_atual
 
   return (
-    <main>
+    <AppShell>
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
       {statusSessao === 'carregando' && <p role="status">Verificando sessão...</p>}
       {statusSessao === 'erro' && (
@@ -344,7 +345,7 @@ function App() {
           trocarJogador={jogarAtual}
         />
       )}
-    </main>
+    </AppShell>
   )
 }
 
