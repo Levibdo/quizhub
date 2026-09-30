@@ -142,7 +142,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
   })
 }
 
-test('categorias da API incluem categoria desconhecida com ícone padrão e id correto', async (t) => {
+test('categorias da API incluem categoria desconhecida com fallback e id correto', async (t) => {
   const fetchOriginal = globalThis.fetch
   const storageOriginal = globalThis.localStorage
   globalThis.localStorage = { getItem: () => null, setItem: () => {} }
@@ -178,7 +178,12 @@ test('categorias da API incluem categoria desconhecida com ícone padrão e id c
     { id: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.' },
   ]))
   assert.ok(texto(renderer.root).includes('Ciências'))
-  assert.ok(texto(renderer.root).includes('❓'))
+  assert.equal(
+    renderer.root.findByProps({
+      className: 'category-symbol category-symbol--fallback',
+    }).props['data-symbol'],
+    'fallback',
+  )
   await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
   const criacao = chamadas.find((item) => item.url.endsWith('/partidas'))
   assert.deepEqual(JSON.parse(criacao.options.body), { categoria: 'ciencias' })
@@ -218,4 +223,35 @@ test('erro ao carregar categorias permite tentar novamente', async (t) => {
   await act(async () => botao('Tentar novamente').props.onClick())
   assert.ok(texto(renderer.root).includes('Geral'))
   assert.equal(tentativas, 2)
+})
+
+test('lista vazia de categorias exibe estado vazio sem permitir partida', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  globalThis.localStorage = { getItem: () => null, setItem: () => {} }
+  const chamadas = []
+  globalThis.fetch = async (url, options) => {
+    chamadas.push({ url, options })
+    if (url.endsWith('/auth/me')) {
+      return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
+    }
+    if (url.endsWith('/categorias')) {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = renderer.root.findAllByType('button').find((item) => texto(item) === 'Jogar')
+  await act(async () => botao.props.onClick())
+
+  assert.ok(texto(renderer.root).includes('Nenhuma categoria disponível.'))
+  assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
+  assert.equal(chamadas.some((item) => item.url.endsWith('/partidas')), false)
 })

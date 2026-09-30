@@ -1,8 +1,4 @@
-const ICONES_CONHECIDOS = {
-  geral: '🌎',
-  tecnologia: '💻',
-  matematica: '🧮',
-}
+import CategoryCard from './CategoryCard'
 
 function TelaCategorias({
   categorias,
@@ -12,46 +8,61 @@ function TelaCategorias({
   erroCategorias,
   tentarNovamente,
 }) {
+  const disponivel = !carregandoCategorias && !erroCategorias
+
   return (
-    <>
-      <h1>Escolha uma categoria</h1>
+    <section className="categories-screen" aria-labelledby="categories-title">
+      <header className="categories-header">
+        <span className="categories-header__eyebrow">
+          QuizHub // Seleção de desafio
+        </span>
+        <h1 id="categories-title">Escolha o teste</h1>
+        <p>Selecione uma categoria e coloque seu conhecimento à prova.</p>
+      </header>
 
-      <p>
-        Selecione o tema das perguntas que deseja responder.
-      </p>
-
-      {carregandoCategorias && <p role="status">Carregando categorias...</p>}
+      {carregandoCategorias && (
+        <div className="categories-state" role="status">
+          <span className="categories-state__signal" aria-hidden="true" />
+          <strong>Carregando categorias...</strong>
+          <p>Consultando os desafios disponíveis.</p>
+        </div>
+      )}
 
       {erroCategorias && (
-        <div role="alert">
+        <div className="categories-state categories-state--error" role="alert">
+          <strong>Não foi possível acessar os desafios.</strong>
           <p>{erroCategorias}</p>
           <button onClick={tentarNovamente}>Tentar novamente</button>
         </div>
       )}
 
-      {!carregandoCategorias && !erroCategorias && (
-        <div className="categorias">
-          {categorias.map((categoria) => (
-            <button
-              key={categoria.id}
-              className="categoria-card"
-              onClick={() => selecionarCategoria(categoria.id)}
-              disabled={carregando || carregandoCategorias}
-            >
-              <span className="categoria-icone">
-                {ICONES_CONHECIDOS[categoria.id] ?? '❓'}
-              </span>
+      {disponivel && categorias.length === 0 && (
+        <div className="categories-state">
+          <strong>Nenhuma categoria disponível.</strong>
+          <p>Não há desafios liberados para iniciar uma partida agora.</p>
+        </div>
+      )}
 
-              <span className="categoria-info">
-                <strong>{categoria.nome}</strong>
-                <small>{categoria.descricao}</small>
-              </span>
-            </button>
+      {disponivel && categorias.length > 0 && (
+        <div className="categorias">
+          {categorias.map((categoria, indice) => (
+            <CategoryCard
+              key={categoria.id}
+              categoria={categoria}
+              indice={indice}
+              onSelect={selecionarCategoria}
+              disabled={carregando || carregandoCategorias}
+            />
           ))}
         </div>
       )}
-      {carregando && <p>Iniciando partida...</p>}
-    </>
+
+      {carregando && (
+        <p className="categories-starting" role="status">
+          Iniciando partida...
+        </p>
+      )}
+    </section>
   )
 }
 
