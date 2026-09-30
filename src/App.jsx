@@ -298,7 +298,10 @@ function App() {
           carregando={authCarregando} erro={erroAuth} />
       )}
       {tela === 'jogador' && (
-        <TelaJogador confirmarJogador={(nome) => { setJogador(nome); abrirCategorias() }} />
+        <TelaJogador
+          confirmarJogador={(nome) => { setJogador(nome); abrirCategorias() }}
+          voltar={() => navegar('inicio')}
+        />
       )}
       {tela === 'categorias' && (
         <TelaCategorias
