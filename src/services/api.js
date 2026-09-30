@@ -76,3 +76,10 @@ export function enviarResposta(partidaId, perguntaId, alternativa) {
     body: JSON.stringify({ pergunta_id: perguntaId, alternativa }),
   })
 }
+
+export function avancarPergunta(partidaId, perguntaId) {
+  return requisitar(`/api/v1/partidas/${partidaId}/proxima`, {
+    method: 'POST',
+    body: JSON.stringify({ pergunta_id: perguntaId }),
+  })
+}

@@ -9,11 +9,10 @@ import TelaResultado from './components/TelaResultado'
 import TelaRanking from './components/TelaRanking'
 import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
-import { criarPartida, enviarResposta, cadastrarUsuario, login, logout, obterUsuarioAtual } from './services/api'
+import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
-const TEMPO_FEEDBACK = 2000
 const TOTAL_PERGUNTAS = 10
 
 function App() {
@@ -29,6 +28,9 @@ function App() {
   const [erro, setErro] = useState('')
   const [ranking, setRanking] = useState(carregarRanking)
   const enviandoRef = useRef(false)
+  const respostaConfirmadaRef = useRef(false)
+  const avancandoRef = useRef(false)
+  const [avancando, setAvancando] = useState(false)
   const timeoutEnviadoRef = useRef(false)
   const resultadoSalvoRef = useRef(false)
   const [usuario, setUsuario] = useState(null)
@@ -147,6 +149,7 @@ function App() {
       setResultadoResposta(null)
       timeoutEnviadoRef.current = false
       resultadoSalvoRef.current = false
+      respostaConfirmadaRef.current = false
       setTela('jogando')
     } catch (error) {
       setErro(error.message)
@@ -164,7 +167,7 @@ function App() {
   }
 
   const responder = useCallback(async (indiceSelecionado, timeout = false) => {
-    if (enviandoRef.current || resultadoResposta || !partida?.pergunta_atual) return
+    if (enviandoRef.current || respostaConfirmadaRef.current || resultadoResposta || !partida?.pergunta_atual) return
 
     enviandoRef.current = true
     setRequisicaoEmAndamento(true)
@@ -176,6 +179,7 @@ function App() {
         partida.pergunta_atual.id,
         indiceSelecionado,
       )
+      respostaConfirmadaRef.current = true
       setResultadoResposta(resultado)
     } catch (error) {
       setErro(error.message)
@@ -205,24 +209,31 @@ function App() {
     return () => clearTimeout(timer)
   }, [tempoRestante, tela, resultadoResposta, requisicaoEmAndamento, responder])
 
-  useEffect(() => {
-    if (!resultadoResposta) return
-
-    const timerFeedback = setTimeout(() => {
+  async function proximaPergunta() {
+    if (!resultadoResposta || avancandoRef.current) return
+    avancandoRef.current = true
+    setAvancando(true)
+    setErro('')
+    try {
       if (resultadoResposta.status === 'FINALIZADA') {
         salvarEFinalizar(resultadoResposta)
         return
       }
-      setPartida(resultadoResposta)
+      const proxima = await avancarPergunta(partida.partida_id, partida.pergunta_atual.id)
+      setPartida(proxima)
       setPerguntaAtual((valorAtual) => valorAtual + 1)
       setTempoRestante(TEMPO_POR_PERGUNTA)
       setRespostaSelecionada(null)
       setResultadoResposta(null)
       timeoutEnviadoRef.current = false
-      setErro('')
-    }, TEMPO_FEEDBACK)
-    return () => clearTimeout(timerFeedback)
-  }, [resultadoResposta, salvarEFinalizar])
+      respostaConfirmadaRef.current = false
+    } catch (error) {
+      setErro(error.message)
+    } finally {
+      avancandoRef.current = false
+      setAvancando(false)
+    }
+  }
 
   const pergunta = partida?.pergunta_atual
 
@@ -284,6 +295,8 @@ function App() {
           respondido={Boolean(resultadoResposta)}
           enviando={requisicaoEmAndamento}
           resultadoResposta={resultadoResposta}
+          proximaPergunta={proximaPergunta}
+          avancando={avancando}
         />
       )}
       {tela === 'resultado' && partida && (

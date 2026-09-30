@@ -173,6 +173,27 @@ button:hover {
   font-size: 1.1rem;
 }
 
+.feedback p {
+  margin: 6px 0;
+}
+
+.explicacao {
+  margin: 12px 0;
+  padding: 14px;
+  border-left: 3px solid #2563eb;
+  background: #eff6ff;
+  color: #172554;
+  text-align: left;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.proxima-pergunta {
+  margin-top: 12px;
+  width: 100%;
+}
+
 .timer-urgente {
   color: #dc2626;
 }

@@ -21,6 +21,7 @@ COLUNAS_OBRIGATORIAS = (
     "alternativa_c",
     "alternativa_d",
     "alternativa_correta",
+    "explicacao",
 )
 
 

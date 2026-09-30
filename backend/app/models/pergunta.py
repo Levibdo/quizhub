@@ -40,6 +40,7 @@ class Pergunta(Base):
     alternativa_c: Mapped[str] = mapped_column(Text, nullable=False)
     alternativa_d: Mapped[str] = mapped_column(Text, nullable=False)
     alternativa_correta: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    explicacao: Mapped[str] = mapped_column(Text, nullable=False)
     ativa: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )

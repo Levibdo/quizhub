@@ -259,17 +259,13 @@ class PartidasPersistentes:
             if proxima is None:
                 partida.status = "FINALIZADA"
                 partida.finalizada_em = agora
-                exibida = atual
-            else:
-                proxima.disponibilizada_em = agora
-                proxima.prazo_resposta_em = agora + timedelta(
-                    seconds=PRAZO_RESPOSTA_SEGUNDOS
-                )
-                exibida = proxima
+            # A proxima pergunta so e revelada quando seu prazo comeca.
+            exibida = None
 
             db.flush()
             resposta_publica = ResultadoResposta(
                 **self._publica(partida, exibida).model_dump(),
+                explicacao=atual.pergunta.explicacao,
                 correta=correta,
                 alternativa_correta=atual.pergunta.alternativa_correta,
                 timeout=timeout,
@@ -285,6 +281,41 @@ class PartidasPersistentes:
             raise HTTPException(
                 status_code=409, detail="pergunta já respondida"
             ) from error
+        except Exception:
+            db.rollback()
+            raise
+
+    def avancar(self, db: Session, partida_id: str, pergunta_id: int) -> PartidaPublica:
+        """Libera a proxima pergunta uma vez, sem renovar prazo em tentativas repetidas."""
+        try:
+            partida = db.scalar(self._consulta_partida_bloqueada(self._uuid_partida(partida_id)))
+            if partida is None:
+                raise HTTPException(status_code=404, detail="partida inexistente")
+            if partida.status != "EM_ANDAMENTO":
+                raise HTTPException(status_code=409, detail="partida encerrada")
+            anterior = db.scalar(select(PartidaPergunta).where(
+                PartidaPergunta.partida_id == partida.id,
+                PartidaPergunta.pergunta_id == pergunta_id,
+                PartidaPergunta.resposta.has(),
+            ))
+            if anterior is None:
+                raise HTTPException(status_code=409, detail="pergunta ainda nao respondida")
+            proxima = db.scalar(select(PartidaPergunta).where(
+                PartidaPergunta.partida_id == partida.id,
+                PartidaPergunta.ordem == anterior.ordem + 1,
+                ~PartidaPergunta.resposta.has(),
+            ).options(joinedload(PartidaPergunta.pergunta)))
+            if proxima is None:
+                raise HTTPException(status_code=409, detail="transicao ja concluida")
+            if proxima.disponibilizada_em is None:
+                proxima.disponibilizada_em = self.relogio()
+                proxima.prazo_resposta_em = proxima.disponibilizada_em + timedelta(
+                    seconds=PRAZO_RESPOSTA_SEGUNDOS
+                )
+            db.flush()
+            publica = self._publica(partida, proxima)
+            db.commit()
+            return publica
         except Exception:
             db.rollback()
             raise

@@ -9,6 +9,8 @@ function TelaQuiz({
   respondido,
   enviando,
   resultadoResposta,
+  proximaPergunta,
+  avancando,
 }) {
   const progresso =
     ((perguntaAtual + 1) / totalPerguntas) * 100
@@ -82,20 +84,22 @@ function TelaQuiz({
       )}
 
       {respondido && resultadoResposta && (
-        <div className="feedback">
-          {resultadoResposta.timeout ? (
-            <strong>⏱ Tempo esgotado!</strong>
-          ) : resultadoResposta.correta ? (
-            <>
-              <strong>✓ Resposta correta!</strong>
-              <span>
-                +{resultadoResposta.pontos_ganhos} pontos
-              </span>
-            </>
-          ) : (
-            <strong>✕ Resposta incorreta</strong>
-          )}
-        </div>
+        <section className="feedback" aria-live="polite">
+          <strong>
+            {resultadoResposta.timeout ? 'Tempo esgotado.'
+              : resultadoResposta.correta ? 'Resposta correta!' : 'Resposta incorreta.'}
+          </strong>
+          <p>Resposta correta: {pergunta.alternativas[resultadoResposta.alternativa_correta]}</p>
+          <div className="explicacao">
+            <strong>Explicação:</strong>
+            <p>{resultadoResposta.explicacao}</p>
+          </div>
+          <span>+{resultadoResposta.pontos_ganhos} pontos</span>
+          <button className="proxima-pergunta" onClick={proximaPergunta} disabled={avancando}>
+            {avancando ? 'Aguarde...'
+              : resultadoResposta.status === 'FINALIZADA' ? 'Ver resultado' : 'Próxima pergunta'}
+          </button>
+        </section>
       )}
     </>
   )

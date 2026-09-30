@@ -55,3 +55,19 @@ test('erro de rede e resposta não JSON têm mensagens úteis', async () => {
   globalThis.fetch = async () => new Response('indisponível', { status: 503 })
   await assert.rejects(api.obterUsuarioAtual(), (e) => e.status === 503)
 })
+
+test('avançar pergunta usa o endpoint, partida e pergunta respondida corretos', async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify({
+      partida_id: 'partida-123',
+      pergunta_atual: { id: 22, pergunta: 'Pergunta 2', alternativas: ['A', 'B', 'C', 'D'] },
+    }), { status: 200 })
+  }
+  const resultado = await api.avancarPergunta('partida-123', 11)
+  assert.equal(chamada.url, 'http://localhost:8001/api/v1/partidas/partida-123/proxima')
+  assert.equal(chamada.opcoes.method, 'POST')
+  assert.deepEqual(JSON.parse(chamada.opcoes.body), { pergunta_id: 11 })
+  assert.equal(resultado.pergunta_atual.id, 22)
+})

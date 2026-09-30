@@ -49,6 +49,7 @@ def seed_database(session: Session) -> tuple[int, int]:
                     alternativa_c=pergunta.alternativas[2],
                     alternativa_d=pergunta.alternativas[3],
                     alternativa_correta=pergunta.correta,
+                    explicacao=pergunta.explicacao,
                     criada_em=criada_em,
                 )
             )

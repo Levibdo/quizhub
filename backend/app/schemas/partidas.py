@@ -29,6 +29,10 @@ class PerguntaPublica(BaseModel):
     alternativas: list[str]
 
 
+class AvancarPergunta(BaseModel):
+    pergunta_id: int
+
+
 class PartidaPublica(BaseModel):
     partida_id: str
     jogador: str
@@ -44,6 +48,7 @@ class PartidaPublica(BaseModel):
 
 
 class ResultadoResposta(PartidaPublica):
+    explicacao: str
     correta: bool | None
     alternativa_correta: int
     timeout: bool

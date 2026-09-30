@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import Text, create_engine, inspect, select
 from sqlalchemy.orm import Session
 
 from app.data.perguntas import PERGUNTAS
@@ -33,6 +33,8 @@ class TestCatalogoMetadata(unittest.TestCase):
             "criada_em",
         ):
             self.assertFalse(tabela.c[nome].nullable)
+        self.assertFalse(tabela.c.explicacao.nullable)
+        self.assertIsInstance(tabela.c.explicacao.type, Text)
         self.assertEqual(
             {fk.target_fullname for fk in tabela.c.categoria_id.foreign_keys},
             {"categorias.id"},
@@ -81,6 +83,42 @@ class TestMigration0002(unittest.TestCase):
         )
 
 
+class TestMigration0006(unittest.TestCase):
+    def setUp(self):
+        migration_path = (
+            Path(__file__).parents[1]
+            / "alembic"
+            / "versions"
+            / "0006_perguntas_explicacao_nullable.py"
+        )
+        spec = importlib.util.spec_from_file_location("migration_0006", migration_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        self.migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.migration)
+
+    def test_upgrade_adiciona_somente_coluna_nullable(self):
+        self.assertEqual(self.migration.revision, "0006")
+        self.assertEqual(self.migration.down_revision, "0005")
+        with patch.object(self.migration.op, "add_column") as add_column:
+            self.migration.upgrade()
+
+        add_column.assert_called_once()
+        tabela, coluna = add_column.call_args.args
+        self.assertEqual(tabela, "perguntas")
+        self.assertEqual(coluna.name, "explicacao")
+        self.assertIsInstance(coluna.type, Text)
+        self.assertTrue(coluna.nullable)
+        self.assertIsNone(coluna.default)
+        self.assertIsNone(coluna.server_default)
+
+    def test_downgrade_remove_somente_coluna(self):
+        with patch.object(self.migration.op, "drop_column") as drop_column:
+            self.migration.downgrade()
+
+        drop_column.assert_called_once_with("perguntas", "explicacao")
+
+
 class TestSeed(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine("sqlite://")
@@ -114,6 +152,8 @@ class TestSeed(unittest.TestCase):
         )
 
         for persistida, fonte in zip(perguntas, PERGUNTAS, strict=True):
+            self.assertEqual(persistida.explicacao, fonte.explicacao)
+            self.assertTrue(persistida.explicacao.strip())
             self.assertEqual(persistida.enunciado, fonte.pergunta)
             self.assertEqual(
                 (

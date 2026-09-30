@@ -155,6 +155,7 @@ class DatabaseConstraintTestCase(unittest.TestCase):
                     "alternativa_c": "C",
                     "alternativa_d": "D",
                     "alternativa_correta": 0,
+                    "explicacao": "A alternativa A e a correta nesta pergunta de teste.",
                     "ativa": True,
                 },
             )

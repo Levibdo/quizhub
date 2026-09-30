@@ -3,11 +3,20 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models import Usuario
-from app.schemas.partidas import CriarPartida, EnviarResposta, PartidaPublica, ResultadoResposta
+from app.schemas.partidas import AvancarPergunta, CriarPartida, EnviarResposta, PartidaPublica, ResultadoResposta
 from app.security import usuario_atual_opcional
 from app.services.partidas import partidas
 
 router = APIRouter()
+
+
+@router.post("/partidas/{partida_id}/proxima", response_model=PartidaPublica)
+def avancar_pergunta(
+    partida_id: str,
+    entrada: AvancarPergunta,
+    db: Session = Depends(get_db),
+):
+    return partidas.avancar(db, partida_id, entrada.pergunta_id)
 
 
 @router.post("/partidas", response_model=PartidaPublica, status_code=201)

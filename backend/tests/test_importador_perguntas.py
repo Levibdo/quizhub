@@ -48,7 +48,7 @@ class TestImportadorPerguntas(unittest.TestCase):
 
     def test_importacao_valida(self):
         relatorio = self.importar(
-            [("tecnologia", "Nova?", "A", "B", "C", "D", 2)]
+            [("tecnologia", "Nova?", "A", "B", "C", "D", 2, "  Explicacao de teste  ")]
         )
         self.assertEqual(relatorio.model_dump(), {
             "total": 1,
@@ -61,10 +61,13 @@ class TestImportadorPerguntas(unittest.TestCase):
         )
         self.assertEqual(pergunta.id, 16)
         self.assertEqual(pergunta.alternativa_correta, 2)
+        self.assertEqual(pergunta.explicacao, "Explicacao de teste")
 
     def test_pergunta_ja_existente_nao_e_criada_novamente(self):
+        tabela = Pergunta.__table__
+        antes = self.session.execute(select(tabela).where(tabela.c.id == 1)).mappings().one()
         relatorio = self.importar(
-            [("geral", "Qual é a capital do Brasil?", "X", "Y", "Z", "W", 1)]
+            [("geral", "Qual é a capital do Brasil?", "X", "Y", "Z", "W", 1, "  Explicacao de teste  ")]
         )
 
         self.assertEqual((relatorio.total, relatorio.criadas, relatorio.falhas), (1, 0, 1))
@@ -72,9 +75,30 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.assertIn("pergunta duplicada", relatorio.erros[0].motivo)
         quantidade = self.session.scalar(select(func.count()).select_from(Pergunta))
         self.assertEqual(quantidade, 15)
+        depois = self.session.execute(select(tabela).where(tabela.c.id == 1)).mappings().one()
+        self.assertEqual(dict(antes), dict(depois))
+
+    def test_explicacao_vazia_ou_apenas_espacos(self):
+        for explicacao in (None, "", " \t\n "):
+            with self.subTest(explicacao=explicacao):
+                relatorio = self.importar([
+                    ("geral", "Nova?", "A", "B", "C", "D", 0, explicacao)
+                ])
+                self.assertEqual((relatorio.criadas, relatorio.falhas), (0, 1))
+                self.assertIn("explicacao", relatorio.erros[0].motivo)
+        self.assertEqual(self.session.scalar(select(func.count()).select_from(Pergunta)), 15)
+
+    def test_coluna_explicacao_ausente(self):
+        with self.assertRaises(HTTPException) as erro:
+            self.importar(
+                [("geral", "Nova?", "A", "B", "C", "D", 0)],
+                cabecalho=COLUNAS_OBRIGATORIAS[:-1],
+            )
+        self.assertEqual(erro.exception.status_code, 422)
+        self.assertIn("explicacao", erro.exception.detail)
 
     def test_duplicata_na_mesma_planilha_e_criada_uma_vez(self):
-        linha = ("tecnologia", "Pergunta repetida?", "A", "B", "C", "D", 2)
+        linha = ("tecnologia", "Pergunta repetida?", "A", "B", "C", "D", 2, "  Explicacao de teste  ")
         relatorio = self.importar([linha, linha])
 
         self.assertEqual((relatorio.total, relatorio.criadas, relatorio.falhas), (2, 1, 1))
@@ -89,8 +113,8 @@ class TestImportadorPerguntas(unittest.TestCase):
 
     def test_reimportar_mesma_planilha_nao_aumenta_quantidade(self):
         linhas = [
-            ("geral", "Nova geral?", "A", "B", "C", "D", 0),
-            ("matematica", "Nova matematica?", "1", "2", "3", "4", 1),
+            ("geral", "Nova geral?", "A", "B", "C", "D", 0, "  Explicacao de teste  "),
+            ("matematica", "Nova matematica?", "1", "2", "3", "4", 1, "  Explicacao de teste  "),
         ]
         primeira = self.importar(linhas)
         segunda = self.importar(linhas)
@@ -105,13 +129,13 @@ class TestImportadorPerguntas(unittest.TestCase):
 
     def test_comparacao_remove_espacos_mas_preserva_caixa(self):
         primeira = self.importar(
-            [(" geral ", "  Mesma pergunta?  ", "A", "B", "C", "D", 0)]
+            [(" geral ", "  Mesma pergunta?  ", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         duplicada = self.importar(
-            [("geral", "Mesma pergunta?", "A", "B", "C", "D", 0)]
+            [("geral", "Mesma pergunta?", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         caixa_diferente = self.importar(
-            [("geral", "mesma pergunta?", "A", "B", "C", "D", 0)]
+            [("geral", "mesma pergunta?", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
 
         self.assertEqual(primeira.criadas, 1)
@@ -120,7 +144,7 @@ class TestImportadorPerguntas(unittest.TestCase):
 
     def test_categoria_inexistente(self):
         relatorio = self.importar(
-            [("nao-existe", "Nova?", "A", "B", "C", "D", 0)]
+            [("nao-existe", "Nova?", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         self.assertEqual((relatorio.criadas, relatorio.falhas), (0, 1))
         self.assertEqual(relatorio.erros[0].motivo, "categoria inexistente")
@@ -129,7 +153,7 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.session.get(Categoria, "tecnologia").ativa = False
         self.session.commit()
         relatorio = self.importar(
-            [("tecnologia", "Nova?", "A", "B", "C", "D", 0)]
+            [("tecnologia", "Nova?", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         self.assertEqual((relatorio.criadas, relatorio.falhas), (0, 1))
         self.assertEqual(relatorio.erros[0].motivo, "categoria inativa")
@@ -138,14 +162,14 @@ class TestImportadorPerguntas(unittest.TestCase):
         for alternativa in (-1, 4, "A", 1.5):
             with self.subTest(alternativa=alternativa):
                 relatorio = self.importar(
-                    [("geral", "Nova?", "A", "B", "C", "D", alternativa)]
+                    [("geral", "Nova?", "A", "B", "C", "D", alternativa, "  Explicacao de teste  ")]
                 )
                 self.assertEqual((relatorio.criadas, relatorio.falhas), (0, 1))
                 self.assertIn("entre 0 e 3", relatorio.erros[0].motivo)
 
     def test_campo_obrigatorio_vazio(self):
         relatorio = self.importar(
-            [("geral", None, "A", "B", "C", "D", 0)]
+            [("geral", None, "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         self.assertEqual((relatorio.criadas, relatorio.falhas), (0, 1))
         self.assertEqual(
@@ -156,9 +180,9 @@ class TestImportadorPerguntas(unittest.TestCase):
     def test_importacao_parcial(self):
         relatorio = self.importar(
             [
-                ("geral", "Válida 1", "A", "B", "C", "D", 0),
-                ("inexistente", "Inválida", "A", "B", "C", "D", 1),
-                ("matematica", "Válida 2", "10", "20", "30", "40", 3),
+                ("geral", "Válida 1", "A", "B", "C", "D", 0, "  Explicacao de teste  "),
+                ("inexistente", "Inválida", "A", "B", "C", "D", 1, "  Explicacao de teste  "),
+                ("matematica", "Válida 2", "10", "20", "30", "40", 3, "Explicacao de teste"),
             ]
         )
         self.assertEqual((relatorio.total, relatorio.criadas, relatorio.falhas), (3, 2, 1))
@@ -174,7 +198,7 @@ class TestImportadorPerguntas(unittest.TestCase):
 
     def test_erro_inesperado_desfaz_toda_importacao(self):
         conteudo = criar_xlsx(
-            [("geral", "Não deve persistir", "A", "B", "C", "D", 0)]
+            [("geral", "Não deve persistir", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]
         )
         with patch.object(
             self.session,
