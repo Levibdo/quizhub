@@ -13,6 +13,13 @@ from app.services.importador_perguntas import (
     detectar_formato,
     importador_perguntas,
 )
+from app.services.gerador_prompt import (
+    DIFICULDADES,
+    PUBLICO_PADRAO,
+    ParametrosPrompt,
+    ParametrosPromptInvalidos,
+    gerar_prompt_perguntas,
+)
 
 
 def _listar(session, output: Callable[[str], None]) -> int:
@@ -121,6 +128,79 @@ def _importar_perguntas(
     return 0
 
 
+def _gerar_prompt(
+    session,
+    input_fn: Callable[[str], str],
+    output: Callable[[str], None],
+) -> int:
+    categorias = categorias_service.listar(session, somente_ativas=True)
+    if not categorias:
+        output("Erro: nenhuma categoria ativa disponível.")
+        return 1
+
+    output("Categorias ativas:")
+    for indice, categoria in enumerate(categorias, start=1):
+        output(f"{indice}. {categoria.nome} ({categoria.id})")
+
+    escolha_categoria = input_fn("Categoria (número ou id): ").strip()
+    categoria = next(
+        (
+            item
+            for indice, item in enumerate(categorias, start=1)
+            if escolha_categoria in {str(indice), item.id}
+        ),
+        None,
+    )
+    if categoria is None:
+        output("Erro: selecione uma categoria ativa existente.")
+        return 1
+
+    tema = input_fn("Tema: ")
+    quantidade_texto = input_fn("Quantidade de perguntas: ").strip()
+    try:
+        quantidade = int(quantidade_texto)
+    except ValueError:
+        output("Erro: quantidade deve ser um número inteiro.")
+        return 1
+
+    output("Dificuldades:")
+    for indice, dificuldade in enumerate(DIFICULDADES, start=1):
+        output(f"{indice}. {dificuldade}")
+    escolha_dificuldade = input_fn("Dificuldade: ").strip()
+    dificuldade = next(
+        (
+            item
+            for indice, item in enumerate(DIFICULDADES, start=1)
+            if escolha_dificuldade.casefold()
+            in {str(indice), item.casefold()}
+        ),
+        escolha_dificuldade,
+    )
+    publico_alvo = input_fn(
+        f"Público-alvo [{PUBLICO_PADRAO}]: "
+    )
+
+    try:
+        prompt = gerar_prompt_perguntas(
+            ParametrosPrompt(
+                categoria_id=categoria.id,
+                tema=tema,
+                quantidade=quantidade,
+                dificuldade=dificuldade,
+                publico_alvo=publico_alvo,
+            )
+        )
+    except ParametrosPromptInvalidos as erro:
+        output(f"Erro: {erro}")
+        return 1
+
+    output("")
+    output("----- PROMPT GERADO -----")
+    output(prompt)
+    output("----- FIM DO PROMPT -----")
+    return 0
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -139,6 +219,9 @@ def main(
     for acao in ("validar", "importar"):
         comando = acoes_perguntas.add_parser(acao)
         comando.add_argument("arquivo")
+    prompt = comandos.add_parser("prompt")
+    acoes_prompt = prompt.add_subparsers(dest="acao", required=True)
+    acoes_prompt.add_parser("gerar")
     args = parser.parse_args(argv)
 
     factory = session_factory or get_session_factory()
@@ -147,6 +230,8 @@ def main(
             if args.acao == "listar":
                 return _listar(session, output)
             return _criar(session, input_fn, output)
+        if args.recurso == "prompt":
+            return _gerar_prompt(session, input_fn, output)
         if args.acao == "validar":
             return _validar_perguntas(session, args.arquivo, output)
         return _importar_perguntas(

@@ -261,6 +261,55 @@ de ChatGPT, Gemini ou outras ferramentas. O QuizHub não possui integração
 direta com nenhuma IA: o arquivo deve ser revisado e validado pelo CLI antes da
 importação.
 
+### Gerador de prompt para IA externa
+
+O CLI pode montar um prompt compatível com o contrato JSON do importador:
+
+```powershell
+cd backend
+python -m app.cli prompt gerar
+```
+
+O fluxo consulta as categorias ativas no PostgreSQL e solicita categoria, tema,
+quantidade, dificuldade e público-alvo. A quantidade deve estar entre 1 e 100.
+O limite de 100 mantém os lotes administráveis e reduz o risco de uma ferramenta
+externa truncar a resposta. Pressionar Enter no público-alvo usa `Público geral`.
+
+Exemplo resumido:
+
+```text
+Categorias ativas:
+1. Entretenimento (entretenimento)
+Categoria (número ou id): entretenimento
+Tema: Cinema, séries, música e cultura pop
+Quantidade de perguntas: 34
+Dificuldade: 4
+Público-alvo [Público geral]: Universitários
+
+----- PROMPT GERADO -----
+...
+----- FIM DO PROMPT -----
+```
+
+O comando somente imprime texto. Ele não chama ChatGPT, Gemini ou qualquer API,
+não exige chave e não grava perguntas nem arquivos. O processo administrativo é:
+
+```text
+QuizHub gera o prompt
+→ o usuário usa a IA externa escolhida
+→ a IA retorna JSON
+→ o usuário salva o JSON em um arquivo
+→ o QuizHub valida
+→ o usuário confirma a importação
+```
+
+Depois de revisar e salvar a resposta da IA, use:
+
+```powershell
+python -m app.cli perguntas validar arquivo.json
+python -m app.cli perguntas importar arquivo.json
+```
+
 ## API
 
 Principais endpoints:
