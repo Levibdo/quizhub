@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.perguntas import RelatorioImportacaoPerguntas
-from app.services.importador_perguntas import importador_perguntas
+from app.services.importador_perguntas import (
+    ArquivoImportacaoInvalido,
+    importador_perguntas,
+)
 
 router = APIRouter(prefix="/perguntas", tags=["perguntas"])
 
@@ -15,4 +18,7 @@ def importar_perguntas(
 ):
     if not arquivo.filename or not arquivo.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=422, detail="envie um arquivo XLSX")
-    return importador_perguntas.importar(db, arquivo.file.read())
+    try:
+        return importador_perguntas.importar(db, arquivo.file.read())
+    except ArquivoImportacaoInvalido as erro:
+        raise HTTPException(status_code=422, detail=str(erro)) from erro

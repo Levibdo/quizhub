@@ -2,7 +2,6 @@ import unittest
 from io import BytesIO
 from unittest.mock import patch
 
-from fastapi import HTTPException
 from openpyxl import Workbook
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
@@ -12,6 +11,7 @@ from app.db.seed import seed_database
 from app.models import Categoria, Pergunta
 from app.services.importador_perguntas import (
     COLUNAS_OBRIGATORIAS,
+    ArquivoImportacaoInvalido,
     ImportadorPerguntas,
 )
 
@@ -89,13 +89,12 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.assertEqual(self.session.scalar(select(func.count()).select_from(Pergunta)), 15)
 
     def test_coluna_explicacao_ausente(self):
-        with self.assertRaises(HTTPException) as erro:
+        with self.assertRaises(ArquivoImportacaoInvalido) as erro:
             self.importar(
                 [("geral", "Nova?", "A", "B", "C", "D", 0)],
                 cabecalho=COLUNAS_OBRIGATORIAS[:-1],
             )
-        self.assertEqual(erro.exception.status_code, 422)
-        self.assertIn("explicacao", erro.exception.detail)
+        self.assertIn("explicacao", str(erro.exception))
 
     def test_duplicata_na_mesma_planilha_e_criada_uma_vez(self):
         linha = ("tecnologia", "Pergunta repetida?", "A", "B", "C", "D", 2, "  Explicacao de teste  ")
@@ -191,10 +190,9 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.assertEqual(quantidade, 17)
 
     def test_arquivo_sem_colunas_obrigatorias(self):
-        with self.assertRaises(HTTPException) as error:
+        with self.assertRaises(ArquivoImportacaoInvalido) as error:
             self.importar([], cabecalho=("categoria_id", "enunciado"))
-        self.assertEqual(error.exception.status_code, 422)
-        self.assertIn("colunas obrigatórias ausentes", error.exception.detail)
+        self.assertIn("colunas obrigatórias ausentes", str(error.exception))
 
     def test_erro_inesperado_desfaz_toda_importacao(self):
         conteudo = criar_xlsx(

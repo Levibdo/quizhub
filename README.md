@@ -172,7 +172,25 @@ npm run dev -- --host 0.0.0.0
 
 Sem `VITE_API_URL`, o frontend usa o hostname pelo qual foi acessado e a porta `8001` para localizar a API.
 
-## Importação das perguntas
+## Importação e validação das perguntas
+
+O CLI administrativo aceita XLSX, CSV e JSON e detecta o formato pela extensão:
+
+```powershell
+cd backend
+python -m app.cli perguntas validar caminho\perguntas.xlsx
+python -m app.cli perguntas validar caminho\perguntas.csv
+python -m app.cli perguntas validar caminho\perguntas.json
+
+python -m app.cli perguntas importar caminho\perguntas.xlsx
+python -m app.cli perguntas importar caminho\perguntas.csv
+python -m app.cli perguntas importar caminho\perguntas.json
+```
+
+`validar` consulta categorias e duplicidades, mas não insere, atualiza, exclui ou
+faz commit de dados. `importar` mostra primeiro o mesmo relatório de validação e
+solicita confirmação antes de persistir somente perguntas válidas e não
+duplicadas.
 
 O endpoint de importação é:
 
@@ -180,9 +198,11 @@ O endpoint de importação é:
 POST /api/v1/perguntas/importar
 ```
 
-Com o backend em execução, abra [http://localhost:8001/docs](http://localhost:8001/docs), localize o endpoint e envie uma planilha `.xlsx` no campo de arquivo.
+Com o backend em execução, abra [http://localhost:8001/docs](http://localhost:8001/docs), localize o endpoint e envie uma planilha `.xlsx` no campo de arquivo. Para preservar o contrato público existente, esse endpoint continua aceitando somente XLSX; CSV e JSON estão disponíveis pelo CLI.
 
-A primeira linha da planilha deve conter estas colunas:
+### XLSX e CSV
+
+A primeira linha deve conter estas colunas:
 
 ```text
 categoria_id
@@ -192,7 +212,11 @@ alternativa_b
 alternativa_c
 alternativa_d
 alternativa_correta
+explicacao
 ```
+
+O CSV oficial usa vírgula como delimitador, codificação UTF-8 com ou sem BOM e
+segue as regras usuais de aspas do formato para textos que contenham vírgulas.
 
 O campo `alternativa_correta` usa índices iniciados em zero:
 
@@ -202,6 +226,40 @@ O campo `alternativa_correta` usa índices iniciados em zero:
 - `3` = D
 
 O importador valida cada linha e não insere uma pergunta quando já existe a mesma combinação de `categoria_id` e `enunciado`. A duplicata é informada no relatório da importação, e o registro existente não é alterado.
+
+### JSON
+
+O contrato JSON oficial é:
+
+```json
+{
+  "modo": "quiz_classico",
+  "categoria_id": "entretenimento",
+  "perguntas": [
+    {
+      "enunciado": "Qual filme...?",
+      "alternativas": [
+        "Alternativa A",
+        "Alternativa B",
+        "Alternativa C",
+        "Alternativa D"
+      ],
+      "alternativa_correta": 0,
+      "explicacao": "Explicação breve da resposta."
+    }
+  ]
+}
+```
+
+`modo` deve ser exatamente `quiz_classico`, `categoria_id` identifica uma
+categoria ativa, `perguntas` deve ser uma lista não vazia e cada pergunta deve
+ter exatamente quatro alternativas. `alternativa_correta` é um índice de 0 a 3
+e `explicacao` é obrigatória.
+
+JSON é o formato recomendado para conteúdo produzido externamente com auxílio
+de ChatGPT, Gemini ou outras ferramentas. O QuizHub não possui integração
+direta com nenhuma IA: o arquivo deve ser revisado e validado pelo CLI antes da
+importação.
 
 ## API
 
