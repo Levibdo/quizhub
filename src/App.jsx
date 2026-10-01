@@ -154,6 +154,7 @@ function App() {
   function abrirRanking() {
     setRanking(carregarRanking())
     setTela('ranking')
+    if (categorias.length === 0 && !carregandoCategorias) carregarCategorias()
   }
 
   async function iniciarQuiz(categoria) {
@@ -346,6 +347,10 @@ function App() {
       {tela === 'ranking' && (
         <TelaRanking
           ranking={ranking}
+          categorias={categorias}
+          carregandoCategorias={carregandoCategorias}
+          erroCategorias={erroCategorias}
+          tentarNovamente={carregarCategorias}
           voltarInicio={() => setTela('inicio')}
           trocarJogador={jogarAtual}
         />

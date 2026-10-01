@@ -276,3 +276,83 @@ test('lista vazia de categorias exibe estado vazio sem permitir partida', async 
   assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
   assert.equal(chamadas.some((item) => item.url.endsWith('/partidas')), false)
 })
+
+test('ranking usa categorias dinâmicas e separa Todos da categoria geral', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  const registros = [
+    { id: 1, jogador: 'Ana', categoria: 'geral', pontuacao: 900, acertos: 5, erros: 5 },
+    { id: 2, jogador: 'Ana', categoria: 'macabro', pontuacao: 1800, acertos: 9, erros: 1 },
+    { id: 3, jogador: 'Bia', categoria: 'entretenimento', pontuacao: 1200, acertos: 7, erros: 3 },
+    { id: 4, jogador: 'Arquivo', categoria: 'removida', pontuacao: 1000, acertos: 6, erros: 4 },
+  ]
+  globalThis.localStorage = {
+    getItem: (key) => key === 'quizhub-ranking' ? JSON.stringify(registros) : null,
+    setItem: () => {},
+  }
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
+    if (url.endsWith('/categorias')) return new Response(JSON.stringify([
+      { id: 'geral', nome: 'Geral', descricao: '' },
+      { id: 'entretenimento', nome: 'Entretenimento', descricao: '' },
+      { id: 'macabro', nome: 'Macabro', descricao: '' },
+    ]), { status: 200 })
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
+  await act(async () => botao('Ver ranking').props.onClick())
+
+  assert.equal(botao('Todos').props['aria-pressed'], true)
+  assert.equal(botao('Geral').props['aria-pressed'], false)
+  assert.ok(botao('Entretenimento'))
+  assert.ok(botao('Macabro'))
+  assert.ok(texto(renderer.root).includes('Arquivo'))
+  assert.equal(renderer.root.findAllByProps({ className: 'ranking-item' }).length, 3)
+
+  await act(async () => botao('Geral').props.onClick())
+  assert.equal(botao('Todos').props['aria-pressed'], false)
+  assert.equal(botao('Geral').props['aria-pressed'], true)
+  assert.ok(texto(renderer.root).includes('Ana'))
+  assert.ok(!texto(renderer.root).includes('Arquivo'))
+  assert.equal(renderer.root.findAllByProps({ className: 'ranking-item' }).length, 1)
+
+  await act(async () => botao('Macabro').props.onClick())
+  assert.ok(texto(renderer.root).includes('1.800'))
+  assert.ok(texto(renderer.root).includes('9 acertos · Macabro'))
+})
+
+test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  globalThis.localStorage = { getItem: () => null, setItem: () => {} }
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
+    if (url.endsWith('/categorias')) return new Response(JSON.stringify([
+      { id: 'geral', nome: 'Geral', descricao: '' },
+    ]), { status: 200 })
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
+  await act(async () => botao('Ver ranking').props.onClick())
+  assert.ok(texto(renderer.root).includes('Ranking vazio'))
+  assert.ok(texto(renderer.root).includes('Ainda não existem resultados registrados neste dispositivo.'))
+  assert.ok(botao('Jogar novamente →'))
+  await act(async () => botao('Geral').props.onClick())
+  assert.ok(texto(renderer.root).includes('Ainda não existem resultados em Geral.'))
+})

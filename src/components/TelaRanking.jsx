@@ -1,162 +1,105 @@
 import { useState } from 'react'
-import { categorias } from '../data/categorias'
+import { classificarRanking } from '../utils/ranking'
 
 function TelaRanking({
   ranking,
+  categorias,
+  carregandoCategorias,
+  erroCategorias,
+  tentarNovamente,
   voltarInicio,
   trocarJogador,
 }) {
-  const [filtroCategoria, setFiltroCategoria] =
-    useState('geral-ranking')
+  const [filtroCategoria, setFiltroCategoria] = useState(null)
+  const rankingOrdenado = classificarRanking(ranking, filtroCategoria)
 
   function nomeCategoria(id) {
-    const categoria = categorias.find(
-      (item) => item.id === id
-    )
-
-    return categoria?.nome ?? id
+    return categorias.find((categoria) => categoria.id === id)?.nome ?? id
   }
 
-  const resultadosFiltrados =
-    filtroCategoria === 'geral-ranking'
-      ? ranking
-      : ranking.filter(
-          (resultado) =>
-            resultado.categoria === filtroCategoria
-        )
-
-  const melhoresPorJogador = Object.values(
-    resultadosFiltrados.reduce(
-      (melhores, resultado) => {
-        const resultadoAtual =
-          melhores[resultado.jogador]
-
-        if (
-          !resultadoAtual ||
-          resultado.pontuacao >
-            resultadoAtual.pontuacao ||
-          (resultado.pontuacao ===
-            resultadoAtual.pontuacao &&
-            resultado.acertos >
-              resultadoAtual.acertos) ||
-          (resultado.pontuacao ===
-            resultadoAtual.pontuacao &&
-            resultado.acertos ===
-              resultadoAtual.acertos &&
-            resultado.id < resultadoAtual.id)
-        ) {
-          melhores[resultado.jogador] = resultado
-        }
-
-        return melhores
-      },
-      {}
-    )
-  )
-
-  const rankingOrdenado = melhoresPorJogador
-    .sort((a, b) => {
-      if (b.pontuacao !== a.pontuacao) {
-        return b.pontuacao - a.pontuacao
-      }
-
-      if (b.acertos !== a.acertos) {
-        return b.acertos - a.acertos
-      }
-
-      return a.id - b.id
-    })
-    .slice(0, 10)
+  const filtroAtual = filtroCategoria === null
+    ? 'Todos'
+    : nomeCategoria(filtroCategoria)
 
   return (
-    <>
-      <h1>Ranking</h1>
+    <main className="ranking-screen">
+      <header className="ranking-header">
+        <p className="ranking-header__eyebrow">QuizHub // Classificação</p>
+        <h1>Ranking</h1>
+        <p>Os melhores resultados registrados neste dispositivo.</p>
+      </header>
 
-      <div className="ranking-filtros">
+      <div className="ranking-filtros" aria-label="Filtrar ranking por categoria">
         <button
-          className={
-            filtroCategoria === 'geral-ranking'
-              ? 'filtro-ativo'
-              : ''
-          }
-          onClick={() =>
-            setFiltroCategoria('geral-ranking')
-          }
+          className={filtroCategoria === null ? 'filtro-ativo' : ''}
+          aria-pressed={filtroCategoria === null}
+          onClick={() => setFiltroCategoria(null)}
         >
-          Geral
+          Todos
         </button>
-
         {categorias.map((categoria) => (
           <button
             key={categoria.id}
-            className={
-              filtroCategoria === categoria.id
-                ? 'filtro-ativo'
-                : ''
-            }
-            onClick={() =>
-              setFiltroCategoria(categoria.id)
-            }
+            className={filtroCategoria === categoria.id ? 'filtro-ativo' : ''}
+            aria-pressed={filtroCategoria === categoria.id}
+            onClick={() => setFiltroCategoria(categoria.id)}
           >
             {categoria.nome}
           </button>
         ))}
       </div>
 
-      {rankingOrdenado.length === 0 ? (
-        <p>
-          Ainda não existem resultados para este
-          ranking.
-        </p>
-      ) : (
-        <div className="ranking">
-          {rankingOrdenado.map(
-            (resultado, indice) => (
-              <div
-                className="ranking-item"
-                key={resultado.id}
-              >
-                <span className="ranking-posicao">
-                  {indice + 1}º
-                </span>
-
-                <div className="ranking-jogador">
-                  <strong>
-                    {resultado.jogador}
-                  </strong>
-
-                  <small>
-                    {nomeCategoria(
-                      resultado.categoria
-                    )}
-                  </small>
-                </div>
-
-                <div className="ranking-pontos">
-                  <strong>
-                    {resultado.pontuacao} pts
-                  </strong>
-
-                  <small>
-                    {resultado.acertos} acertos
-                  </small>
-                </div>
-              </div>
-            )
-          )}
+      {carregandoCategorias && (
+        <p className="ranking-categories-state" role="status">Carregando categorias...</p>
+      )}
+      {!carregandoCategorias && erroCategorias && (
+        <div className="ranking-categories-state ranking-categories-state--error" role="alert">
+          <span>{erroCategorias}</span>
+          <button className="button-link" onClick={tentarNovamente}>Tentar novamente</button>
         </div>
+      )}
+      {!carregandoCategorias && !erroCategorias && categorias.length === 0 && (
+        <p className="ranking-categories-state">Nenhuma categoria disponível para filtro.</p>
+      )}
+
+      {rankingOrdenado.length === 0 ? (
+        <section className="ranking-empty">
+          <span className="ranking-empty__signal" aria-hidden="true" />
+          <h2>Ranking vazio</h2>
+          <p>
+            {filtroCategoria === null
+              ? 'Ainda não existem resultados registrados neste dispositivo.'
+              : `Ainda não existem resultados em ${filtroAtual}.`}
+          </p>
+        </section>
+      ) : (
+        <ol className="ranking" aria-label={`Classificação: ${filtroAtual}`}>
+          {rankingOrdenado.map((resultado, indice) => (
+            <li className="ranking-item" key={resultado.id}>
+              <span className="ranking-posicao" aria-label={`${indice + 1}ª posição`}>
+                {String(indice + 1).padStart(2, '0')}
+              </span>
+              <div className="ranking-jogador">
+                <strong>{resultado.jogador}</strong>
+                <small>{resultado.acertos} acertos · {nomeCategoria(resultado.categoria)}</small>
+              </div>
+              <strong className="ranking-pontos">
+                {new Intl.NumberFormat('pt-BR').format(resultado.pontuacao)} <small>pts</small>
+              </strong>
+            </li>
+          ))}
+        </ol>
       )}
 
       <div className="ranking-acoes">
-        <button onClick={voltarInicio}>
-          Início
+        <button className="ranking-acoes__primary" onClick={trocarJogador}>
+          Jogar novamente →
         </button>
-
-        <button onClick={trocarJogador}>
-          Jogar
+        <button className="button-ghost" onClick={voltarInicio}>
+          Voltar ao início
         </button>
       </div>
-    </>
+    </main>
   )
 }
 
