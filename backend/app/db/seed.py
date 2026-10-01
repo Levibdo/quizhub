@@ -19,6 +19,11 @@ CATEGORIAS_INICIAIS = (
         "nome": "Matemática",
         "descricao": "Conceitos básicos de matemática.",
     },
+    {
+        "id": "entretenimento",
+        "nome": "Entretenimento",
+        "descricao": "Cinema, música, televisão e cultura.",
+    },
 )
 
 

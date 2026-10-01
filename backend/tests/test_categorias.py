@@ -52,7 +52,11 @@ class TestCategoriasService(CategoriasTestCase):
             categorias = CategoriasService.listar(session, somente_ativas=True)
         self.assertEqual(
             [(item.nome, item.id) for item in categorias],
-            [("Matemática", "matematica"), ("Tecnologia", "tecnologia")],
+            [
+                ("Entretenimento", "entretenimento"),
+                ("Matemática", "matematica"),
+                ("Tecnologia", "tecnologia"),
+            ],
         )
 
     def test_criacao_normaliza_campos_e_preserva_existentes(self):
@@ -106,6 +110,11 @@ class TestCategoriasApi(CategoriasTestCase):
             self.assertEqual(
                 resposta.json(),
                 [
+                    {
+                        "id": "entretenimento",
+                        "nome": "Entretenimento",
+                        "descricao": "Cinema, música, televisão e cultura.",
+                    },
                     {
                         "id": "matematica",
                         "nome": "Matemática",

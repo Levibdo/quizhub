@@ -5,8 +5,8 @@ O QuizHub é uma aplicação web de quiz desenvolvida inicialmente como projeto 
 ## Funcionalidades
 
 - Identificação do jogador por nome ou apelido.
-- Escolha entre as categorias Geral, Tecnologia e Matemática.
-- Catálogo atual com 105 perguntas, sendo 35 por categoria.
+- Escolha entre as categorias Geral, Tecnologia, Matemática e Entretenimento.
+- Catálogo oficial atual com 139 perguntas: 35 em Geral, Matemática e Tecnologia, e 34 em Entretenimento.
 - Partidas com 10 perguntas selecionadas aleatoriamente e sem repetição.
 - Limite de 15 segundos por pergunta.
 - Feedback visual por aproximadamente 2 segundos após cada resposta.
@@ -91,7 +91,7 @@ quizhub/
 └── README.md
 ```
 
-O diretório `backend/dados/` armazena as planilhas usadas para carregar e expandir o catálogo. O seed do backend inclui 15 perguntas, com 5 por categoria. Cada uma das duas planilhas possui outras 45 perguntas, com 15 por categoria e sem sobreposição. Após executar o seed e importar ambas, o catálogo totaliza 105 perguntas, sendo 35 por categoria.
+O diretório `backend/dados/` armazena os catálogos versionados. Para o schema atual, o catálogo recomendado é `perguntas_oficiais_com_explicacoes.xlsx`, com 105 perguntas (35 em cada uma das categorias Geral, Matemática e Tecnologia). `perguntas_entretenimento.json` contém atualmente 34 perguntas, totalizando 139. A planilha `perguntas_oficiais.xlsx`, sem explicações, não é o catálogo recomendado porque `explicacao` é obrigatória no schema atual.
 
 ## Banco de dados
 
@@ -129,7 +129,10 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 $env:DATABASE_URL = "postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_estagio_db"
 python -m alembic upgrade head
-python -m app.db.seed
+python -m app.cli perguntas validar dados/perguntas_oficiais_com_explicacoes.xlsx
+python -m app.cli perguntas importar dados/perguntas_oficiais_com_explicacoes.xlsx
+python -m app.cli perguntas validar dados/perguntas_entretenimento.json
+python -m app.cli perguntas importar dados/perguntas_entretenimento.json
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
@@ -139,7 +142,9 @@ No Linux ou macOS, ative o ambiente virtual com `source .venv/bin/activate` e de
 export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_estagio_db"
 ```
 
-O seed é idempotente e cadastra as três categorias e as 15 perguntas-base que ainda não existirem.
+As migrations cadastram as quatro categorias-base necessárias aos catálogos. Categorias adicionais continuam dinâmicas e podem ser criadas pelo CLI. Não é necessário executar o seed para importar os catálogos oficiais.
+
+O comando `python -m app.db.seed` permanece disponível, de forma idempotente, apenas para desenvolvimento e demonstração: ele cadastra categorias-base ausentes e 15 perguntas de exemplo. Não o execute antes dos catálogos oficiais em uma instalação destinada a receber esses arquivos, pois as perguntas de exemplo serão detectadas como duplicadas durante a importação.
 
 As categorias exibidas no frontend são carregadas do PostgreSQL pela API. Para
 administrá-las localmente, execute os comandos abaixo dentro de `backend`, com
@@ -349,7 +354,7 @@ Para cenários em que a API esteja em outro host ou porta, configure `VITE_API_U
 
 ## Estado atual
 
-O MVP possui backend persistente, motor autoritativo de partidas, catálogo com 105 perguntas em três categorias, partidas de 10 perguntas, frontend funcional e ranking local no navegador.
+O MVP possui backend persistente, motor autoritativo de partidas, catálogo versionado com 139 perguntas em quatro categorias, partidas de 10 perguntas, frontend funcional e ranking local no navegador.
 
 ## Próximas evoluções
 

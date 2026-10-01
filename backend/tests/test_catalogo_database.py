@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import Text, create_engine, inspect, select
 from sqlalchemy.orm import Session
 
@@ -119,6 +121,77 @@ class TestMigration0006(unittest.TestCase):
         drop_column.assert_called_once_with("perguntas", "explicacao")
 
 
+class TestMigration0008(unittest.TestCase):
+    def setUp(self):
+        migration_path = Path(__file__).parents[1] / "alembic/versions/0008_categorias_base.py"
+        spec = importlib.util.spec_from_file_location("migration_0008", migration_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        self.migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.migration)
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+
+    def executar_upgrade(self, conexao):
+        contexto = MigrationContext.configure(conexao)
+        with patch.object(self.migration, "op", Operations(contexto)):
+            self.migration.upgrade()
+
+    def test_revision_e_downgrade_nao_destrutivo(self):
+        self.assertEqual((self.migration.revision, self.migration.down_revision), ("0008", "0007"))
+        with patch.object(self.migration.op, "execute") as execute:
+            self.migration.downgrade()
+        execute.assert_not_called()
+
+    def test_upgrade_cria_quatro_categorias_e_e_idempotente(self):
+        with self.engine.begin() as conexao:
+            self.executar_upgrade(conexao)
+            self.executar_upgrade(conexao)
+        with Session(self.engine) as session:
+            categorias = session.scalars(select(Categoria).order_by(Categoria.id)).all()
+        self.assertEqual(
+            [(item.id, item.nome) for item in categorias],
+            [("entretenimento", "Entretenimento"), ("geral", "Geral"),
+             ("matematica", "Matemática"), ("tecnologia", "Tecnologia")],
+        )
+
+    def test_upgrade_preserva_customizacoes_e_corrige_apenas_legado(self):
+        with Session(self.engine) as session:
+            session.add_all([
+                Categoria(id="geral", nome="Conhecimentos", descricao="Personalizada", ativa=False),
+                Categoria(id="matematica", nome="Matematica", descricao="Legada", ativa=False),
+                Categoria(id="tecnologia", nome="Tecnologia Avançada", descricao="Custom", ativa=True),
+                Categoria(id="macabro", nome="Macabro", descricao="Extra", ativa=True),
+            ])
+            session.commit()
+        with self.engine.begin() as conexao:
+            self.executar_upgrade(conexao)
+        with Session(self.engine) as session:
+            geral = session.get(Categoria, "geral")
+            matematica = session.get(Categoria, "matematica")
+            tecnologia = session.get(Categoria, "tecnologia")
+            macabro = session.get(Categoria, "macabro")
+            entretenimento = session.get(Categoria, "entretenimento")
+            self.assertEqual((geral.nome, geral.descricao, geral.ativa), ("Conhecimentos", "Personalizada", False))
+            self.assertEqual((matematica.nome, matematica.descricao, matematica.ativa), ("Matemática", "Legada", False))
+            self.assertEqual((tecnologia.nome, tecnologia.descricao), ("Tecnologia Avançada", "Custom"))
+            self.assertEqual((macabro.nome, macabro.descricao), ("Macabro", "Extra"))
+            self.assertEqual(entretenimento.nome, "Entretenimento")
+
+    def test_upgrade_preserva_nome_personalizado_de_matematica(self):
+        with Session(self.engine) as session:
+            session.add(Categoria(id="matematica", nome="Matemática e Lógica", descricao="Custom"))
+            session.commit()
+        with self.engine.begin() as conexao:
+            self.executar_upgrade(conexao)
+        with Session(self.engine) as session:
+            categoria = session.get(Categoria, "matematica")
+            self.assertEqual((categoria.nome, categoria.descricao), ("Matemática e Lógica", "Custom"))
+
+
 class TestSeed(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine("sqlite://")
@@ -129,15 +202,19 @@ class TestSeed(unittest.TestCase):
 
     def test_seed_catalog_and_idempotency(self):
         with Session(self.engine) as session:
-            self.assertEqual(seed_database(session), (3, 15))
+            self.assertEqual(seed_database(session), (4, 15))
             self.assertEqual(seed_database(session), (0, 0))
             categorias = session.scalars(
                 select(Categoria).order_by(Categoria.id)
             ).all()
             perguntas = session.scalars(select(Pergunta).order_by(Pergunta.id)).all()
 
-        self.assertEqual(len(CATEGORIAS_INICIAIS), 3)
-        self.assertEqual(len(categorias), 3)
+        self.assertEqual(len(CATEGORIAS_INICIAIS), 4)
+        self.assertEqual(len(categorias), 4)
+        self.assertEqual(
+            [categoria.nome for categoria in categorias],
+            ["Entretenimento", "Geral", "Matemática", "Tecnologia"],
+        )
         self.assertEqual([pergunta.id for pergunta in perguntas], list(range(1, 16)))
         self.assertEqual(
             [pergunta.categoria_id for pergunta in perguntas[:5]], ["geral"] * 5

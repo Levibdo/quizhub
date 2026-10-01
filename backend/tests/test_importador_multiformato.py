@@ -2,6 +2,7 @@ import csv
 import json
 import tempfile
 import unittest
+from collections import Counter
 from io import StringIO
 from pathlib import Path
 
@@ -64,6 +65,30 @@ def pergunta_json(
         "alternativa_correta": alternativa,
         "explicacao": explicacao,
     }
+
+
+class TestCatalogosVersionados(unittest.TestCase):
+    def test_contagens_atuais_dos_catalogos_recomendados(self):
+        dados = Path(__file__).parents[1] / "dados"
+        oficial = ImportadorPerguntas.ler(
+            (dados / "perguntas_oficiais_com_explicacoes.xlsx").read_bytes(),
+            "xlsx",
+        )
+        entretenimento = ImportadorPerguntas.ler(
+            (dados / "perguntas_entretenimento.json").read_bytes(),
+            "json",
+        )
+
+        self.assertEqual(len(oficial), 105)
+        self.assertEqual(
+            Counter(item.dados["categoria_id"] for item in oficial),
+            {"geral": 35, "matematica": 35, "tecnologia": 35},
+        )
+        self.assertEqual(len(entretenimento), 34)
+        self.assertEqual(
+            Counter(item.dados["categoria_id"] for item in entretenimento),
+            {"entretenimento": 34},
+        )
 
 
 class TestImportadorMultiformato(unittest.TestCase):

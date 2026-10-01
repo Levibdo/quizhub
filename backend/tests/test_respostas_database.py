@@ -362,7 +362,7 @@ class TestSeedRegression(unittest.TestCase):
         engine = create_engine("sqlite://")
         Base.metadata.create_all(engine)
         with Session(engine) as session:
-            self.assertEqual(seed_database(session), (3, 15))
+            self.assertEqual(seed_database(session), (4, 15))
             self.assertEqual(
                 session.scalar(select(func.count()).select_from(PartidaPergunta)), 0
             )
