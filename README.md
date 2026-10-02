@@ -357,6 +357,34 @@ python -m app.cli nem-pato perguntas criar
 `listar` não exibe as respostas numéricas. `criar` solicita os mesmos campos
 e usa as mesmas validações e detecção de duplicata da importação.
 
+## Lobby Nem a Pato
+
+O backend oferece endpoints de ciclo de vida do lobby, sem início de partida
+ou gameplay nesta fase:
+
+| Método | Endpoint | Finalidade |
+| --- | --- | --- |
+| `POST` | `/api/v1/nem-pato/salas` | Cria sala e primeiro participante anfitrião. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/participantes` | Entra em sala aguardando. |
+| `GET` | `/api/v1/nem-pato/salas/{codigo}` | Consulta estado público do lobby. |
+| `GET` | `/api/v1/nem-pato/salas/{codigo}/eu` | Recupera a participação autenticada após F5. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
+
+O código de sala tem seis caracteres maiúsculos e usa o alfabeto
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; é identificador, não credencial. Criação e
+entrada devolvem uma credencial aleatória opaca uma única vez. O banco guarda
+somente seu digest SHA-256. Endpoints privados usam `X-Nem-Pato-Token`, separado
+do cookie JWT de conta QuizHub. Um cliente pode guardar o token localmente e
+usar `GET /eu` após recarregar a página; recarregar não abandona a sala.
+
+O lobby aceita até seis participantes ativos; mínimo de três é requisito para
+uma partida futura. O serviço normaliza nome com trim, limita a 100 caracteres
+e trata diferenças de caixa simples como duplicatas. Ordens de entrada não são
+reutilizadas. Abandono preserva o registro e transfere o anfitrião ao ativo de
+menor ordem. Alterações de entrada e abandono incrementam uma vez a versão da
+sala. Operações de alteração bloqueiam primeiro a linha da sala e depois os
+participantes relacionados no PostgreSQL.
+
 ## API
 
 Principais endpoints:
@@ -380,6 +408,24 @@ cd backend
 .\.venv\Scripts\Activate.ps1
 python -m unittest discover -s tests -v
 ```
+
+Os testes de concorrência real do lobby Nem a Pato ficam separados da suíte
+SQLite. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
+com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0009`:
+
+```bash
+cd backend
+createdb np3_test_local
+export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/np3_test_local"
+python -m alembic upgrade 0009
+export NEM_A_PATO_TEST_DATABASE_URL="$DATABASE_URL"
+python -m unittest discover -s tests/integration -v
+dropdb np3_test_local
+```
+
+Não aponte `NEM_A_PATO_TEST_DATABASE_URL` para o banco de desenvolvimento. Os
+testes abrem sessões/conexões PostgreSQL independentes e observam a segunda
+transação esperando pelo lock da linha da sala em `pg_stat_activity`.
 
 Para validar o frontend, execute na raiz do projeto:
 
