@@ -315,6 +315,48 @@ python -m app.cli perguntas validar arquivo.json
 python -m app.cli perguntas importar arquivo.json
 ```
 
+## Catálogo numérico Nem a Pato
+
+O catálogo de perguntas numéricas usa a tabela `perguntas_nem_pato` e um
+importador separado do Quiz Clássico. Nesta fase há somente infraestrutura de
+catálogo/CLI; não há API nem gameplay Nem a Pato.
+
+O formato canônico aceita XLSX, CSV e JSON. XLSX/CSV usam a primeira linha
+como cabeçalho; são obrigatórias `categoria_id`, `enunciado`,
+`resposta_numerica` e `explicacao`. `unidade`, `fonte` e `ativa` são opcionais.
+Colunas adicionais são ignoradas. CSV usa vírgula, aspas CSV padrão e UTF-8
+com ou sem BOM. JSON deve ser uma lista de objetos com os mesmos nomes de
+campos. Uma lista JSON vazia é válida e contém zero itens; arquivo vazio ou
+XLSX/CSV sem cabeçalho é inválido. Linhas de planilha completamente vazias
+são ignoradas e fórmulas na coluna `resposta_numerica` são rejeitadas.
+
+`resposta_numerica` aceita inteiros não negativos e texto decimal composto
+somente por dígitos ASCII (por exemplo, `"40075"`). XLSX também aceita célula
+numérica inteira, dentro do limite de precisão inteira segura do Excel; frações,
+booleanos, `NaN`, infinito, texto inválido e valores acima do limite `BIGINT`
+são rejeitados. `ativa` aceita booleano, `true`/`false`, `1`/`0`, `sim`/`não`
+ou `s`/`n`, sem distinção de caixa; ausente ou vazio significa `true`.
+
+A duplicata é definida por `(categoria_id, enunciado)` após trim das
+extremidades, com comparação sensível a maiúsculas/minúsculas. Duplicatas do
+arquivo e do banco são reportadas e ignoradas; registros existentes nunca são
+atualizados. A validação não grava dados. A importação exige confirmação e é
+toda-ou-nada: qualquer registro inválido cancela o lote, enquanto duplicatas
+conhecidas podem ser ignoradas. Erros durante a persistência provocam rollback.
+
+Comandos, executados no diretório `backend`:
+
+```text
+python -m app.cli nem-pato perguntas validar arquivo.xlsx
+python -m app.cli nem-pato perguntas importar arquivo.csv
+python -m app.cli nem-pato perguntas listar
+python -m app.cli nem-pato perguntas resumo
+python -m app.cli nem-pato perguntas criar
+```
+
+`listar` não exibe as respostas numéricas. `criar` solicita os mesmos campos
+e usa as mesmas validações e detecção de duplicata da importação.
+
 ## API
 
 Principais endpoints:
