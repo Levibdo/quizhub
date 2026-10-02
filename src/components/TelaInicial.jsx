@@ -2,7 +2,7 @@ import ModeCard from './ModeCard'
 
 function TelaInicial({
   usuario, bloqueado, jogar, convidado, entrar, cadastrar, sair,
-  verRanking,
+  verRanking, nemAPato,
 }) {
   return (
     <section className="home-screen" aria-labelledby="home-title">
@@ -37,6 +37,15 @@ function TelaInicial({
           ]}
           actionLabel="Jogar"
           onAction={jogar}
+          disabled={bloqueado}
+        />
+        <ModeCard
+          eyebrow="Lobby multiplayer"
+          title="Nem a Pato!"
+          description="Crie uma sala ou entre com o código para reunir seus amigos."
+          metadata={['3 a 6 jogadores', 'Entre pelo notebook ou celular', 'Aguardando modo de partida']}
+          actionLabel="Abrir Nem a Pato"
+          onAction={nemAPato}
           disabled={bloqueado}
         />
       </div>

@@ -9,6 +9,7 @@ import TelaResultado from './components/TelaResultado'
 import TelaRanking from './components/TelaRanking'
 import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
+import TelaNemAPato from './components/TelaNemAPato'
 import AppShell from './components/layout/AppShell'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategorias } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
@@ -17,7 +18,9 @@ const TEMPO_POR_PERGUNTA = 15
 const TOTAL_PERGUNTAS = 10
 
 function App() {
-  const [tela, setTela] = useState('inicio')
+  const [tela, setTela] = useState(() => (
+    window.location.pathname?.startsWith('/nem-a-pato') ? 'nem-pato' : 'inicio'
+  ))
   const [categoriaSelecionada, setCategoriaSelecionada] = useState(null)
   const [categorias, setCategorias] = useState([])
   const [carregandoCategorias, setCarregandoCategorias] = useState(false)
@@ -63,6 +66,18 @@ function App() {
     setErro('')
     setErroAuth('')
     setTela(destino)
+  }
+
+  function abrirNemAPato() {
+    if (!window.location.pathname?.startsWith('/nem-a-pato')) {
+      window.history.pushState({}, '', '/nem-a-pato')
+    }
+    navegar('nem-pato')
+  }
+
+  function voltarDaTelaNemAPato() {
+    window.history.pushState({}, '', '/')
+    navegar('inicio')
   }
 
   const carregarCategorias = useCallback(async () => {
@@ -286,7 +301,11 @@ function App() {
           cadastrar={() => navegar('cadastro')}
           sair={() => sair()}
           verRanking={abrirRanking}
+          nemAPato={abrirNemAPato}
         />
+      )}
+      {tela === 'nem-pato' && (
+        <TelaNemAPato voltarInicio={voltarDaTelaNemAPato} />
       )}
       {tela === 'login' && (
         <TelaLogin entrar={(...dados) => autenticar('login', ...dados)}

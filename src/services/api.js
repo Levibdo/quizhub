@@ -5,7 +5,7 @@ const API_URL = (
   `${window.location.protocol}//${window.location.hostname}:8001`
 ).replace(/\/$/, '')
 
-async function requisitar(caminho, opcoes) {
+export async function requisitar(caminho, opcoes) {
   let resposta
   try {
     resposta = await fetch(`${API_URL}${caminho}`, {

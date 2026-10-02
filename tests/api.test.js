@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 const fetchOriginal = globalThis.fetch
 globalThis.window = { location: { protocol: 'http:', hostname: 'localhost' } }
 const api = await import('../src/services/api.js')
+const nemAPatoApi = await import('../src/services/nemAPato.js')
 afterEach(() => { globalThis.fetch = fetchOriginal })
 
 test('auth e partidas enviam cookies; autenticado omite apelido', async () => {
@@ -84,4 +85,47 @@ test('listar categorias consulta o endpoint público', async () => {
   assert.equal(chamada.url, 'http://localhost:8001/api/v1/categorias')
   assert.equal(chamada.opcoes.method, 'GET')
   assert.equal(categorias[0].id, 'geral')
+})
+
+test('Nem a Pato envia token somente nos endpoints autenticados', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    return new Response(JSON.stringify({ ok: true }), { status: 200 })
+  }
+  await nemAPatoApi.criarSalaNemAPato('Levi')
+  await nemAPatoApi.entrarSalaNemAPato('K7M4QX', 'Jorge')
+  await nemAPatoApi.obterSalaNemAPato('K7M4QX')
+  await nemAPatoApi.recuperarSalaNemAPato('K7M4QX', 'token-opaco')
+  await nemAPatoApi.abandonarSalaNemAPato('K7M4QX', 'token-opaco')
+  assert.equal(chamadas[0].url, 'http://localhost:8001/api/v1/nem-pato/salas')
+  assert.deepEqual(JSON.parse(chamadas[0].opcoes.body), { nome: 'Levi' })
+  assert.equal(chamadas[2].opcoes.headers['X-Nem-Pato-Token'], undefined)
+  assert.equal(chamadas[3].opcoes.headers['X-Nem-Pato-Token'], 'token-opaco')
+  assert.equal(chamadas[4].opcoes.headers['X-Nem-Pato-Token'], 'token-opaco')
+  assert.ok(chamadas.every((chamada) => chamada.opcoes.credentials === 'include'))
+})
+
+test('sessões Nem a Pato usam namespace próprio e removem somente a sala pedida', async () => {
+  const anterior = globalThis.localStorage
+  const dados = new Map()
+  globalThis.localStorage = {
+    getItem: (chave) => dados.get(chave) ?? null,
+    setItem: (chave, valor) => dados.set(chave, valor),
+  }
+  try {
+    nemAPatoApi.salvarSessaoNemAPato(' k7m4qx ', 'secreto-a')
+    nemAPatoApi.salvarSessaoNemAPato('ABC234', 'secreto-b')
+    assert.deepEqual(nemAPatoApi.carregarSessaoNemAPato('K7M4QX'), {
+      codigo: 'K7M4QX', token: 'secreto-a',
+    })
+    assert.notEqual(nemAPatoApi.CHAVE_SESSOES, 'quizhub-ranking')
+    nemAPatoApi.removerSessaoNemAPato('K7M4QX')
+    assert.equal(nemAPatoApi.carregarSessaoNemAPato('K7M4QX'), null)
+    assert.deepEqual(nemAPatoApi.carregarSessaoNemAPato('ABC234'), {
+      codigo: 'ABC234', token: 'secreto-b',
+    })
+  } finally {
+    globalThis.localStorage = anterior
+  }
 })
