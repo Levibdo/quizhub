@@ -113,7 +113,8 @@ class TestPartidaMetadata(unittest.TestCase):
         categoria = Base.registry._class_registry["Categoria"]
         partida = Base.registry._class_registry["Partida"]
         self.assertEqual(
-            set(categoria.__mapper__.relationships.keys()), {"perguntas", "partidas"}
+            set(categoria.__mapper__.relationships.keys()),
+            {"perguntas", "partidas", "perguntas_nem_pato"},
         )
         self.assertEqual(
             set(partida.__mapper__.relationships.keys()),

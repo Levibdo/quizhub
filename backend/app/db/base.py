@@ -9,9 +9,16 @@ class Base(DeclarativeBase):
 from app.models import (  # noqa: E402, F401
     Categoria,
     Jogador,
+    JogadorPartidaNemPato,
+    PalpiteNemPato,
     Partida,
+    PartidaNemPato,
+    ParticipanteNemPato,
     PartidaPergunta,
     Pergunta,
+    PerguntaNemPato,
     Resposta,
+    RodadaNemPato,
+    SalaNemPato,
     Usuario,
 )

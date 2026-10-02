@@ -1,0 +1,36 @@
+from enum import StrEnum
+
+
+TOTAL_RODADAS_NEM_A_PATO = 10
+DURACAO_RODADA_NEM_A_PATO_SEGUNDOS = 120
+MIN_JOGADORES_NEM_A_PATO = 3
+MAX_JOGADORES_NEM_A_PATO = 6
+
+
+class SalaNemPatoStatus(StrEnum):
+    AGUARDANDO = "AGUARDANDO"
+    EM_PARTIDA = "EM_PARTIDA"
+    ENCERRADA = "ENCERRADA"
+
+
+class ParticipanteNemPatoStatus(StrEnum):
+    ATIVO = "ATIVO"
+    ABANDONOU = "ABANDONOU"
+
+
+class PartidaNemPatoStatus(StrEnum):
+    EM_ANDAMENTO = "EM_ANDAMENTO"
+    FINALIZADA = "FINALIZADA"
+    CANCELADA = "CANCELADA"
+
+
+class RodadaNemPatoStatus(StrEnum):
+    AGUARDANDO_INICIO = "AGUARDANDO_INICIO"
+    EM_ANDAMENTO = "EM_ANDAMENTO"
+    RESULTADO = "RESULTADO"
+
+
+class TipoFinalizacaoRodadaNemPato(StrEnum):
+    DESAFIO = "DESAFIO"
+    TEMPO_ESGOTADO = "TEMPO_ESGOTADO"
+    SEM_PALPITE = "SEM_PALPITE"
