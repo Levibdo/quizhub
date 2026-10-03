@@ -53,6 +53,15 @@ def recuperar_participacao(
     return salas_nem_a_pato.recuperar(db, codigo, token)
 
 
+@router.post("/{codigo}/iniciar", response_model=SalaRecuperada)
+def iniciar_partida(
+    codigo: str,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.iniciar(db, codigo, token)
+
+
 @router.post("/{codigo}/abandonar", response_model=SalaLobbyPublica)
 def abandonar_sala(
     codigo: str,

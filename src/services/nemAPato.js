@@ -62,6 +62,13 @@ export function recuperarSalaNemAPato(codigo, token) {
   })
 }
 
+export function iniciarPartidaNemAPato(codigo, token) {
+  return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/iniciar`, {
+    method: 'POST',
+    headers: { 'X-Nem-Pato-Token': token },
+  })
+}
+
 export function abandonarSalaNemAPato(codigo, token) {
   return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/abandonar`, {
     method: 'POST',

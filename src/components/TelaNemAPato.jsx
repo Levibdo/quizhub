@@ -4,6 +4,7 @@ import {
   carregarSessaoNemAPato,
   criarSalaNemAPato,
   entrarSalaNemAPato,
+  iniciarPartidaNemAPato,
   recuperarSalaNemAPato,
   removerSessaoNemAPato,
   salvarSessaoNemAPato,
@@ -20,6 +21,10 @@ function mensagemErro(error, acao = 'operacao') {
     return 'Sua participação não está mais disponível. Entre na sala novamente.'
   }
   if (error.message === 'participante não está ativo') return 'Sua participação foi encerrada.'
+  if (error.message.includes('pelo menos 3 participantes')) return 'São necessários pelo menos 3 jogadores para iniciar.'
+  if (error.message.includes('10 perguntas Nem a Pato')) return 'Ainda não há 10 perguntas numéricas ativas para iniciar uma partida.'
+  if (error.message.includes('somente o anfitrião')) return 'Somente o anfitrião pode iniciar a partida.'
+  if (error.message === 'sala já possui uma partida em andamento') return 'Esta sala já tem uma partida em andamento.'
   if (error.status === 422) return error.message || 'Confira os dados informados.'
   if (error.message === 'Não foi possível conectar ao servidor.') return error.message
   return acao === 'recuperar'
@@ -189,6 +194,23 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }
 
+  async function iniciarPartida() {
+    if (operacaoRef.current || !sessao) return
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro('')
+    try {
+      const atual = await iniciarPartidaNemAPato(sessao.codigo, sessao.token)
+      setEstadoSala(atual)
+      setPodeSincronizar(true)
+    } catch (error) {
+      setErro(mensagemErro(error, 'iniciar'))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
   function copiarCodigo() {
     const escrita = navigator.clipboard?.writeText(rota.codigo)
     if (!escrita) {
@@ -213,7 +235,7 @@ function TelaNemAPato({ voltarInicio }) {
         <header className="np-heading">
           <span className="np-eyebrow">QuizHub // Sala multiplayer</span>
           <h1 id="np-title">NEM A PATO!</h1>
-          <p>Lobby da sala</p>
+          <p>{sala?.status === 'EM_PARTIDA' ? 'Partida em andamento' : 'Lobby da sala'}</p>
         </header>
         {mensagemSemSessao && <p className="np-message np-message--error" role="alert">{mensagemSemSessao}</p>}
         {sucesso && <p className="np-message" role="status">{sucesso}</p>}
@@ -225,6 +247,26 @@ function TelaNemAPato({ voltarInicio }) {
         )}
         {sala && (
           <>
+            {sala.status === 'EM_PARTIDA' && (
+              <section className="np-started" aria-labelledby="np-started-title">
+                <p className="np-started__eyebrow">Sala {sala.codigo}</p>
+                <h2 id="np-started-title">A PARTIDA COMEÇOU</h2>
+                {estadoSala.partida ? (
+                  <>
+                    <p>Partida {estadoSala.partida.numero} · {estadoSala.partida.total_rodadas} rodadas · {Math.floor(estadoSala.partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
+                    <ul className="np-player-list" aria-label="Jogadores desta partida">
+                      {estadoSala.partida.jogadores.map((jogador) => (
+                        <li className="np-player" key={`${jogador.ordem_circular}-${jogador.nome}`}>
+                          <span aria-hidden="true">♙</span>
+                          <strong>{jogador.nome}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : <p role="status">Recuperando a partida...</p>}
+                <p role="status">Preparando a primeira rodada...</p>
+              </section>
+            )}
             <section className="np-room-code" aria-label="Código da sala">
               <span>Código da sala</span>
               <strong>{sala.codigo}</strong>
@@ -242,12 +284,26 @@ function TelaNemAPato({ voltarInicio }) {
                 </li>
               ))}
             </ul>
-            <p className="np-lobby-status">Aguardando a partida...</p>
-            {eu?.eh_anfitriao && <p className="np-host-note">Você é o anfitrião.</p>}
-            <p className="np-hint">São necessários pelo menos 3 jogadores para uma partida.</p>
-            <button className="np-leave" type="button" disabled={carregando} onClick={sairDaSala}>
-              {carregando ? 'Saindo...' : 'Sair da sala'}
-            </button>
+            {sala.status !== 'EM_PARTIDA' && (
+              <>
+                <p className="np-lobby-status">Aguardando o anfitrião...</p>
+                {eu?.eh_anfitriao && <p className="np-host-note">Você é o anfitrião.</p>}
+                <p className="np-hint">São necessários pelo menos 3 jogadores para iniciar.</p>
+                {eu?.eh_anfitriao && (
+                  <button
+                    className="np-start-button"
+                    type="button"
+                    disabled={carregando || sala.participantes_ativos < 3 || sala.participantes_ativos > sala.limite_jogadores}
+                    onClick={iniciarPartida}
+                  >
+                    {carregando ? 'Iniciando...' : 'Iniciar partida'}
+                  </button>
+                )}
+                <button className="np-leave" type="button" disabled={carregando} onClick={sairDaSala}>
+                  {carregando ? 'Aguarde...' : 'Sair da sala'}
+                </button>
+              </>
+            )}
           </>
         )}
       </section>

@@ -9,14 +9,28 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import ParticipanteNemPato, SalaNemPato
+from app.models import (
+    JogadorPartidaNemPato,
+    PartidaNemPato,
+    ParticipanteNemPato,
+    PerguntaNemPato,
+    RodadaNemPato,
+    SalaNemPato,
+)
 from app.nem_a_pato import (
     MAX_JOGADORES_NEM_A_PATO,
+    MIN_JOGADORES_NEM_A_PATO,
+    DURACAO_RODADA_NEM_A_PATO_SEGUNDOS,
+    TOTAL_RODADAS_NEM_A_PATO,
+    PartidaNemPatoStatus,
     ParticipanteNemPatoStatus,
+    RodadaNemPatoStatus,
     SalaNemPatoStatus,
 )
 from app.schemas.nem_a_pato import (
+    JogadorPartidaNemPatoPublico,
     ParticipanteSalaPublico,
+    PartidaNemPatoPublica,
     ParticipacaoSalaCriada,
     SalaLobbyPublica,
     SalaRecuperada,
@@ -87,11 +101,17 @@ def participante_publico(
     )
 
 
-def sala_publica(sala: SalaNemPato) -> SalaLobbyPublica:
+def sala_publica(
+    sala: SalaNemPato,
+    participantes: list[ParticipanteNemPato] | None = None,
+) -> SalaLobbyPublica:
+    participantes_sala = (
+        participantes if participantes is not None else sala.participantes
+    )
     ativos = sorted(
         (
             item
-            for item in sala.participantes
+            for item in participantes_sala
             if item.status == ParticipanteNemPatoStatus.ATIVO
         ),
         key=lambda item: item.ordem_entrada,
@@ -113,10 +133,14 @@ class SalasNemAPatoService:
         *,
         gerador_codigo: Callable[[], str] = gerar_codigo_sala,
         gerador_credencial: Callable[[], str] = gerar_credencial,
+        selecionar_perguntas: Callable[
+            [list[PerguntaNemPato], int], list[PerguntaNemPato]
+        ] | None = None,
         tentativas_codigo: int = TENTATIVAS_CODIGO_SALA,
     ) -> None:
         self.gerador_codigo = gerador_codigo
         self.gerador_credencial = gerador_credencial
+        self.selecionar_perguntas = selecionar_perguntas
         self.tentativas_codigo = tentativas_codigo
 
     def criar(self, db: Session, nome: str) -> ParticipacaoSalaCriada:
@@ -288,6 +312,214 @@ class SalasNemAPatoService:
             raise HTTPException(status_code=403, detail="credencial não pertence a esta sala")
         return sala, participante
 
+    @staticmethod
+    def _partida_publica(
+        partida: PartidaNemPato,
+        jogadores: list[JogadorPartidaNemPato] | None = None,
+    ) -> PartidaNemPatoPublica:
+        jogadores_ordenados = sorted(
+            jogadores if jogadores is not None else partida.jogadores,
+            key=lambda jogador: jogador.ordem_circular,
+        )
+        return PartidaNemPatoPublica(
+            id=partida.id,
+            numero=partida.numero,
+            status=partida.status.value,
+            rodada_atual=partida.rodada_atual,
+            total_rodadas=partida.total_rodadas,
+            duracao_rodada_segundos=partida.duracao_rodada_segundos,
+            jogadores=[
+                JogadorPartidaNemPatoPublico(
+                    nome=jogador.nome_snapshot,
+                    ordem_circular=jogador.ordem_circular,
+                    status=jogador.status.value,
+                )
+                for jogador in jogadores_ordenados
+            ],
+        )
+
+    def iniciar(
+        self, db: Session, codigo: str, token: str | None
+    ) -> SalaRecuperada:
+        codigo = self._codigo_normalizado(codigo)
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        token_digest = hash_credencial(token)
+        try:
+            # Ordem de locks compartilhada com entrada/abandono: sala → participantes.
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            if sala.status != SalaNemPatoStatus.AGUARDANDO:
+                raise HTTPException(status_code=409, detail="sala não está aguardando")
+
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = next(
+                (
+                    item for item in participantes
+                    if hmac.compare_digest(item.token_hash, token_digest)
+                ),
+                None,
+            )
+            if participante is None:
+                raise HTTPException(status_code=401, detail="credencial Nem a Pato inválida")
+            if participante.status != ParticipanteNemPatoStatus.ATIVO:
+                raise HTTPException(status_code=403, detail="participante não está ativo")
+            if not participante.eh_anfitriao:
+                raise HTTPException(status_code=403, detail="somente o anfitrião pode iniciar")
+
+            ativos = [
+                item for item in participantes
+                if item.status == ParticipanteNemPatoStatus.ATIVO
+            ]
+            if len(ativos) < MIN_JOGADORES_NEM_A_PATO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="são necessários pelo menos 3 participantes ativos para iniciar",
+                )
+            if len(ativos) > MAX_JOGADORES_NEM_A_PATO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="quantidade de participantes ativos inválida",
+                )
+
+            partida_ativa = db.scalar(
+                select(PartidaNemPato.id)
+                .where(
+                    PartidaNemPato.sala_id == sala.id,
+                    PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
+                )
+                .with_for_update()
+            )
+            if partida_ativa is not None:
+                raise HTTPException(status_code=409, detail="a sala já possui uma partida em andamento")
+
+            if self.selecionar_perguntas is None:
+                # Sortear no banco e bloquear somente as dez perguntas escolhidas.
+                perguntas = list(
+                    db.scalars(
+                        select(PerguntaNemPato)
+                        .where(PerguntaNemPato.ativa.is_(True))
+                        .order_by(func.random())
+                        .limit(TOTAL_RODADAS_NEM_A_PATO)
+                        .with_for_update()
+                    )
+                )
+                ids_ativos = {pergunta.id for pergunta in perguntas}
+            else:
+                perguntas_ativas = list(
+                    db.scalars(
+                        select(PerguntaNemPato)
+                        .where(PerguntaNemPato.ativa.is_(True))
+                        .order_by(PerguntaNemPato.id)
+                    )
+                )
+                if len(perguntas_ativas) < TOTAL_RODADAS_NEM_A_PATO:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="não há 10 perguntas Nem a Pato ativas disponíveis",
+                    )
+                perguntas = self.selecionar_perguntas(
+                    perguntas_ativas, TOTAL_RODADAS_NEM_A_PATO
+                )
+                ids_ativos = {pergunta.id for pergunta in perguntas_ativas}
+            if len(perguntas) < TOTAL_RODADAS_NEM_A_PATO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="não há 10 perguntas Nem a Pato ativas disponíveis",
+                )
+            if (
+                len(perguntas) != TOTAL_RODADAS_NEM_A_PATO
+                or len({pergunta.id for pergunta in perguntas}) != TOTAL_RODADAS_NEM_A_PATO
+                or any(
+                    not pergunta.ativa or pergunta.id not in ids_ativos
+                    for pergunta in perguntas
+                )
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="não foi possível selecionar 10 perguntas distintas",
+                )
+
+            numero_partida = (
+                db.scalar(
+                    select(func.max(PartidaNemPato.numero)).where(
+                        PartidaNemPato.sala_id == sala.id
+                    )
+                )
+                or 0
+            ) + 1
+            partida = PartidaNemPato(
+                sala_id=sala.id,
+                # A coluna requerida pelo schema 0009 serve de categoria-base;
+                # cada rodada conserva sua própria categoria e a seleção pode variar.
+                categoria_id=perguntas[0].categoria_id,
+                numero=numero_partida,
+                status=PartidaNemPatoStatus.EM_ANDAMENTO,
+                rodada_atual=0,
+                total_rodadas=TOTAL_RODADAS_NEM_A_PATO,
+                duracao_rodada_segundos=DURACAO_RODADA_NEM_A_PATO_SEGUNDOS,
+            )
+            db.add(partida)
+            db.flush()
+
+            jogadores_partida = []
+            for ordem_circular, membro in enumerate(
+                sorted(ativos, key=lambda item: item.ordem_entrada), start=1
+            ):
+                jogador = JogadorPartidaNemPato(
+                    partida_id=partida.id,
+                    participante_id=membro.id,
+                    nome_snapshot=membro.nome,
+                    ordem_circular=ordem_circular,
+                    status=ParticipanteNemPatoStatus.ATIVO,
+                )
+                jogadores_partida.append(jogador)
+                db.add(jogador)
+            db.flush()
+
+            for numero_rodada, pergunta in enumerate(perguntas, start=1):
+                indice_jogador_inicial = (numero_rodada - 1) % len(jogadores_partida)
+                db.add(
+                    RodadaNemPato(
+                        partida_id=partida.id,
+                        pergunta_id=pergunta.id,
+                        numero=numero_rodada,
+                        status=RodadaNemPatoStatus.AGUARDANDO_INICIO,
+                        jogador_inicial_id=jogadores_partida[indice_jogador_inicial].id,
+                        jogador_da_vez_id=None,
+                        iniciada_em=None,
+                        termina_em=None,
+                        finalizada_em=None,
+                        tipo_finalizacao=None,
+                    )
+                )
+
+            # Última verificação defensiva antes do commit; o lock da sala
+            # serializa entradas, inícios e as demais mutações do lobby.
+            sala.status = SalaNemPatoStatus.EM_PARTIDA
+            sala.estado_versao += 1
+            db.flush()
+            db.commit()
+
+            return SalaRecuperada(
+                sala=sala_publica(sala, ativos),
+                participante=participante_publico(participante),
+                partida=self._partida_publica(partida, jogadores_partida),
+            )
+        except HTTPException:
+            db.rollback()
+            raise
+        except IntegrityError as erro:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="conflito ao iniciar partida; atualize o estado da sala",
+            ) from erro
+        except Exception:
+            db.rollback()
+            raise
+
     def estado_publico(self, db: Session, codigo: str) -> SalaLobbyPublica:
         codigo = self._codigo_normalizado(codigo)
         sala = db.scalar(
@@ -303,9 +535,22 @@ class SalasNemAPatoService:
         self, db: Session, codigo: str, token: str
     ) -> SalaRecuperada:
         sala, participante = self._obter_participante_autenticado(db, codigo, token)
+        partida = None
+        if sala.status == SalaNemPatoStatus.EM_PARTIDA:
+            partida_db = db.scalar(
+                select(PartidaNemPato)
+                .where(
+                    PartidaNemPato.sala_id == sala.id,
+                    PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
+                )
+                .options(selectinload(PartidaNemPato.jogadores))
+            )
+            if partida_db is not None:
+                partida = self._partida_publica(partida_db)
         return SalaRecuperada(
             sala=sala_publica(sala),
             participante=participante_publico(participante),
+            partida=partida,
         )
 
     def abandonar(
@@ -318,6 +563,11 @@ class SalasNemAPatoService:
             if sala is None:
                 raise HTTPException(status_code=404, detail="sala inexistente")
             participantes = self._participantes_bloqueados(db, sala.id)
+            if sala.status != SalaNemPatoStatus.AGUARDANDO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="abandono após início da partida ainda não está disponível",
+                )
             participante = next(
                 (item for item in participantes if item.id == participante.id), None
             )

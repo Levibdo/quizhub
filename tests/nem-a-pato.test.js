@@ -92,10 +92,10 @@ function response(value, status = 200) {
   return new Response(JSON.stringify(value), { status })
 }
 
-function sala(codigo, participantes, versao = 0) {
+function sala(codigo, participantes, versao = 0, status = 'AGUARDANDO') {
   return {
     codigo,
-    status: 'AGUARDANDO',
+    status,
     versao,
     criada_em: '2026-10-01T12:00:00Z',
     participantes,
@@ -324,4 +324,223 @@ test('polling é limpo ao desmontar lobby', async (t) => {
   await act(async () => pollingCallback())
   assert.equal(chamadasLobby, beforeUnmount)
   assert.equal(intervaloLimpo, true)
+})
+
+test('host vê início desabilitado com menos de três e habilitado ao atingir mínimo', async (t) => {
+  let quantidade = 2
+  const token = 'host-start-token'
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    const jogadores = Array.from({ length: quantidade }, (_, index) =>
+      participante(index + 1, `Jogador ${index + 1}`, index === 0))
+    return response({
+      sala: sala('K7M4QX', jogadores, quantidade, 'AGUARDANDO'),
+      participante: jogadores[0],
+      partida: null,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({
+      K7M4QX: { codigo: 'K7M4QX', token },
+    }) },
+  })
+  globalThis.window.setInterval = (callback) => { globalThis.np4Poll = callback; return 71 }
+  globalThis.window.clearInterval = () => {}
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button('Iniciar partida').props.disabled, true)
+  quantidade = 3
+  await act(async () => globalThis.np4Poll())
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button('Iniciar partida').props.disabled, false)
+})
+
+test('host inicia com token; polling e F5 mostram preparação EM_PARTIDA', async (t) => {
+  const token = 'host-token'
+  const jogadores = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const partida = {
+    id: 'match-uuid', numero: 1, status: 'EM_ANDAMENTO', rodada_atual: 0,
+    total_rodadas: 10, duracao_rodada_segundos: 120,
+    jogadores: jogadores.map((jogador, index) => ({
+      nome: jogador.nome, ordem_circular: index + 1, status: 'ATIVO',
+    })),
+  }
+  let emPartida = false
+  let tokenEnviado
+  const chamadas = []
+  const fetcher = async (url, options = {}) => {
+    chamadas.push({ url, options })
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/iniciar')) {
+      tokenEnviado = options.headers['X-Nem-Pato-Token']
+      emPartida = true
+      return response({
+        sala: sala('K7M4QX', jogadores, 4, 'EM_PARTIDA'),
+        participante: jogadores[0], partida,
+      })
+    }
+    if (url.endsWith('/eu')) {
+      return response({
+        sala: sala('K7M4QX', jogadores, emPartida ? 4 : 3, emPartida ? 'EM_PARTIDA' : 'AGUARDANDO'),
+        participante: jogadores[0],
+        partida: emPartida ? partida : null,
+      })
+    }
+    return response({})
+  }
+  const ui = setup(t, fetcher, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button('Iniciar partida').props.disabled, false)
+  await act(async () => ui.button('Iniciar partida').props.onClick())
+  assert.equal(tokenEnviado, token)
+  assert.ok(ui.view().includes('A PARTIDA COMEÇOU'))
+  assert.ok(ui.view().includes('10 rodadas'))
+  assert.ok(ui.view().includes('2 minutos por rodada'))
+  assert.ok(!ui.view().includes('Sair da sala'))
+  assert.equal(chamadas.some((call) => call.url.endsWith('/perguntas')), false)
+  await ui.unmount()
+
+  const reloaded = setup(t, fetcher, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await reloaded.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(reloaded.view().includes('A PARTIDA COMEÇOU'))
+  assert.ok(reloaded.view().includes('Jorge'))
+  assert.ok(reloaded.view().includes('Preparando a primeira rodada'))
+})
+
+test('não host não tem botão de início e o host vê erro retornado pelo backend', async (t) => {
+  let requisicoesInicio = 0
+  const guest = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]),
+      participante: participante(2, 'Jorge'), partida: null,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest-token' } }) },
+  })
+  await guest.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(guest.button('Iniciar partida'), undefined)
+  await guest.unmount()
+
+  const host = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/iniciar')) {
+      requisicoesInicio += 1
+      return response({ detail: 'não há 10 perguntas Nem a Pato ativas disponíveis' }, 409)
+    }
+    return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]),
+      participante: participante(1, 'Levi', true), partida: null,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host-token' } }) },
+  })
+  await host.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => host.button('Iniciar partida').props.onClick())
+  assert.equal(requisicoesInicio, 1)
+  assert.ok(host.view().includes('Ainda não há 10 perguntas numéricas ativas'))
+})
+
+test('somente host pode iniciar e botão fica desabilitado abaixo do mínimo', async (t) => {
+  const hostUI = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true), participante(2, 'Jorge')]),
+      participante: participante(1, 'Levi', true),
+      partida: null,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host-token' } }) },
+  })
+  await hostUI.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(hostUI.button('Iniciar partida').props.disabled, true)
+  assert.ok(hostUI.view().includes('pelo menos 3'))
+  await hostUI.unmount()
+
+  const guestUI = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]),
+      participante: participante(2, 'Jorge'),
+      partida: null,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest-token' } }) },
+  })
+  await guestUI.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(guestUI.button('Iniciar partida'), undefined)
+  assert.ok(guestUI.view().includes('Aguardando o anfitrião'))
+})
+
+test('host inicia com credencial e todos recuperam tela EM_PARTIDA após F5', async (t) => {
+  const token = 'host-token'
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const summary = {
+    id: 'match-id', numero: 1, status: 'EM_ANDAMENTO', rodada_atual: 0,
+    total_rodadas: 10, duracao_rodada_segundos: 120,
+    jogadores: players.map((player, index) => ({
+      nome: player.nome, ordem_circular: index + 1, status: 'ATIVO',
+    })),
+  }
+  let started = false
+  const calls = []
+  const fetcher = async (url, options = {}) => {
+    calls.push({ url, options })
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/iniciar')) {
+      started = true
+      return response({
+        sala: sala('K7M4QX', players, 4, 'EM_PARTIDA'),
+        participante: players[0],
+        partida: summary,
+      })
+    }
+    if (url.endsWith('/eu')) {
+      return response({
+        sala: sala('K7M4QX', players, started ? 4 : 3, started ? 'EM_PARTIDA' : 'AGUARDANDO'),
+        participante: players[0],
+        partida: started ? summary : null,
+      })
+    }
+    return response({})
+  }
+  const ui = setup(t, fetcher, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.button('Iniciar partida'))
+  await act(async () => ui.button('Iniciar partida').props.onClick())
+  assert.equal(calls.find((call) => call.url.endsWith('/iniciar')).options.headers['X-Nem-Pato-Token'], token)
+  assert.ok(ui.view().includes('A PARTIDA COMEÇOU'))
+  assert.ok(ui.view().includes('10 rodadas'))
+  assert.ok(ui.view().includes('2 minutos por rodada'))
+  assert.equal(ui.button('Sair da sala'), undefined)
+  await ui.unmount()
+
+  const reloaded = setup(t, fetcher, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await reloaded.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(reloaded.view().includes('A PARTIDA COMEÇOU'))
+  assert.ok(reloaded.view().includes('Preparando a primeira rodada'))
 })

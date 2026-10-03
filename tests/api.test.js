@@ -106,6 +106,20 @@ test('Nem a Pato envia token somente nos endpoints autenticados', async () => {
   assert.ok(chamadas.every((chamada) => chamada.opcoes.credentials === 'include'))
 })
 
+test('iniciar partida usa endpoint próprio e credencial temporária', async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify({ partida: { numero: 1 } }), { status: 200 })
+  }
+  const resposta = await nemAPatoApi.iniciarPartidaNemAPato('K7M4QX', 'token-host')
+  assert.equal(chamada.url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/iniciar')
+  assert.equal(chamada.opcoes.method, 'POST')
+  assert.equal(chamada.opcoes.headers['X-Nem-Pato-Token'], 'token-host')
+  assert.equal(chamada.opcoes.body, undefined)
+  assert.deepEqual(resposta, { partida: { numero: 1 } })
+})
+
 test('sessões Nem a Pato usam namespace próprio e removem somente a sala pedida', async () => {
   const anterior = globalThis.localStorage
   const dados = new Map()

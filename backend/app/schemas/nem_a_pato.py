@@ -38,9 +38,26 @@ class SalaLobbyPublica(BaseModel):
     limite_jogadores: int
 
 
+class JogadorPartidaNemPatoPublico(BaseModel):
+    nome: str
+    ordem_circular: int
+    status: str
+
+
+class PartidaNemPatoPublica(BaseModel):
+    id: UUID
+    numero: int
+    status: str
+    rodada_atual: int
+    total_rodadas: int
+    duracao_rodada_segundos: int
+    jogadores: list[JogadorPartidaNemPatoPublico]
+
+
 class SalaRecuperada(BaseModel):
     sala: SalaLobbyPublica
     participante: ParticipanteSalaPublico
+    partida: PartidaNemPatoPublica | None = None
 
 
 class ParticipacaoSalaCriada(SalaRecuperada):

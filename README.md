@@ -359,8 +359,8 @@ e usa as mesmas validações e detecção de duplicata da importação.
 
 ## Lobby Nem a Pato
 
-O backend oferece endpoints de ciclo de vida do lobby, sem início de partida
-ou gameplay nesta fase:
+O backend oferece endpoints do lobby e prepara uma partida ao comando do
+anfitrião. A interface de jogo ainda não está implementada nesta fase:
 
 | Método | Endpoint | Finalidade |
 | --- | --- | --- |
@@ -368,6 +368,7 @@ ou gameplay nesta fase:
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/participantes` | Entra em sala aguardando. |
 | `GET` | `/api/v1/nem-pato/salas/{codigo}` | Consulta estado público do lobby. |
 | `GET` | `/api/v1/nem-pato/salas/{codigo}/eu` | Recupera a participação autenticada após F5. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/iniciar` | Anfitrião inicia e prepara 10 rodadas. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
 
 O código de sala tem seis caracteres maiúsculos e usa o alfabeto
@@ -384,6 +385,16 @@ reutilizadas. Abandono preserva o registro e transfere o anfitrião ao ativo de
 menor ordem. Alterações de entrada e abandono incrementam uma vez a versão da
 sala. Operações de alteração bloqueiam primeiro a linha da sala e depois os
 participantes relacionados no PostgreSQL.
+
+O anfitrião pode iniciar quando há de 3 a 6 participantes ativos. O backend
+seleciona 10 perguntas numéricas ativas distintas, cria os snapshots dos
+jogadores e prepara 10 rodadas em `AGUARDANDO_INICIO`, sem deadline ou turno
+ativo. A sala muda para `EM_PARTIDA` e incrementa sua versão na mesma transação.
+Os clientes recuperam um resumo seguro da partida por `GET .../eu`; o DTO não
+inclui perguntas nem respostas. Nesta etapa, a categoria da partida registra
+a categoria da primeira pergunta selecionada (as categorias das demais
+perguntas podem variar). Abandono após início está temporariamente bloqueado,
+até haver regras próprias para saída durante partida.
 
 ## API
 
@@ -409,8 +420,8 @@ cd backend
 python -m unittest discover -s tests -v
 ```
 
-Os testes de concorrência real do lobby Nem a Pato ficam separados da suíte
-SQLite. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
+Os testes de concorrência real de lobby/início Nem a Pato ficam separados da suíte
+SQLite. Eles cobrem entrada, início concorrente e início versus entrada. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
 com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0009`:
 
 ```bash
