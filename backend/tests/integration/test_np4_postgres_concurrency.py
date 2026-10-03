@@ -58,9 +58,9 @@ class TestNemAPatoStartPostgresConcurrency(unittest.TestCase):
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
         with cls.engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0009":
+        if revision != "0010":
             cls.engine.dispose()
-            raise RuntimeError(f"expected revision 0009, received {revision!r}")
+            raise RuntimeError(f"expected revision 0010, received {revision!r}")
 
     @classmethod
     def tearDownClass(cls):

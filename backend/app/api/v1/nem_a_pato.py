@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.nem_a_pato import (
+    CriarDesafioNemPato,
     CriarPalpiteNemPato,
     CriarSalaNemAPato,
     EntrarSalaNemAPato,
@@ -90,6 +91,22 @@ def criar_palpite(
         token,
         entrada.valor,
         entrada.client_action_id,
+    )
+
+
+@router.post(
+    "/{codigo}/rodadas/{rodada_id}/desafiar",
+    response_model=SalaRecuperada,
+)
+def desafiar_palpite(
+    codigo: str,
+    rodada_id: int,
+    entrada: CriarDesafioNemPato,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.desafiar(
+        db, codigo, rodada_id, token, entrada.client_action_id
     )
 
 

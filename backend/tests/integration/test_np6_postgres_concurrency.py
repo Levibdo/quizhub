@@ -1,8 +1,4 @@
-"""Real PostgreSQL concurrency acceptance tests for NP5.
-
-The harness refuses the development database and accepts only disposable
-databases whose name starts with np3_test_.
-"""
+"""Real PostgreSQL concurrency acceptance tests for NP6."""
 
 import os
 import threading
@@ -19,6 +15,8 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base  # noqa: F401
 from app.models import (
     Categoria,
+    DesafioNemPato,
+    JogadorPartidaNemPato,
     PalpiteNemPato,
     PartidaNemPato,
     PerguntaNemPato,
@@ -33,7 +31,7 @@ DATABASE_URL = os.getenv(ENV_NAME, "").strip()
 
 
 @unittest.skipUnless(DATABASE_URL, f"configure {ENV_NAME} for PostgreSQL integration tests")
-class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
+class TestNP6PostgresConcurrency(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         parsed = make_url(DATABASE_URL)
@@ -48,7 +46,7 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
             pool_size=8,
             max_overflow=2,
             pool_pre_ping=True,
-            connect_args={"application_name": "np5-integration-test"},
+            connect_args={"application_name": "np6-integration-test"},
         )
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
         with cls.engine.connect() as connection:
@@ -64,7 +62,7 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
     def setUp(self):
         self.service = SalasNemAPatoService()
 
-    def preparar(self, *, iniciar_rodada=True):
+    def preparar(self):
         with self.sessions() as session:
             host = self.service.criar(session, f"Host-{uuid4().hex[:8]}")
         tokens = {"host": host.credencial_participante}
@@ -76,30 +74,29 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
                 tokens[chave] = entrada.credencial_participante
         with self.sessions() as session:
             if session.get(Categoria, "geral") is None:
-                self.fail("base category geral missing from migration 0009")
+                self.fail("base category geral missing")
             session.add_all([
                 PerguntaNemPato(
                     categoria_id="geral",
-                    enunciado=f"PostgreSQL NP5 {uuid4()}",
-                    resposta_numerica=indice,
+                    enunciado=f"PostgreSQL NP6 {uuid4()}",
+                    resposta_numerica=600,
                     explicacao="private integration explanation",
                     ativa=True,
                 )
-                for indice in range(10)
+                for _ in range(10)
             ])
             session.commit()
         with self.sessions() as session:
-            self.service.iniciar(
-                session, host.sala.codigo, host.credencial_participante
-            )
-        if iniciar_rodada:
-            with self.sessions() as session:
-                estado = self.service.iniciar_rodada(
-                    session, host.sala.codigo, host.credencial_participante
-                )
-            rodada_id = estado.partida.rodada.id
-        else:
-            rodada_id = None
+            self.service.iniciar(session, host.sala.codigo, tokens["host"])
+        with self.sessions() as session:
+            estado = self.service.iniciar_rodada(session, host.sala.codigo, tokens["host"])
+        rodada_id = estado.partida.rodada.id
+        with self.sessions() as session:
+            rodada = session.get(RodadaNemPato, rodada_id)
+            session.get(PerguntaNemPato, rodada.pergunta_id).resposta_numerica = 600
+            session.commit()
+        with self.sessions() as session:
+            self.service.palpitar(session, host.sala.codigo, rodada_id, tokens["host"], 500, uuid4())
         return host.sala.codigo, tokens, rodada_id
 
     def _esperou_lock_real(self, pid):
@@ -107,10 +104,7 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
         while time.monotonic() < limite:
             with self.engine.connect() as observador:
                 esperando = observador.scalar(
-                    text(
-                        "SELECT wait_event_type = 'Lock' "
-                        "FROM pg_stat_activity WHERE pid = :pid"
-                    ),
+                    text("SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"),
                     {"pid": pid},
                 )
             if esperando:
@@ -118,7 +112,7 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
             time.sleep(0.01)
         return False
 
-    def corrida(self, acao):
+    def corrida(self, lider_acao, segundo_acao):
         lider_bloqueou = threading.Event()
         segundo_tentou = threading.Event()
         liberar_lider = threading.Event()
@@ -127,12 +121,12 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
         class ServicoComLockRetido(SalasNemAPatoService):
             def _sala_bloqueada(inner, db, codigo):
                 nome = threading.current_thread().name
-                if nome == "np5-waiter":
+                if nome == "np6-waiter":
                     if not lider_bloqueou.wait(10):
                         raise TimeoutError("leader did not lock room")
                     segundo_tentou.set()
                 sala = super(ServicoComLockRetido, inner)._sala_bloqueada(db, codigo)
-                if nome == "np5-leader":
+                if nome == "np6-leader":
                     lider_bloqueou.set()
                     if not liberar_lider.wait(30):
                         raise TimeoutError("leader lock was not released")
@@ -140,7 +134,7 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
 
         service = ServicoComLockRetido()
 
-        def executar(nome):
+        def executar(nome, acao):
             threading.current_thread().name = nome
             try:
                 with self.sessions() as session:
@@ -150,88 +144,73 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
                 return ("rejected", erro.status_code, erro.detail)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            lider = executor.submit(executar, "np5-leader")
-            segundo = executor.submit(executar, "np5-waiter")
+            lider = executor.submit(executar, "np6-leader", lider_acao)
+            segundo = executor.submit(executar, "np6-waiter", segundo_acao)
             try:
                 self.assertTrue(lider_bloqueou.wait(10))
                 self.assertTrue(segundo_tentou.wait(10))
-                self.assertTrue(self._esperou_lock_real(pids["np5-waiter"]))
+                self.assertTrue(self._esperou_lock_real(pids["np6-waiter"]))
             finally:
                 liberar_lider.set()
             resultados = [lider.result(10), segundo.result(10)]
         self.assertEqual(len(set(pids.values())), 2)
         return resultados
 
-    def estado_persistido(self, codigo, rodada_id):
+    def estado(self, codigo, rodada_id):
         with self.sessions() as session:
             sala = session.scalar(select(SalaNemPato).where(SalaNemPato.codigo == codigo))
-            partida = session.scalar(
-                select(PartidaNemPato).where(PartidaNemPato.sala_id == sala.id)
-            )
+            partida = session.scalar(select(PartidaNemPato).where(PartidaNemPato.sala_id == sala.id))
             rodada = session.get(RodadaNemPato, rodada_id)
-            palpites = list(session.scalars(
-                select(PalpiteNemPato)
-                .where(PalpiteNemPato.rodada_id == rodada_id)
-                .order_by(PalpiteNemPato.ordem)
-            ))
-            return sala, partida, rodada, palpites
+            palpites = list(session.scalars(select(PalpiteNemPato).where(PalpiteNemPato.rodada_id == rodada_id).order_by(PalpiteNemPato.ordem)))
+            desafio = session.scalar(select(DesafioNemPato).where(DesafioNemPato.rodada_id == rodada_id))
+            jogadores = list(session.scalars(select(JogadorPartidaNemPato).where(JogadorPartidaNemPato.partida_id == partida.id)))
+            return sala, rodada, palpites, desafio, jogadores
 
-    def test_two_actions_same_turn_accept_exactly_one(self):
+    def test_desafio_contra_desafio_apenas_um_resolve(self):
         codigo, tokens, rodada_id = self.preparar()
+        resultados = self.corrida(
+            lambda session, service: service.desafiar(session, codigo, rodada_id, tokens["b"], uuid4()),
+            lambda session, service: service.desafiar(session, codigo, rodada_id, tokens["c"], uuid4()),
+        )
+        self.assertEqual([item[0] for item in resultados].count("accepted"), 1)
+        self.assertEqual([item[0] for item in resultados].count("rejected"), 1)
+        _, rodada, _, desafio, jogadores = self.estado(codigo, rodada_id)
+        self.assertEqual(rodada.status, RodadaNemPatoStatus.RESULTADO)
+        self.assertIsNotNone(desafio)
+        self.assertEqual(sum(jogador.patos for jogador in jogadores), 1)
 
-        def acao(session, service):
-            return service.palpitar(
-                session, codigo, rodada_id, tokens["host"], 100, uuid4()
-            )
-
-        resultados = self.corrida(acao)
-        self.assertEqual([r[0] for r in resultados].count("accepted"), 1)
-        self.assertEqual([r[0] for r in resultados].count("rejected"), 1)
-        sala, _, rodada, palpites = self.estado_persistido(codigo, rodada_id)
-        self.assertEqual(len(palpites), 1)
-        self.assertEqual(palpites[0].ordem, 1)
-        self.assertNotEqual(rodada.jogador_da_vez_id, palpites[0].jogador_partida_id)
-        self.assertEqual(sala.estado_versao, 5)
-
-    def test_two_simultaneous_retries_are_idempotent(self):
+    def test_retries_concorrentes_da_mesma_acao_tem_um_efeito(self):
         codigo, tokens, rodada_id = self.preparar()
         action_id = uuid4()
+        acao = lambda session, service: service.desafiar(session, codigo, rodada_id, tokens["b"], action_id)
+        resultados = self.corrida(acao, acao)
+        self.assertEqual([item[0] for item in resultados], ["accepted", "accepted"])
+        _, _, _, desafio, jogadores = self.estado(codigo, rodada_id)
+        self.assertEqual(desafio.client_action_id, action_id)
+        self.assertEqual(sum(jogador.patos for jogador in jogadores), 1)
 
-        def acao(session, service):
-            return service.palpitar(
-                session, codigo, rodada_id, tokens["host"], 100, action_id
-            )
-
-        resultados = self.corrida(acao)
-        self.assertEqual([r[0] for r in resultados], ["accepted", "accepted"])
-        sala, _, rodada, palpites = self.estado_persistido(codigo, rodada_id)
-        self.assertEqual(len(palpites), 1)
-        self.assertEqual(palpites[0].client_action_id, action_id)
-        self.assertNotEqual(rodada.jogador_da_vez_id, palpites[0].jogador_partida_id)
-        self.assertEqual(sala.estado_versao, 5)
-
-    def test_two_simultaneous_round_starts_transition_once(self):
-        codigo, tokens, _ = self.preparar(iniciar_rodada=False)
-
-        def acao(session, service):
-            return service.iniciar_rodada(session, codigo, tokens["host"])
-
-        resultados = self.corrida(acao)
-        self.assertEqual([r[0] for r in resultados].count("accepted"), 1)
-        self.assertEqual([r[0] for r in resultados].count("rejected"), 1)
-        with self.sessions() as session:
-            sala = session.scalar(select(SalaNemPato).where(SalaNemPato.codigo == codigo))
-            partida = session.scalar(
-                select(PartidaNemPato).where(PartidaNemPato.sala_id == sala.id)
-            )
-            rodada = session.scalar(select(RodadaNemPato).where(
-                RodadaNemPato.partida_id == partida.id,
-                RodadaNemPato.numero == 1,
-            ))
-        self.assertEqual(rodada.status, RodadaNemPatoStatus.EM_ANDAMENTO)
-        self.assertIsNotNone(rodada.iniciada_em)
-        self.assertIsNotNone(rodada.termina_em)
-        self.assertEqual(sala.estado_versao, 4)
+    def test_palpite_contra_desafio_serializa_nos_dois_sentidos(self):
+        for palpite_primeiro in (False, True):
+            with self.subTest(palpite_primeiro=palpite_primeiro):
+                codigo, tokens, rodada_id = self.preparar()
+                palpite = lambda session, service: service.palpitar(session, codigo, rodada_id, tokens["b"], 700, uuid4())
+                desafio = lambda session, service: service.desafiar(session, codigo, rodada_id, tokens["c"], uuid4())
+                resultados = self.corrida(
+                    palpite if palpite_primeiro else desafio,
+                    desafio if palpite_primeiro else palpite,
+                )
+                _, rodada, palpites, resolucao, jogadores = self.estado(codigo, rodada_id)
+                self.assertEqual(rodada.status, RodadaNemPatoStatus.RESULTADO)
+                self.assertEqual(sum(jogador.patos for jogador in jogadores), 1)
+                self.assertIsNotNone(resolucao)
+                if palpite_primeiro:
+                    self.assertEqual([item[0] for item in resultados], ["accepted", "accepted"])
+                    self.assertEqual([item.valor for item in palpites], [500, 700])
+                    self.assertEqual(resolucao.palpite_desafiado_id, palpites[-1].id)
+                else:
+                    self.assertEqual([item[0] for item in resultados], ["accepted", "rejected"])
+                    self.assertEqual([item.valor for item in palpites], [500])
+                    self.assertEqual(resolucao.palpite_desafiado_id, palpites[0].id)
 
 
 if __name__ == "__main__":

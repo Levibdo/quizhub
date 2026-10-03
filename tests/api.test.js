@@ -164,3 +164,21 @@ test('sessões Nem a Pato usam namespace próprio e removem somente a sala pedid
     globalThis.localStorage = anterior
   }
 })
+
+
+test("desafio usa endpoint NP6, token e somente client_action_id", async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify({ partida: { rodada: { status: "RESULTADO" } } }), { status: 200 })
+  }
+  await nemAPatoApi.desafiarPalpiteNemAPato(
+    "K7M4QX", 7, "token-luana", "22222222-2222-4222-8222-222222222222",
+  )
+  assert.equal(chamada.url, "http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/desafiar")
+  assert.equal(chamada.opcoes.method, "POST")
+  assert.equal(chamada.opcoes.headers["X-Nem-Pato-Token"], "token-luana")
+  assert.deepEqual(JSON.parse(chamada.opcoes.body), {
+    client_action_id: "22222222-2222-4222-8222-222222222222",
+  })
+})

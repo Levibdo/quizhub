@@ -84,6 +84,14 @@ export function enviarPalpiteNemAPato(codigo, rodadaId, token, valor, clientActi
   })
 }
 
+export function desafiarPalpiteNemAPato(codigo, rodadaId, token, clientActionId) {
+  return requisitar("/api/v1/nem-pato/salas/" + encodeURIComponent(codigo) + "/rodadas/" + encodeURIComponent(rodadaId) + "/desafiar", {
+    method: "POST",
+    headers: { "X-Nem-Pato-Token": token },
+    body: JSON.stringify({ client_action_id: clientActionId }),
+  })
+}
+
 export function abandonarSalaNemAPato(codigo, token) {
   return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/abandonar`, {
     method: 'POST',

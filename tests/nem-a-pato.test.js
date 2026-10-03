@@ -704,3 +704,147 @@ test('erro de palpite crescente é amigável e F5 recupera rodada ativa', async 
   await act(async () => ui.renderer.root.findAllByType('form').find((form) => form.props.className === 'np-guess-form').props.onSubmit({ preventDefault() {} }))
   assert.ok(ui.view().includes('Seu palpite precisa ser maior que 100.'))
 })
+
+
+function partidaNp6(players, euId, status = "EM_ANDAMENTO") {
+  const base = partidaNp5(players, euId, "EM_ANDAMENTO", [{ jogador: 0, valor: 500 }])
+  base.jogadores = base.jogadores.map((jogador) => ({ ...jogador, patos: jogador.nome === "Luana" && status === "RESULTADO" ? 1 : 0 }))
+  base.rodada.jogador_inicial = base.jogadores[0]
+  base.rodada.jogador_da_vez = status === "EM_ANDAMENTO" ? base.jogadores[1] : null
+  base.rodada.palpites[0].jogador = base.jogadores[0]
+  if (status === "RESULTADO") {
+    base.rodada.status = "RESULTADO"
+    base.rodada.pergunta = {
+      ...base.rodada.pergunta,
+      resposta_numerica: 2300,
+      explicacao: "Explicação oficial da resposta.",
+    }
+    base.rodada.finalizada_em = "2026-10-03T12:01:00Z"
+    base.rodada.tipo_finalizacao = "DESAFIO"
+    base.rodada.resultado_desafio = {
+      desafiante: base.jogadores[2],
+      palpite_desafiado: base.rodada.palpites[0],
+      jogador_penalizado: base.jogadores[2],
+      resolvido_em: "2026-10-03T12:01:00Z",
+    }
+  }
+  return base
+}
+
+test("botão desafia fora de turno, confirma autor/valor e bloqueia durante request", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  let partida = partidaNp6(players, 3)
+  let resolver
+  let payload
+  const confirmacoes = []
+  const confirmOriginal = globalThis.window.confirm
+  globalThis.window.confirm = (mensagem) => { confirmacoes.push(mensagem); return true }
+  t.after(() => { globalThis.window.confirm = confirmOriginal })
+  const ui = setup(t, async (url, options = {}) => {
+    if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
+    if (url.endsWith("/desafiar")) {
+      payload = JSON.parse(options.body)
+      return new Promise((resolve) => {
+        resolver = () => {
+          partida = partidaNp6(players, 3, "RESULTADO")
+          resolve(response({
+            sala: sala("K7M4QX", players, 7, "EM_PARTIDA"),
+            participante: players[2],
+            partida,
+          }))
+        }
+      })
+    }
+    return response({
+      sala: sala("K7M4QX", players, 6, "EM_PARTIDA"),
+      participante: players[2],
+      partida,
+    })
+  }, {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "luana-token" } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.button("NEM A PATO!"))
+  let envio
+  await act(async () => {
+    envio = ui.button("NEM A PATO!").props.onClick()
+    await Promise.resolve()
+  })
+  assert.match(confirmacoes[0], /Levi: 500 km/)
+  assert.equal(ui.button("Desafiando...").props.disabled, true)
+  await act(async () => { resolver(); await envio })
+  assert.match(payload.client_action_id, /^[0-9a-f-]{36}$/)
+  assert.ok(ui.view().includes("Resposta correta"))
+  assert.ok(ui.view().includes("2.300 km"))
+  assert.ok(ui.view().includes("Explicação oficial"))
+  assert.ok(ui.view().includes("Luana recebeu 1 pato"))
+  assert.equal(ui.button("NEM A PATO!"), undefined)
+  assert.equal(ui.renderer.root.findAllByProps({ id: "np-guess" }).length, 0)
+})
+
+test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  let chamadas = 0
+  const confirmOriginal = globalThis.window.confirm
+  globalThis.window.confirm = () => false
+  t.after(() => { globalThis.window.confirm = confirmOriginal })
+  const estadoAtivo = {
+    sala: sala("K7M4QX", players, 6, "EM_PARTIDA"),
+    participante: players[1],
+    partida: partidaNp6(players, 2),
+  }
+  const ui = setup(t, async (url) => {
+    if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
+    if (url.endsWith("/desafiar")) chamadas += 1
+    return response(estadoAtivo)
+  }, {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "jorge-token" } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.button("NEM A PATO!"))
+  await act(async () => ui.button("NEM A PATO!").props.onClick())
+  assert.equal(chamadas, 0)
+  await ui.unmount()
+
+  const resultado = {
+    sala: sala("K7M4QX", players, 7, "EM_PARTIDA"),
+    participante: players[2],
+    partida: partidaNp6(players, 3, "RESULTADO"),
+  }
+  const reloaded = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response(resultado), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "luana-token" } }) },
+  })
+  await reloaded.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(reloaded.view().includes("RESULTADO"))
+  assert.ok(reloaded.view().includes("Luana1 🦆"))
+  assert.ok(reloaded.view().includes("Aguardando próxima rodada"))
+  assert.equal(reloaded.button("NEM A PATO!"), undefined)
+})
+
+
+test("autor do último palpite não vê botão de desafio", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  const estado = {
+    sala: sala("K7M4QX", players, 6, "EM_PARTIDA"),
+    participante: players[0],
+    partida: partidaNp6(players, 1),
+  }
+  const ui = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response(estado), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "levi-token" } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button("NEM A PATO!"), undefined)
+  assert.ok(ui.view().includes("Levi500 km"))
+})

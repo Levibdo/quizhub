@@ -3,6 +3,7 @@ import {
   abandonarSalaNemAPato,
   carregarSessaoNemAPato,
   criarSalaNemAPato,
+  desafiarPalpiteNemAPato,
   entrarSalaNemAPato,
   enviarPalpiteNemAPato,
   iniciarPartidaNemAPato,
@@ -84,6 +85,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [podeSincronizar, setPodeSincronizar] = useState(false)
   const operacaoRef = useRef(false)
   const acaoPalpiteRef = useRef(null)
+  const acaoDesafioRef = useRef(null)
   const recuperacaoInicial = useRef(false)
 
   const navegar = useCallback((destino) => {
@@ -293,6 +295,40 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }
 
+
+  async function confirmarDesafio() {
+    const rodada = estadoSala?.partida?.rodada
+    const ultimo = rodada?.palpites?.at(-1)
+    if (operacaoRef.current || !sessao || !rodada || !ultimo) return
+    const confirmado = globalThis.window.confirm
+      ? globalThis.window.confirm(
+        `Desafiar o palpite de ${ultimo.jogador.nome}: ${formatarPalpite(ultimo.valor, rodada.pergunta?.unidade)}?`,
+      )
+      : true
+    if (!confirmado) return
+    if (!acaoDesafioRef.current || acaoDesafioRef.current.rodadaId !== rodada.id) {
+      acaoDesafioRef.current = { rodadaId: rodada.id, id: novoClientActionId() }
+    }
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro("")
+    try {
+      const atual = await desafiarPalpiteNemAPato(
+        sessao.codigo,
+        rodada.id,
+        sessao.token,
+        acaoDesafioRef.current.id,
+      )
+      setEstadoSala(atual)
+      acaoDesafioRef.current = null
+    } catch (error) {
+      setErro(mensagemErro(error, "desafio"))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
   function copiarCodigo() {
     const escrita = navigator.clipboard?.writeText(rota.codigo)
     if (!escrita) {
@@ -311,6 +347,12 @@ function TelaNemAPato({ voltarInicio }) {
     const eu = estadoSala?.participante
     const partida = estadoSala?.partida
     const rodada = partida?.rodada
+    const ultimoPalpite = rodada?.palpites?.at(-1)
+    const jogadorAtual = partida?.jogadores?.find((jogador) => jogador.eh_eu)
+    const podeDesafiar = rodada?.status === 'EM_ANDAMENTO'
+      && ultimoPalpite
+      && !ultimoPalpite.jogador.eh_eu
+      && jogadorAtual?.status === 'ATIVO'
     const mensagemSemSessao = !sessao && !erro
       ? 'Não há uma participação salva para esta sala neste navegador.'
       : erro
@@ -346,6 +388,17 @@ function TelaNemAPato({ voltarInicio }) {
                         </li>
                       ))}
                     </ul>
+                    <section className="np-score" aria-label="Placar de patos">
+                      <h3>PATOS</h3>
+                      <ul>
+                        {partida.jogadores.map((jogador) => (
+                          <li key={jogador.id}>
+                            <span>{jogador.nome}</span>
+                            <strong>{jogador.patos ?? 0} 🦆</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
                   </>
                 ) : <p role="status">Recuperando a partida...</p>}
                 {rodada?.status === 'AGUARDANDO_INICIO' && (
@@ -398,6 +451,32 @@ function TelaNemAPato({ voltarInicio }) {
                     ) : (
                       <p role="status">Aguardando o palpite de {rodada.jogador_da_vez?.nome}...</p>
                     )}
+                    {podeDesafiar && (
+                      <button
+                        className="np-challenge"
+                        type="button"
+                        disabled={carregando}
+                        onClick={confirmarDesafio}
+                      >
+                        {carregando ? "Desafiando..." : "NEM A PATO!"}
+                      </button>
+                    )}
+                  </section>
+                )}
+                {rodada?.status === "RESULTADO" && rodada.resultado_desafio && (
+                  <section className="np-round np-result" aria-labelledby="np-result-title">
+                    <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
+                    <h3 id="np-result-title">RESULTADO</h3>
+                    <p className="np-round__question">{rodada.pergunta?.enunciado}</p>
+                    <div className="np-result__answer">
+                      <span>Resposta correta</span>
+                      <strong>{formatarPalpite(rodada.pergunta?.resposta_numerica, rodada.pergunta?.unidade)}</strong>
+                    </div>
+                    <p>Último palpite: <strong>{rodada.resultado_desafio.palpite_desafiado.jogador.nome} — {formatarPalpite(rodada.resultado_desafio.palpite_desafiado.valor, rodada.pergunta?.unidade)}</strong></p>
+                    <p><strong>{rodada.resultado_desafio.desafiante.nome}</strong> disse “Nem a Pato!”</p>
+                    <p className="np-result__penalty"><strong>{rodada.resultado_desafio.jogador_penalizado.nome}</strong> recebeu 1 pato.</p>
+                    <p className="np-result__explanation">{rodada.pergunta?.explicacao}</p>
+                    <p role="status">Aguardando próxima rodada...</p>
                   </section>
                 )}
               </section>

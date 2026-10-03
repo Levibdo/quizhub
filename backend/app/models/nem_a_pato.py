@@ -281,6 +281,10 @@ class JogadorPartidaNemPato(Base):
             name="ck_jogadores_partida_nem_pato_ordem_circular_positiva",
         ),
         CheckConstraint(
+            "patos >= 0",
+            name="ck_jogadores_partida_nem_pato_patos_nao_negativo",
+        ),
+        CheckConstraint(
             "length(trim(nome_snapshot)) > 0",
             name="ck_jogadores_partida_nem_pato_nome_snapshot_nao_vazio",
         ),
@@ -310,6 +314,9 @@ class JogadorPartidaNemPato(Base):
         nullable=False,
         default=ParticipanteNemPatoStatus.ATIVO,
         server_default=text("'ATIVO'"),
+    )
+    patos: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
     )
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -440,3 +447,23 @@ class PalpiteNemPato(Base):
     jogador_partida: Mapped["JogadorPartidaNemPato"] = relationship(
         back_populates="palpites"
     )
+
+class DesafioNemPato(Base):
+    __tablename__ = "desafios_nem_pato"
+    __table_args__ = (
+        UniqueConstraint("rodada_id", name="uq_desafios_nem_pato_rodada"),
+        UniqueConstraint("client_action_id", name="uq_desafios_nem_pato_client_action"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    rodada_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("rodadas_nem_pato.id"), nullable=False)
+    desafiante_jogador_partida_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("jogadores_partida_nem_pato.id"), nullable=False)
+    palpite_desafiado_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("palpites_nem_pato.id"), nullable=False)
+    jogador_penalizado_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("jogadores_partida_nem_pato.id"), nullable=False)
+    client_action_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    resolvido_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    rodada: Mapped["RodadaNemPato"] = relationship()
+    desafiante: Mapped["JogadorPartidaNemPato"] = relationship(foreign_keys=[desafiante_jogador_partida_id])
+    palpite_desafiado: Mapped["PalpiteNemPato"] = relationship()
+    jogador_penalizado: Mapped["JogadorPartidaNemPato"] = relationship(foreign_keys=[jogador_penalizado_id])

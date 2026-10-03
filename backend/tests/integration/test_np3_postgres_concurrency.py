@@ -1,6 +1,6 @@
 """Real PostgreSQL concurrency tests for the Nem a Pato lobby.
 
-Run against a disposable database after applying Alembic through 0009:
+Run against a disposable database after applying Alembic through 0010:
 
     NEM_A_PATO_TEST_DATABASE_URL=postgresql+psycopg://.../np3_test_db \
         python -m unittest discover -s tests/integration -v
@@ -54,9 +54,9 @@ class TestNemAPatoPostgresConcurrency(unittest.TestCase):
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
         with cls.engine.connect() as connection:
             version = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if version != "0009":
+        if version != "0010":
             cls.engine.dispose()
-            raise RuntimeError(f"expected Alembic revision 0009, got {version!r}")
+            raise RuntimeError(f"expected Alembic revision 0010, got {version!r}")
 
     @classmethod
     def tearDownClass(cls):

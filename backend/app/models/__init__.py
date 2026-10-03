@@ -1,6 +1,7 @@
 from app.models.categoria import Categoria
 from app.models.jogador import Jogador
 from app.models.nem_a_pato import (
+    DesafioNemPato,
     JogadorPartidaNemPato,
     PalpiteNemPato,
     PartidaNemPato,
@@ -16,6 +17,7 @@ from app.models.resposta import Resposta
 from app.models.usuario import Usuario
 
 __all__ = [
+    "DesafioNemPato",
     "Categoria",
     "Jogador",
     "JogadorPartidaNemPato",

@@ -371,6 +371,7 @@ primeira rodada com palpites numéricos crescentes:
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/iniciar` | Anfitrião inicia e prepara 10 rodadas. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/iniciar` | Anfitrião abre a primeira rodada. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/palpites` | Jogador da vez registra um palpite. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/desafiar` | Jogador elegível resolve a rodada contra o último palpite. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
 
 O código de sala tem seis caracteres maiúsculos e usa o alfabeto
@@ -409,10 +410,17 @@ registro nem avançar o turno novamente. Início e palpites usam o header
 → snapshots → palpites.
 
 O polling de `GET .../eu` devolve pergunta pública, jogador da vez, maior
-palpite e histórico, permitindo reconstruir a rodada após F5. A duração de 120
-segundos é persistida e exibida apenas como informação nesta fase. Ainda não há
-desafio “Nem a Pato!”, timeout funcional, finalização da rodada nem avanço para
-a rodada seguinte.
+palpite, histórico e placar de patos. Após ao menos um palpite, qualquer jogador
+ativo do snapshot, inclusive fora de turno, pode desafiar o último palpite, exceto
+o próprio autor. O payload exige `client_action_id` UUID persistido. Se o palpite
+passou da resposta, seu autor recebe um pato; se ficou abaixo ou foi exatamente
+igual, o desafiante recebe o pato. A igualdade, portanto, favorece o autor.
+
+Palpite e desafio usam a mesma ordem de locks e o backend escolhe o último palpite
+sob lock. Apenas uma resolução por rodada é persistida. Em `RESULTADO`, resposta,
+explicação, autor, desafiante, penalizado e placar são revelados e reconstruídos
+após F5. A duração de 120 segundos continua apenas informativa: a NP6 não
+implementa timeout nem avanço funcional para a próxima rodada.
 
 ## API
 
