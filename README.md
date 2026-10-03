@@ -372,6 +372,7 @@ primeira rodada com palpites numéricos crescentes:
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/iniciar` | Anfitrião abre a primeira rodada. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/palpites` | Jogador da vez registra um palpite. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/desafiar` | Jogador elegível resolve a rodada contra o último palpite. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/proxima` | Anfitrião ativo abre a próxima rodada após o resultado. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
 
 O código de sala tem seis caracteres maiúsculos e usa o alfabeto
@@ -396,8 +397,9 @@ ativo. A sala muda para `EM_PARTIDA` e incrementa sua versão na mesma transaç�
 Os clientes recuperam um resumo seguro da partida por `GET .../eu`; o DTO não
 inclui perguntas nem respostas. Nesta etapa, a categoria da partida registra
 a categoria da primeira pergunta selecionada (as categorias das demais
-perguntas podem variar). Abandono após início está temporariamente bloqueado,
-até haver regras próprias para saída durante partida.
+perguntas podem variar). Durante uma rodada ativa, o abandono permanece bloqueado. Entre rodadas, em
+`RESULTADO`, o participante pode abandonar: seu snapshot é marcado, ele deixa as
+rotações futuras e, se era anfitrião, o papel passa ao próximo participante ativo.
 
 O início da rodada revela somente enunciado, categoria e unidade da pergunta;
 `resposta_numerica` e `explicacao` permanecem privadas. O primeiro jogador é
@@ -419,8 +421,12 @@ igual, o desafiante recebe o pato. A igualdade, portanto, favorece o autor.
 Palpite e desafio usam a mesma ordem de locks e o backend escolhe o último palpite
 sob lock. Apenas uma resolução por rodada é persistida. Em `RESULTADO`, resposta,
 explicação, autor, desafiante, penalizado e placar são revelados e reconstruídos
-após F5. A duração de 120 segundos continua apenas informativa: a NP6 não
-implementa timeout nem avanço funcional para a próxima rodada.
+após F5. O anfitrião ativo avança uma única rodada por ação, de R1 até R10;
+o backend preserva histórico e placar, escolhe o jogador inicial pela rotação
+circular dos snapshots ativos e incrementa a versão da sala uma vez. Repetições
+ou corridas de avanço não iniciam duas rodadas. Depois da R10 não há avanço nesta
+fase. A duração de 120 segundos continua apenas informativa: a NP6B não implementa
+timeout nem encerramento da partida.
 
 ## API
 
@@ -448,14 +454,15 @@ python -m unittest discover -s tests -v
 
 Os testes de concorrência real do Nem a Pato ficam separados da suíte SQLite.
 Eles cobrem entrada, início de partida/rodada, início versus entrada, palpites
-simultâneos e retries idempotentes. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
-com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0009`:
+simultâneos, retries idempotentes, avanço concorrente e avanço versus abandono.
+Execute-os somente em um banco PostgreSQL descartável cujo nome comece
+com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0010`:
 
 ```bash
 cd backend
 createdb np3_test_local
 export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/np3_test_local"
-python -m alembic upgrade 0009
+python -m alembic upgrade 0010
 export NEM_A_PATO_TEST_DATABASE_URL="$DATABASE_URL"
 python -m unittest discover -s tests/integration -v
 dropdb np3_test_local

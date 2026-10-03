@@ -1054,6 +1054,129 @@ class SalasNemAPatoService:
             db.rollback()
             raise
 
+
+    def iniciar_proxima_rodada(
+        self,
+        db: Session,
+        codigo: str,
+        rodada_id: int,
+        token: str | None,
+    ) -> SalaRecuperada:
+        codigo = self._codigo_normalizado(codigo)
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        token_digest = hash_credencial(token)
+        try:
+            # Ordem: sala -> participantes -> partida -> rodadas (numero)
+            # -> snapshots. Nao ha palpites novos nesta transicao.
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = self._participante_autenticado_bloqueado(
+                participantes, token_digest
+            )
+            if not participante.eh_anfitriao:
+                raise HTTPException(
+                    status_code=403,
+                    detail="somente o anfitrião pode iniciar a próxima rodada",
+                )
+            if sala.status != SalaNemPatoStatus.EM_PARTIDA:
+                raise HTTPException(status_code=409, detail="sala não está em partida")
+
+            partida = db.scalar(
+                select(PartidaNemPato)
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if partida is None or partida.status != PartidaNemPatoStatus.EM_ANDAMENTO:
+                raise HTTPException(status_code=409, detail="partida não está em andamento")
+
+            numero_atual = partida.rodada_atual
+            rodadas = list(db.scalars(
+                select(RodadaNemPato)
+                .where(
+                    RodadaNemPato.partida_id == partida.id,
+                    RodadaNemPato.numero.in_((numero_atual, numero_atual + 1)),
+                )
+                .order_by(RodadaNemPato.numero)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            rodada_atual = next(
+                (item for item in rodadas if item.id == rodada_id), None
+            )
+            if rodada_atual is None or rodada_atual.numero != numero_atual:
+                raise HTTPException(
+                    status_code=409, detail="rodada não é a rodada atual"
+                )
+            if rodada_atual.status != RodadaNemPatoStatus.RESULTADO:
+                raise HTTPException(
+                    status_code=409, detail="rodada atual ainda não possui resultado"
+                )
+            if rodada_atual.numero >= partida.total_rodadas:
+                raise HTTPException(
+                    status_code=409, detail="não há próxima rodada disponível"
+                )
+            proxima = next(
+                (item for item in rodadas if item.numero == numero_atual + 1), None
+            )
+            if proxima is None:
+                raise HTTPException(
+                    status_code=409, detail="próxima rodada não encontrada"
+                )
+            if proxima.status != RodadaNemPatoStatus.AGUARDANDO_INICIO:
+                raise HTTPException(
+                    status_code=409, detail="próxima rodada já iniciada"
+                )
+
+            jogadores = list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(JogadorPartidaNemPato.partida_id == partida.id)
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            ativos = [
+                item for item in jogadores
+                if item.status == ParticipanteNemPatoStatus.ATIVO
+            ]
+            if len(ativos) < MIN_JOGADORES_NEM_A_PATO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="são necessários pelo menos 3 jogadores ativos para continuar",
+                )
+            jogador_inicial = self._jogador_inicial_da_rodada(
+                ativos, proxima.numero
+            )
+            agora = datetime.now(timezone.utc)
+            proxima.jogador_inicial_id = jogador_inicial.id
+            proxima.jogador_da_vez_id = jogador_inicial.id
+            proxima.status = RodadaNemPatoStatus.EM_ANDAMENTO
+            proxima.iniciada_em = agora
+            proxima.termina_em = agora + timedelta(
+                seconds=partida.duracao_rodada_segundos
+            )
+            partida.rodada_atual = proxima.numero
+            sala.estado_versao += 1
+            db.flush()
+            db.commit()
+            return self.recuperar(db, codigo, token)
+        except HTTPException:
+            db.rollback()
+            raise
+        except IntegrityError as erro:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="conflito ao iniciar próxima rodada; atualize o estado da sala",
+            ) from erro
+        except Exception:
+            db.rollback()
+            raise
+
     def estado_publico(self, db: Session, codigo: str) -> SalaLobbyPublica:
         codigo = self._codigo_normalizado(codigo)
         sala = db.scalar(
@@ -1099,21 +1222,73 @@ class SalasNemAPatoService:
             if sala is None:
                 raise HTTPException(status_code=404, detail="sala inexistente")
             participantes = self._participantes_bloqueados(db, sala.id)
-            if sala.status != SalaNemPatoStatus.AGUARDANDO:
-                raise HTTPException(
-                    status_code=409,
-                    detail="abandono após início da partida ainda não está disponível",
-                )
             participante = next(
                 (item for item in participantes if item.id == participante.id), None
             )
             if participante is None or participante.status != ParticipanteNemPatoStatus.ATIVO:
                 raise HTTPException(status_code=403, detail="participante não está ativo")
 
+            jogador_partida = None
+            if sala.status == SalaNemPatoStatus.EM_PARTIDA:
+                partida = db.scalar(
+                    select(PartidaNemPato)
+                    .where(
+                        PartidaNemPato.sala_id == sala.id,
+                        PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if partida is None or partida.rodada_atual == 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="abandono só é permitido entre rodadas",
+                    )
+                rodada = db.scalar(
+                    select(RodadaNemPato)
+                    .where(
+                        RodadaNemPato.partida_id == partida.id,
+                        RodadaNemPato.numero == partida.rodada_atual,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if rodada is None or rodada.status != RodadaNemPatoStatus.RESULTADO:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="abandono só é permitido entre rodadas",
+                    )
+                jogadores = list(
+                    db.scalars(
+                        select(JogadorPartidaNemPato)
+                        .where(JogadorPartidaNemPato.partida_id == partida.id)
+                        .order_by(JogadorPartidaNemPato.ordem_circular)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                )
+                jogador_partida = next(
+                    (item for item in jogadores if item.participante_id == participante.id),
+                    None,
+                )
+                if jogador_partida is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="participante não pertence à partida atual",
+                    )
+            elif sala.status != SalaNemPatoStatus.AGUARDANDO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="abandono indisponível no estado atual da sala",
+                )
+
             era_anfitriao = participante.eh_anfitriao
             participante.status = ParticipanteNemPatoStatus.ABANDONOU
             participante.eh_anfitriao = False
             participante.saiu_em = func.now()
+            if jogador_partida is not None:
+                jogador_partida.status = ParticipanteNemPatoStatus.ABANDONOU
+                jogador_partida.saiu_em = func.now()
             # Uma ação de abandono incrementa a versão uma única vez, mesmo com handoff.
             sala.estado_versao += 1
             db.flush()

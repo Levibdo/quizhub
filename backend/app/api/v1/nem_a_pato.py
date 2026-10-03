@@ -110,6 +110,21 @@ def desafiar_palpite(
     )
 
 
+@router.post(
+    "/{codigo}/rodadas/{rodada_id}/proxima",
+    response_model=SalaRecuperada,
+)
+def iniciar_proxima_rodada(
+    codigo: str,
+    rodada_id: int,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.iniciar_proxima_rodada(
+        db, codigo, rodada_id, token
+    )
+
+
 @router.post("/{codigo}/abandonar", response_model=SalaLobbyPublica)
 def abandonar_sala(
     codigo: str,

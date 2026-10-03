@@ -182,3 +182,17 @@ test("desafio usa endpoint NP6, token e somente client_action_id", async () => {
     client_action_id: "22222222-2222-4222-8222-222222222222",
   })
 })
+
+
+test("próxima rodada usa endpoint NP6B e token do host", async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify({ partida: { rodada: { numero: 2 } } }), { status: 200 })
+  }
+  await nemAPatoApi.iniciarProximaRodadaNemAPato("K7M4QX", 51, "token-host")
+  assert.equal(chamada.url, "http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/51/proxima")
+  assert.equal(chamada.opcoes.method, "POST")
+  assert.equal(chamada.opcoes.headers["X-Nem-Pato-Token"], "token-host")
+  assert.equal(chamada.opcoes.body, undefined)
+})

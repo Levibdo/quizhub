@@ -825,7 +825,7 @@ test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar"
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(reloaded.view().includes("RESULTADO"))
   assert.ok(reloaded.view().includes("Luana1 🦆"))
-  assert.ok(reloaded.view().includes("Aguardando próxima rodada"))
+  assert.ok(reloaded.view().includes("Aguardando o host iniciar a próxima rodada"))
   assert.equal(reloaded.button("NEM A PATO!"), undefined)
 })
 
@@ -847,4 +847,88 @@ test("autor do último palpite não vê botão de desafio", async (t) => {
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.equal(ui.button("NEM A PATO!"), undefined)
   assert.ok(ui.view().includes("Levi500 km"))
+})
+
+
+test("host avança com um clique e recebe R2 limpa com placar preservado", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  let partida = partidaNp6(players, 1, "RESULTADO")
+  let resolver
+  const ui = setup(t, async (url) => {
+    if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
+    if (url.endsWith("/proxima")) {
+      return new Promise((resolve) => {
+        resolver = () => {
+          const patos = partida.jogadores.map((jogador) => jogador.patos)
+          partida = partidaNp5(players, 1, "EM_ANDAMENTO", [])
+          partida.rodada.numero = 2
+          partida.rodada.pergunta = { id: 10, categoria_id: "geral", enunciado: "Pergunta inédita da rodada 2", unidade: "itens" }
+          partida.rodada.jogador_inicial = partida.jogadores[1]
+          partida.rodada.jogador_da_vez = partida.jogadores[1]
+          partida.jogadores = partida.jogadores.map((jogador, indice) => ({ ...jogador, patos: patos[indice] }))
+          resolve(response({ sala: sala("K7M4QX", players, 8, "EM_PARTIDA"), participante: players[0], partida }))
+        }
+      })
+    }
+    return response({ sala: sala("K7M4QX", players, 7, "EM_PARTIDA"), participante: players[0], partida })
+  }, {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host-token" } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.button("PRÓXIMA RODADA"))
+  let envio
+  await act(async () => { envio = ui.button("PRÓXIMA RODADA").props.onClick(); await Promise.resolve() })
+  assert.equal(ui.button("Iniciando próxima rodada...").props.disabled, true)
+  await act(async () => { resolver(); await envio })
+  assert.ok(ui.view().includes("Rodada 2 de 10"))
+  assert.ok(ui.view().includes("Pergunta inédita da rodada 2"))
+  assert.ok(ui.view().includes("Jogador da vez"))
+  assert.ok(ui.view().includes("Jorge"))
+  assert.ok(ui.view().includes("Luana1 🦆"))
+  assert.ok(!ui.view().includes("Resposta correta"))
+  assert.ok(!ui.view().includes("500 km"))
+})
+
+test("não-host sincroniza R2 por polling e rodada 10 não oferece avanço", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  let partida = partidaNp6(players, 2, "RESULTADO")
+  let pollingCallback
+  const ui = setup(t, async (url) => {
+    if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
+    return response({ sala: sala("K7M4QX", players, 7, "EM_PARTIDA"), participante: players[1], partida })
+  }, {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "jorge-token" } }) },
+  })
+  globalThis.window.setInterval = (callback) => { pollingCallback = callback; return 96 }
+  globalThis.window.clearInterval = () => {}
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button("PRÓXIMA RODADA"), undefined)
+  assert.ok(ui.view().includes("Aguardando o host iniciar a próxima rodada"))
+  partida = partidaNp5(players, 2, "EM_ANDAMENTO", [])
+  partida.rodada.numero = 2
+  partida.rodada.pergunta = { id: 10, categoria_id: "geral", enunciado: "Pergunta após polling", unidade: null }
+  partida.rodada.jogador_inicial = partida.jogadores[1]
+  partida.rodada.jogador_da_vez = partida.jogadores[1]
+  await act(async () => pollingCallback())
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes("Rodada 2 de 10"))
+  assert.ok(ui.view().includes("Pergunta após polling"))
+  await ui.unmount()
+
+  const final = partidaNp6(players, 1, "RESULTADO")
+  final.rodada.numero = 10
+  const host = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response({ sala: sala("K7M4QX", players, 20, "EM_PARTIDA"), participante: players[0], partida: final }), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host-token" } }) },
+  })
+  await host.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(host.button("PRÓXIMA RODADA"), undefined)
+  assert.ok(host.view().includes("10 rodadas concluídas"))
 })

@@ -7,6 +7,7 @@ import {
   entrarSalaNemAPato,
   enviarPalpiteNemAPato,
   iniciarPartidaNemAPato,
+  iniciarProximaRodadaNemAPato,
   iniciarRodadaNemAPato,
   recuperarSalaNemAPato,
   removerSessaoNemAPato,
@@ -329,6 +330,31 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }
 
+
+  async function iniciarProximaRodada() {
+    const rodada = estadoSala?.partida?.rodada
+    if (operacaoRef.current || !sessao || !rodada) return
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro("")
+    try {
+      const atual = await iniciarProximaRodadaNemAPato(
+        sessao.codigo,
+        rodada.id,
+        sessao.token,
+      )
+      setEstadoSala(atual)
+      setPalpite("")
+      acaoPalpiteRef.current = null
+      acaoDesafioRef.current = null
+    } catch (error) {
+      setErro(mensagemErro(error, "proxima-rodada"))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
   function copiarCodigo() {
     const escrita = navigator.clipboard?.writeText(rota.codigo)
     if (!escrita) {
@@ -476,7 +502,22 @@ function TelaNemAPato({ voltarInicio }) {
                     <p><strong>{rodada.resultado_desafio.desafiante.nome}</strong> disse “Nem a Pato!”</p>
                     <p className="np-result__penalty"><strong>{rodada.resultado_desafio.jogador_penalizado.nome}</strong> recebeu 1 pato.</p>
                     <p className="np-result__explanation">{rodada.pergunta?.explicacao}</p>
-                    <p role="status">Aguardando próxima rodada...</p>
+                    {rodada.numero < partida.total_rodadas ? (
+                      eu?.eh_anfitriao ? (
+                        <button
+                          className="np-start-button"
+                          type="button"
+                          disabled={carregando}
+                          onClick={iniciarProximaRodada}
+                        >
+                          {carregando ? "Iniciando próxima rodada..." : "PRÓXIMA RODADA"}
+                        </button>
+                      ) : (
+                        <p role="status">Aguardando o host iniciar a próxima rodada...</p>
+                      )
+                    ) : (
+                      <p role="status">10 rodadas concluídas. Preparando resultado final...</p>
+                    )}
                   </section>
                 )}
               </section>
