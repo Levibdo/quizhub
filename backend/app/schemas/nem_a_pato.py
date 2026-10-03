@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -39,9 +40,38 @@ class SalaLobbyPublica(BaseModel):
 
 
 class JogadorPartidaNemPatoPublico(BaseModel):
+    id: UUID
     nome: str
     ordem_circular: int
     status: str
+    eh_eu: bool = False
+
+
+class PerguntaRodadaNemPatoPublica(BaseModel):
+    id: int
+    categoria_id: str
+    enunciado: str
+    unidade: str | None
+
+
+class PalpiteNemPatoPublico(BaseModel):
+    ordem: int
+    valor: int
+    jogador: JogadorPartidaNemPatoPublico
+    criado_em: datetime
+
+
+class RodadaNemPatoPublica(BaseModel):
+    id: int
+    numero: int
+    status: str
+    pergunta: PerguntaRodadaNemPatoPublica | None
+    jogador_inicial: JogadorPartidaNemPatoPublico
+    jogador_da_vez: JogadorPartidaNemPatoPublico | None
+    maior_palpite: int | None
+    palpites: list[PalpiteNemPatoPublico]
+    iniciada_em: datetime | None
+    termina_em: datetime | None
 
 
 class PartidaNemPatoPublica(BaseModel):
@@ -52,6 +82,12 @@ class PartidaNemPatoPublica(BaseModel):
     total_rodadas: int
     duracao_rodada_segundos: int
     jogadores: list[JogadorPartidaNemPatoPublico]
+    rodada: RodadaNemPatoPublica | None = None
+
+
+class CriarPalpiteNemPato(BaseModel):
+    valor: Annotated[int, Field(strict=True, ge=0, le=9_223_372_036_854_775_807)]
+    client_action_id: UUID
 
 
 class SalaRecuperada(BaseModel):

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.nem_a_pato import (
+    CriarPalpiteNemPato,
     CriarSalaNemAPato,
     EntrarSalaNemAPato,
     ParticipacaoSalaCriada,
@@ -60,6 +61,36 @@ def iniciar_partida(
     db: Session = Depends(get_db),
 ):
     return salas_nem_a_pato.iniciar(db, codigo, token)
+
+
+@router.post("/{codigo}/rodadas/iniciar", response_model=SalaRecuperada)
+def iniciar_rodada(
+    codigo: str,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.iniciar_rodada(db, codigo, token)
+
+
+@router.post(
+    "/{codigo}/rodadas/{rodada_id}/palpites",
+    response_model=SalaRecuperada,
+)
+def criar_palpite(
+    codigo: str,
+    rodada_id: int,
+    entrada: CriarPalpiteNemPato,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.palpitar(
+        db,
+        codigo,
+        rodada_id,
+        token,
+        entrada.valor,
+        entrada.client_action_id,
+    )
 
 
 @router.post("/{codigo}/abandonar", response_model=SalaLobbyPublica)

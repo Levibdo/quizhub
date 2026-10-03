@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import secrets
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     JogadorPartidaNemPato,
+    PalpiteNemPato,
     PartidaNemPato,
     ParticipanteNemPato,
     PerguntaNemPato,
@@ -29,9 +31,12 @@ from app.nem_a_pato import (
 )
 from app.schemas.nem_a_pato import (
     JogadorPartidaNemPatoPublico,
+    PalpiteNemPatoPublico,
     ParticipanteSalaPublico,
+    PerguntaRodadaNemPatoPublica,
     PartidaNemPatoPublica,
     ParticipacaoSalaCriada,
+    RodadaNemPatoPublica,
     SalaLobbyPublica,
     SalaRecuperada,
 )
@@ -313,14 +318,91 @@ class SalasNemAPatoService:
         return sala, participante
 
     @staticmethod
+    def _jogador_publico(
+        jogador: JogadorPartidaNemPato,
+        participante_id: UUID,
+    ) -> JogadorPartidaNemPatoPublico:
+        return JogadorPartidaNemPatoPublico(
+            id=jogador.id,
+            nome=jogador.nome_snapshot,
+            ordem_circular=jogador.ordem_circular,
+            status=jogador.status.value,
+            eh_eu=jogador.participante_id == participante_id,
+        )
+
     def _partida_publica(
+        self,
+        db: Session,
         partida: PartidaNemPato,
+        participante_id: UUID,
         jogadores: list[JogadorPartidaNemPato] | None = None,
     ) -> PartidaNemPatoPublica:
         jogadores_ordenados = sorted(
-            jogadores if jogadores is not None else partida.jogadores,
+            jogadores if jogadores is not None else list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(JogadorPartidaNemPato.partida_id == partida.id)
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+            )),
             key=lambda jogador: jogador.ordem_circular,
         )
+        jogadores_por_id = {jogador.id: jogador for jogador in jogadores_ordenados}
+        numero_rodada = partida.rodada_atual or 1
+        rodada = db.scalar(
+            select(RodadaNemPato).where(
+                RodadaNemPato.partida_id == partida.id,
+                RodadaNemPato.numero == numero_rodada,
+            )
+        )
+        rodada_publica = None
+        if rodada is not None:
+            palpites = list(db.scalars(
+                select(PalpiteNemPato)
+                .where(PalpiteNemPato.rodada_id == rodada.id)
+                .order_by(PalpiteNemPato.ordem)
+            ))
+            pergunta = None
+            if rodada.status == RodadaNemPatoStatus.EM_ANDAMENTO:
+                pergunta_db = db.get(PerguntaNemPato, rodada.pergunta_id)
+                pergunta = PerguntaRodadaNemPatoPublica(
+                    id=pergunta_db.id,
+                    categoria_id=pergunta_db.categoria_id,
+                    enunciado=pergunta_db.enunciado,
+                    unidade=pergunta_db.unidade,
+                )
+            jogador_inicial = jogadores_por_id[rodada.jogador_inicial_id]
+            jogador_da_vez = (
+                jogadores_por_id.get(rodada.jogador_da_vez_id)
+                if rodada.jogador_da_vez_id is not None
+                else None
+            )
+            rodada_publica = RodadaNemPatoPublica(
+                id=rodada.id,
+                numero=rodada.numero,
+                status=rodada.status.value,
+                pergunta=pergunta,
+                jogador_inicial=self._jogador_publico(
+                    jogador_inicial, participante_id
+                ),
+                jogador_da_vez=(
+                    self._jogador_publico(jogador_da_vez, participante_id)
+                    if jogador_da_vez is not None else None
+                ),
+                maior_palpite=palpites[-1].valor if palpites else None,
+                palpites=[
+                    PalpiteNemPatoPublico(
+                        ordem=palpite.ordem,
+                        valor=palpite.valor,
+                        jogador=self._jogador_publico(
+                            jogadores_por_id[palpite.jogador_partida_id],
+                            participante_id,
+                        ),
+                        criado_em=palpite.criado_em,
+                    )
+                    for palpite in palpites
+                ],
+                iniciada_em=rodada.iniciada_em,
+                termina_em=rodada.termina_em,
+            )
         return PartidaNemPatoPublica(
             id=partida.id,
             numero=partida.numero,
@@ -329,13 +411,10 @@ class SalasNemAPatoService:
             total_rodadas=partida.total_rodadas,
             duracao_rodada_segundos=partida.duracao_rodada_segundos,
             jogadores=[
-                JogadorPartidaNemPatoPublico(
-                    nome=jogador.nome_snapshot,
-                    ordem_circular=jogador.ordem_circular,
-                    status=jogador.status.value,
-                )
+                self._jogador_publico(jogador, participante_id)
                 for jogador in jogadores_ordenados
             ],
+            rodada=rodada_publica,
         )
 
     def iniciar(
@@ -505,7 +584,9 @@ class SalasNemAPatoService:
             return SalaRecuperada(
                 sala=sala_publica(sala, ativos),
                 participante=participante_publico(participante),
-                partida=self._partida_publica(partida, jogadores_partida),
+                partida=self._partida_publica(
+                    db, partida, participante.id, jogadores_partida
+                ),
             )
         except HTTPException:
             db.rollback()
@@ -515,6 +596,290 @@ class SalasNemAPatoService:
             raise HTTPException(
                 status_code=409,
                 detail="conflito ao iniciar partida; atualize o estado da sala",
+            ) from erro
+        except Exception:
+            db.rollback()
+            raise
+
+    @staticmethod
+    def _participante_autenticado_bloqueado(
+        participantes: list[ParticipanteNemPato],
+        token_digest: bytes,
+    ) -> ParticipanteNemPato:
+        participante = next(
+            (
+                item for item in participantes
+                if hmac.compare_digest(item.token_hash, token_digest)
+            ),
+            None,
+        )
+        if participante is None:
+            raise HTTPException(
+                status_code=401, detail="credencial Nem a Pato inválida"
+            )
+        if participante.status != ParticipanteNemPatoStatus.ATIVO:
+            raise HTTPException(status_code=403, detail="participante não está ativo")
+        return participante
+
+    @staticmethod
+    def _jogador_inicial_da_rodada(
+        jogadores: list[JogadorPartidaNemPato],
+        numero_rodada: int,
+    ) -> JogadorPartidaNemPato:
+        jogadores_ordenados = sorted(
+            jogadores, key=lambda jogador: jogador.ordem_circular
+        )
+        if not jogadores_ordenados:
+            raise HTTPException(
+                status_code=409, detail="a partida não possui jogadores ativos"
+            )
+        indice = (numero_rodada - 1) % len(jogadores_ordenados)
+        return jogadores_ordenados[indice]
+
+    def iniciar_rodada(
+        self, db: Session, codigo: str, token: str | None
+    ) -> SalaRecuperada:
+        codigo = self._codigo_normalizado(codigo)
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        token_digest = hash_credencial(token)
+        try:
+            # Ordem global NP3–NP5:
+            # sala → participantes → partida → rodada → snapshots → palpites.
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = self._participante_autenticado_bloqueado(
+                participantes, token_digest
+            )
+            if not participante.eh_anfitriao:
+                raise HTTPException(
+                    status_code=403,
+                    detail="somente o anfitrião pode iniciar a rodada",
+                )
+            if sala.status != SalaNemPatoStatus.EM_PARTIDA:
+                raise HTTPException(
+                    status_code=409, detail="sala não está em partida"
+                )
+
+            partida = db.scalar(
+                select(PartidaNemPato)
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if partida is None or partida.status != PartidaNemPatoStatus.EM_ANDAMENTO:
+                raise HTTPException(
+                    status_code=409, detail="partida não está em andamento"
+                )
+
+            # A NP5 abre somente a primeira rodada pelo fluxo normal.
+            rodada = db.scalar(
+                select(RodadaNemPato)
+                .where(
+                    RodadaNemPato.partida_id == partida.id,
+                    RodadaNemPato.numero == 1,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if rodada is None:
+                raise HTTPException(status_code=409, detail="rodada não encontrada")
+            if (
+                partida.rodada_atual != 0
+                or rodada.status != RodadaNemPatoStatus.AGUARDANDO_INICIO
+            ):
+                raise HTTPException(status_code=409, detail="rodada já iniciada")
+
+            jogadores = list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(
+                    JogadorPartidaNemPato.partida_id == partida.id,
+                    JogadorPartidaNemPato.status
+                    == ParticipanteNemPatoStatus.ATIVO,
+                )
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            jogador_inicial = self._jogador_inicial_da_rodada(
+                jogadores, rodada.numero
+            )
+            agora = datetime.now(timezone.utc)
+            rodada.jogador_inicial_id = jogador_inicial.id
+            rodada.jogador_da_vez_id = jogador_inicial.id
+            rodada.status = RodadaNemPatoStatus.EM_ANDAMENTO
+            rodada.iniciada_em = agora
+            rodada.termina_em = agora + timedelta(
+                seconds=partida.duracao_rodada_segundos
+            )
+            partida.rodada_atual = rodada.numero
+            sala.estado_versao += 1
+            db.flush()
+            db.commit()
+            return self.recuperar(db, codigo, token)
+        except HTTPException:
+            db.rollback()
+            raise
+        except IntegrityError as erro:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="conflito ao iniciar rodada; atualize o estado da sala",
+            ) from erro
+        except Exception:
+            db.rollback()
+            raise
+
+    def palpitar(
+        self,
+        db: Session,
+        codigo: str,
+        rodada_id: int,
+        token: str | None,
+        valor: int,
+        client_action_id: UUID,
+    ) -> SalaRecuperada:
+        codigo = self._codigo_normalizado(codigo)
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        token_digest = hash_credencial(token)
+        try:
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = self._participante_autenticado_bloqueado(
+                participantes, token_digest
+            )
+            if sala.status != SalaNemPatoStatus.EM_PARTIDA:
+                raise HTTPException(
+                    status_code=409, detail="sala não está em partida"
+                )
+
+            partida = db.scalar(
+                select(PartidaNemPato)
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if partida is None or partida.status != PartidaNemPatoStatus.EM_ANDAMENTO:
+                raise HTTPException(
+                    status_code=409, detail="partida não está em andamento"
+                )
+
+            rodada = db.scalar(
+                select(RodadaNemPato)
+                .where(
+                    RodadaNemPato.id == rodada_id,
+                    RodadaNemPato.partida_id == partida.id,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if rodada is None:
+                raise HTTPException(
+                    status_code=404, detail="rodada não pertence à partida"
+                )
+            if rodada.numero != partida.rodada_atual:
+                raise HTTPException(
+                    status_code=409, detail="rodada não é a rodada atual"
+                )
+
+            jogadores = list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(JogadorPartidaNemPato.partida_id == partida.id)
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            palpites = list(db.scalars(
+                select(PalpiteNemPato)
+                .where(PalpiteNemPato.rodada_id == rodada.id)
+                .order_by(PalpiteNemPato.ordem)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            jogador = next(
+                (
+                    item for item in jogadores
+                    if item.participante_id == participante.id
+                ),
+                None,
+            )
+            if (
+                jogador is None
+                or jogador.status != ParticipanteNemPatoStatus.ATIVO
+            ):
+                raise HTTPException(
+                    status_code=403, detail="sua participação não está mais ativa"
+                )
+
+            existente = next(
+                (
+                    palpite for palpite in palpites
+                    if palpite.client_action_id == client_action_id
+                ),
+                None,
+            )
+            if existente is not None:
+                if (
+                    existente.jogador_partida_id != jogador.id
+                    or existente.valor != valor
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="client_action_id já usado em outra ação",
+                    )
+                db.rollback()
+                return self.recuperar(db, codigo, token)
+
+            if rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO:
+                raise HTTPException(
+                    status_code=409, detail="esta rodada não aceita mais palpites"
+                )
+            if rodada.jogador_da_vez_id != jogador.id:
+                raise HTTPException(status_code=409, detail="não é sua vez")
+            maior_palpite = palpites[-1].valor if palpites else None
+            if maior_palpite is not None and valor <= maior_palpite:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"seu palpite precisa ser maior que {maior_palpite}",
+                )
+
+            palpite = PalpiteNemPato(
+                rodada_id=rodada.id,
+                jogador_partida_id=jogador.id,
+                ordem=len(palpites) + 1,
+                valor=valor,
+                client_action_id=client_action_id,
+            )
+            db.add(palpite)
+            jogadores_ativos = [
+                item for item in jogadores
+                if item.status == ParticipanteNemPatoStatus.ATIVO
+            ]
+            indice_atual = next(
+                indice for indice, item in enumerate(jogadores_ativos)
+                if item.id == jogador.id
+            )
+            proximo = jogadores_ativos[(indice_atual + 1) % len(jogadores_ativos)]
+            rodada.jogador_da_vez_id = proximo.id
+            sala.estado_versao += 1
+            db.flush()
+            db.commit()
+            return self.recuperar(db, codigo, token)
+        except HTTPException:
+            db.rollback()
+            raise
+        except IntegrityError as erro:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="conflito ao registrar palpite; atualize o estado da rodada",
             ) from erro
         except Exception:
             db.rollback()
@@ -546,7 +911,9 @@ class SalasNemAPatoService:
                 .options(selectinload(PartidaNemPato.jogadores))
             )
             if partida_db is not None:
-                partida = self._partida_publica(partida_db)
+                partida = self._partida_publica(
+                    db, partida_db, participante.id
+                )
         return SalaRecuperada(
             sala=sala_publica(sala),
             participante=participante_publico(participante),

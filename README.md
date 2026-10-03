@@ -359,8 +359,8 @@ e usa as mesmas validações e detecção de duplicata da importação.
 
 ## Lobby Nem a Pato
 
-O backend oferece endpoints do lobby e prepara uma partida ao comando do
-anfitrião. A interface de jogo ainda não está implementada nesta fase:
+O backend oferece endpoints do lobby, prepara a partida e permite abrir a
+primeira rodada com palpites numéricos crescentes:
 
 | Método | Endpoint | Finalidade |
 | --- | --- | --- |
@@ -369,6 +369,8 @@ anfitrião. A interface de jogo ainda não está implementada nesta fase:
 | `GET` | `/api/v1/nem-pato/salas/{codigo}` | Consulta estado público do lobby. |
 | `GET` | `/api/v1/nem-pato/salas/{codigo}/eu` | Recupera a participação autenticada após F5. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/iniciar` | Anfitrião inicia e prepara 10 rodadas. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/iniciar` | Anfitrião abre a primeira rodada. |
+| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/palpites` | Jogador da vez registra um palpite. |
 | `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
 
 O código de sala tem seis caracteres maiúsculos e usa o alfabeto
@@ -396,6 +398,22 @@ a categoria da primeira pergunta selecionada (as categorias das demais
 perguntas podem variar). Abandono após início está temporariamente bloqueado,
 até haver regras próprias para saída durante partida.
 
+O início da rodada revela somente enunciado, categoria e unidade da pergunta;
+`resposta_numerica` e `explicacao` permanecem privadas. O primeiro jogador é
+derivado da ordem circular dos snapshots e do número da rodada. Cada palpite
+deve ser inteiro não negativo e estritamente maior que o anterior; depois de
+aceito, o turno avança circularmente. O payload de palpite exige
+`client_action_id` UUID, que torna seguro repetir a mesma ação sem criar outro
+registro nem avançar o turno novamente. Início e palpites usam o header
+`X-Nem-Pato-Token` e a ordem de locks sala → participantes → partida → rodada
+→ snapshots → palpites.
+
+O polling de `GET .../eu` devolve pergunta pública, jogador da vez, maior
+palpite e histórico, permitindo reconstruir a rodada após F5. A duração de 120
+segundos é persistida e exibida apenas como informação nesta fase. Ainda não há
+desafio “Nem a Pato!”, timeout funcional, finalização da rodada nem avanço para
+a rodada seguinte.
+
 ## API
 
 Principais endpoints:
@@ -420,8 +438,9 @@ cd backend
 python -m unittest discover -s tests -v
 ```
 
-Os testes de concorrência real de lobby/início Nem a Pato ficam separados da suíte
-SQLite. Eles cobrem entrada, início concorrente e início versus entrada. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
+Os testes de concorrência real do Nem a Pato ficam separados da suíte SQLite.
+Eles cobrem entrada, início de partida/rodada, início versus entrada, palpites
+simultâneos e retries idempotentes. Execute-os somente em um banco PostgreSQL descartável cujo nome comece
 com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0009`:
 
 ```bash

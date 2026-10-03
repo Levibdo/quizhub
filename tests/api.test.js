@@ -120,6 +120,27 @@ test('iniciar partida usa endpoint próprio e credencial temporária', async () 
   assert.deepEqual(resposta, { partida: { numero: 1 } })
 })
 
+test('iniciar rodada e enviar palpite usam endpoints NP5, token e idempotência', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    return new Response(JSON.stringify({ partida: { rodada: { id: 7 } } }), { status: 200 })
+  }
+  await nemAPatoApi.iniciarRodadaNemAPato('K7M4QX', 'token-host')
+  await nemAPatoApi.enviarPalpiteNemAPato(
+    'K7M4QX', 7, 'token-levi', 123, '11111111-1111-4111-8111-111111111111',
+  )
+  assert.equal(chamadas[0].url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/iniciar')
+  assert.equal(chamadas[0].opcoes.method, 'POST')
+  assert.equal(chamadas[0].opcoes.headers['X-Nem-Pato-Token'], 'token-host')
+  assert.equal(chamadas[1].url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/palpites')
+  assert.equal(chamadas[1].opcoes.headers['X-Nem-Pato-Token'], 'token-levi')
+  assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), {
+    valor: 123,
+    client_action_id: '11111111-1111-4111-8111-111111111111',
+  })
+})
+
 test('sessões Nem a Pato usam namespace próprio e removem somente a sala pedida', async () => {
   const anterior = globalThis.localStorage
   const dados = new Map()

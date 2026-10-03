@@ -362,8 +362,9 @@ test('host inicia com token; polling e F5 mostram preparação EM_PARTIDA', asyn
     id: 'match-uuid', numero: 1, status: 'EM_ANDAMENTO', rodada_atual: 0,
     total_rodadas: 10, duracao_rodada_segundos: 120,
     jogadores: jogadores.map((jogador, index) => ({
-      nome: jogador.nome, ordem_circular: index + 1, status: 'ATIVO',
+      id: `snapshot-${index + 1}`, nome: jogador.nome, ordem_circular: index + 1, status: 'ATIVO', eh_eu: index === 0,
     })),
+    rodada: { id: 11, numero: 1, status: 'AGUARDANDO_INICIO' },
   }
   let emPartida = false
   let tokenEnviado
@@ -412,7 +413,7 @@ test('host inicia com token; polling e F5 mostram preparação EM_PARTIDA', asyn
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(reloaded.view().includes('A PARTIDA COMEÇOU'))
   assert.ok(reloaded.view().includes('Jorge'))
-  assert.ok(reloaded.view().includes('Preparando a primeira rodada'))
+  assert.ok(reloaded.button('Iniciar rodada'))
 })
 
 test('não host não tem botão de início e o host vê erro retornado pelo backend', async (t) => {
@@ -495,8 +496,9 @@ test('host inicia com credencial e todos recuperam tela EM_PARTIDA após F5', as
     id: 'match-id', numero: 1, status: 'EM_ANDAMENTO', rodada_atual: 0,
     total_rodadas: 10, duracao_rodada_segundos: 120,
     jogadores: players.map((player, index) => ({
-      nome: player.nome, ordem_circular: index + 1, status: 'ATIVO',
+      id: `snapshot-${index + 1}`, nome: player.nome, ordem_circular: index + 1, status: 'ATIVO', eh_eu: index === 0,
     })),
+    rodada: { id: 11, numero: 1, status: 'AGUARDANDO_INICIO' },
   }
   let started = false
   const calls = []
@@ -542,5 +544,163 @@ test('host inicia com credencial e todos recuperam tela EM_PARTIDA após F5', as
   await reloaded.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(reloaded.view().includes('A PARTIDA COMEÇOU'))
-  assert.ok(reloaded.view().includes('Preparando a primeira rodada'))
+  assert.ok(reloaded.button('Iniciar rodada'))
+})
+
+function partidaNp5(players, euId, rodadaStatus = 'AGUARDANDO_INICIO', palpites = []) {
+  const snapshots = players.map((player, index) => ({
+    id: `snapshot-${index + 1}`,
+    nome: player.nome,
+    ordem_circular: index + 1,
+    status: 'ATIVO',
+    eh_eu: player.id === euId,
+  }))
+  const indiceTurno = palpites.length % snapshots.length
+  return {
+    id: 'match-np5', numero: 1, status: 'EM_ANDAMENTO',
+    rodada_atual: rodadaStatus === 'EM_ANDAMENTO' ? 1 : 0,
+    total_rodadas: 10, duracao_rodada_segundos: 120,
+    jogadores: snapshots,
+    rodada: {
+      id: 51,
+      numero: 1,
+      status: rodadaStatus,
+      pergunta: rodadaStatus === 'EM_ANDAMENTO'
+        ? { id: 9, categoria_id: 'geral', enunciado: 'Quantos quilômetros tem a Terra?', unidade: 'km' }
+        : null,
+      jogador_inicial: snapshots[0],
+      jogador_da_vez: rodadaStatus === 'EM_ANDAMENTO' ? snapshots[indiceTurno] : null,
+      maior_palpite: palpites.length ? palpites.at(-1).valor : null,
+      palpites: palpites.map((item, index) => ({
+        ordem: index + 1,
+        valor: item.valor,
+        jogador: snapshots[item.jogador],
+        criado_em: '2026-10-03T12:00:00Z',
+      })),
+      iniciada_em: rodadaStatus === 'EM_ANDAMENTO' ? '2026-10-03T12:00:00Z' : null,
+      termina_em: rodadaStatus === 'EM_ANDAMENTO' ? '2026-10-03T12:02:00Z' : null,
+    },
+  }
+}
+
+test('host vê Iniciar rodada e não-host aguarda o anfitrião', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const estado = (eu) => ({
+    sala: sala('K7M4QX', players, 4, 'EM_PARTIDA'),
+    participante: players[eu - 1],
+    partida: partidaNp5(players, eu),
+  })
+  const host = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(estado(1)), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  await host.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(host.button('Iniciar rodada'))
+  await host.unmount()
+
+  const guest = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(estado(2)), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest' } }) },
+  })
+  await guest.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(guest.button('Iniciar rodada'), undefined)
+  assert.ok(guest.view().includes('Aguardando o anfitrião iniciar a rodada'))
+})
+
+test('host inicia rodada, envia ação idempotente e turno/histórico atualizam', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  let partida = partidaNp5(players, 1)
+  let payloadPalpite
+  let concluirPalpite
+  const calls = []
+  const ui = setup(t, async (url, options = {}) => {
+    calls.push({ url, options })
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/rodadas/iniciar')) {
+      partida = partidaNp5(players, 1, 'EM_ANDAMENTO')
+    } else if (url.endsWith('/palpites')) {
+      payloadPalpite = JSON.parse(options.body)
+      return new Promise((resolve) => {
+        concluirPalpite = () => {
+          partida = partidaNp5(players, 1, 'EM_ANDAMENTO', [{ jogador: 0, valor: payloadPalpite.valor }])
+          resolve(response({
+            sala: sala('K7M4QX', players, 5, 'EM_PARTIDA'),
+            participante: players[0],
+            partida,
+          }))
+        }
+      })
+    }
+    return response({
+      sala: sala('K7M4QX', players, 5, 'EM_PARTIDA'),
+      participante: players[0],
+      partida,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host-token' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Iniciar rodada').props.onClick())
+  assert.ok(ui.view().includes('Quantos quilômetros tem a Terra?'))
+  assert.ok(ui.view().includes('Rodada 1 de 10'))
+  assert.ok(ui.view().includes('Jogador da vez'))
+  assert.ok(ui.view().includes('Levi'))
+  assert.ok(!ui.view().includes('resposta_numerica'))
+  assert.ok(!ui.view().includes('explicacao'))
+  const input = ui.renderer.root.findByProps({ id: 'np-guess' })
+  await act(async () => input.props.onChange({ target: { value: '100' } }))
+  let envio
+  await act(async () => {
+    envio = ui.renderer.root.findAllByType('form').find((form) => form.props.className === 'np-guess-form').props.onSubmit({ preventDefault() {} })
+    await Promise.resolve()
+  })
+  assert.equal(ui.button('Enviando...').props.disabled, true)
+  await act(async () => {
+    concluirPalpite()
+    await envio
+  })
+  assert.equal(payloadPalpite.valor, 100)
+  assert.match(payloadPalpite.client_action_id, /^[0-9a-f-]{36}$/)
+  assert.ok(calls.some((call) => call.url.endsWith('/rodadas/51/palpites')))
+  assert.ok(ui.view().includes('Maior palpite'))
+  assert.ok(ui.view().includes('100 km'))
+  assert.ok(ui.view().includes('Levi100 km'))
+  assert.ok(ui.view().includes('Jogador da vez'))
+  assert.ok(ui.view().includes('Jorge'))
+  assert.equal(ui.renderer.root.findAllByProps({ id: 'np-guess' }).length, 0)
+  assert.ok(ui.view().includes('Aguardando o palpite de Jorge'))
+})
+
+test('erro de palpite crescente é amigável e F5 recupera rodada ativa', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const ativa = partidaNp5(players, 2, 'EM_ANDAMENTO', [{ jogador: 0, valor: 100 }])
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/palpites')) return response({ detail: 'seu palpite precisa ser maior que 100' }, 409)
+    return response({
+      sala: sala('K7M4QX', players, 6, 'EM_PARTIDA'),
+      participante: players[1],
+      partida: ativa,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'jorge-token' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('Quantos quilômetros tem a Terra?'))
+  assert.ok(ui.view().includes('Maior palpite'))
+  assert.ok(ui.view().includes('100 km'))
+  assert.ok(ui.renderer.root.findByProps({ id: 'np-guess' }))
+  await act(async () => ui.renderer.root.findByProps({ id: 'np-guess' }).props.onChange({ target: { value: '100' } }))
+  await act(async () => ui.renderer.root.findAllByType('form').find((form) => form.props.className === 'np-guess-form').props.onSubmit({ preventDefault() {} }))
+  assert.ok(ui.view().includes('Seu palpite precisa ser maior que 100.'))
 })

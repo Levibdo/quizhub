@@ -69,6 +69,21 @@ export function iniciarPartidaNemAPato(codigo, token) {
   })
 }
 
+export function iniciarRodadaNemAPato(codigo, token) {
+  return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/rodadas/iniciar`, {
+    method: 'POST',
+    headers: { 'X-Nem-Pato-Token': token },
+  })
+}
+
+export function enviarPalpiteNemAPato(codigo, rodadaId, token, valor, clientActionId) {
+  return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/rodadas/${encodeURIComponent(rodadaId)}/palpites`, {
+    method: 'POST',
+    headers: { 'X-Nem-Pato-Token': token },
+    body: JSON.stringify({ valor, client_action_id: clientActionId }),
+  })
+}
+
 export function abandonarSalaNemAPato(codigo, token) {
   return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/abandonar`, {
     method: 'POST',

@@ -4,13 +4,30 @@ import {
   carregarSessaoNemAPato,
   criarSalaNemAPato,
   entrarSalaNemAPato,
+  enviarPalpiteNemAPato,
   iniciarPartidaNemAPato,
+  iniciarRodadaNemAPato,
   recuperarSalaNemAPato,
   removerSessaoNemAPato,
   salvarSessaoNemAPato,
 } from '../services/nemAPato'
 
 const INTERVALO_LOBBY_MS = 1000
+
+function novoClientActionId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (caractere) => {
+    const aleatorio = Math.floor(Math.random() * 16)
+    const valor = caractere === 'x' ? aleatorio : (aleatorio & 0x3) | 0x8
+    return valor.toString(16)
+  })
+}
+
+function formatarPalpite(valor, unidade) {
+  if (valor === null || valor === undefined) return '—'
+  const numero = new Intl.NumberFormat('pt-BR').format(valor)
+  return unidade ? `${numero} ${unidade}` : numero
+}
 
 function mensagemErro(error, acao = 'operacao') {
   if (error.message === 'sala inexistente') return 'Sala não encontrada.'
@@ -23,7 +40,16 @@ function mensagemErro(error, acao = 'operacao') {
   if (error.message === 'participante não está ativo') return 'Sua participação foi encerrada.'
   if (error.message.includes('pelo menos 3 participantes')) return 'São necessários pelo menos 3 jogadores para iniciar.'
   if (error.message.includes('10 perguntas Nem a Pato')) return 'Ainda não há 10 perguntas numéricas ativas para iniciar uma partida.'
+  if (error.message === 'somente o anfitrião pode iniciar a rodada') return 'Somente o anfitrião pode iniciar a rodada.'
   if (error.message.includes('somente o anfitrião')) return 'Somente o anfitrião pode iniciar a partida.'
+  if (error.message === 'não é sua vez') return 'Não é sua vez.'
+  if (error.message?.startsWith('seu palpite precisa ser maior que ')) {
+    return `Seu palpite precisa ser maior que ${error.message.split('maior que ')[1]}.`
+  }
+  if (error.message === 'rodada já iniciada') return 'A rodada já começou.'
+  if (error.message === 'sala não está em partida') return 'A rodada ainda não começou.'
+  if (error.message === 'esta rodada não aceita mais palpites') return 'Esta rodada não aceita mais palpites.'
+  if (error.message === 'sua participação não está mais ativa') return 'Sua participação não está mais ativa.'
   if (error.message === 'sala já possui uma partida em andamento') return 'Esta sala já tem uma partida em andamento.'
   if (error.status === 422) return error.message || 'Confira os dados informados.'
   if (error.message === 'Não foi possível conectar ao servidor.') return error.message
@@ -49,6 +75,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
+  const [palpite, setPalpite] = useState('')
   const [sessao, setSessao] = useState(() => {
     const inicial = rotaAtual()
     return inicial.tipo === 'lobby' ? carregarSessaoNemAPato(inicial.codigo) : null
@@ -56,6 +83,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [estadoSala, setEstadoSala] = useState(null)
   const [podeSincronizar, setPodeSincronizar] = useState(false)
   const operacaoRef = useRef(false)
+  const acaoPalpiteRef = useRef(null)
   const recuperacaoInicial = useRef(false)
 
   const navegar = useCallback((destino) => {
@@ -211,6 +239,60 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }
 
+  async function iniciarRodada() {
+    if (operacaoRef.current || !sessao) return
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro('')
+    try {
+      const atual = await iniciarRodadaNemAPato(sessao.codigo, sessao.token)
+      setEstadoSala(atual)
+    } catch (error) {
+      setErro(mensagemErro(error, 'iniciar-rodada'))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
+  async function confirmarPalpite(event) {
+    event.preventDefault()
+    const rodada = estadoSala?.partida?.rodada
+    if (operacaoRef.current || !sessao || !rodada) return
+    if (!/^\d+$/.test(palpite)) {
+      setErro('Informe um número inteiro maior ou igual a zero.')
+      return
+    }
+    const valor = Number(palpite)
+    if (!Number.isSafeInteger(valor) || valor < 0) {
+      setErro('Informe um número inteiro válido.')
+      return
+    }
+    if (!acaoPalpiteRef.current || acaoPalpiteRef.current.valor !== valor) {
+      acaoPalpiteRef.current = { valor, id: novoClientActionId() }
+    }
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro('')
+    try {
+      const atual = await enviarPalpiteNemAPato(
+        sessao.codigo,
+        rodada.id,
+        sessao.token,
+        valor,
+        acaoPalpiteRef.current.id,
+      )
+      setEstadoSala(atual)
+      setPalpite('')
+      acaoPalpiteRef.current = null
+    } catch (error) {
+      setErro(mensagemErro(error, 'palpite'))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
   function copiarCodigo() {
     const escrita = navigator.clipboard?.writeText(rota.codigo)
     if (!escrita) {
@@ -227,6 +309,8 @@ function TelaNemAPato({ voltarInicio }) {
       : null
     const participantes = sala?.participantes || []
     const eu = estadoSala?.participante
+    const partida = estadoSala?.partida
+    const rodada = partida?.rodada
     const mensagemSemSessao = !sessao && !erro
       ? 'Não há uma participação salva para esta sala neste navegador.'
       : erro
@@ -251,11 +335,11 @@ function TelaNemAPato({ voltarInicio }) {
               <section className="np-started" aria-labelledby="np-started-title">
                 <p className="np-started__eyebrow">Sala {sala.codigo}</p>
                 <h2 id="np-started-title">A PARTIDA COMEÇOU</h2>
-                {estadoSala.partida ? (
+                {partida ? (
                   <>
-                    <p>Partida {estadoSala.partida.numero} · {estadoSala.partida.total_rodadas} rodadas · {Math.floor(estadoSala.partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
+                    <p>Partida {partida.numero} · {partida.total_rodadas} rodadas · {Math.floor(partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
                     <ul className="np-player-list" aria-label="Jogadores desta partida">
-                      {estadoSala.partida.jogadores.map((jogador) => (
+                      {partida.jogadores.map((jogador) => (
                         <li className="np-player" key={`${jogador.ordem_circular}-${jogador.nome}`}>
                           <span aria-hidden="true">♙</span>
                           <strong>{jogador.nome}</strong>
@@ -264,7 +348,58 @@ function TelaNemAPato({ voltarInicio }) {
                     </ul>
                   </>
                 ) : <p role="status">Recuperando a partida...</p>}
-                <p role="status">Preparando a primeira rodada...</p>
+                {rodada?.status === 'AGUARDANDO_INICIO' && (
+                  eu?.eh_anfitriao ? (
+                    <button className="np-start-button" type="button" disabled={carregando} onClick={iniciarRodada}>
+                      {carregando ? 'Iniciando rodada...' : 'Iniciar rodada'}
+                    </button>
+                  ) : <p role="status">Aguardando o anfitrião iniciar a rodada...</p>
+                )}
+                {rodada?.status === 'EM_ANDAMENTO' && (
+                  <section className="np-round" aria-labelledby="np-round-title">
+                    <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
+                    <h3 id="np-round-title">Pergunta</h3>
+                    <p className="np-round__question">{rodada.pergunta?.enunciado}</p>
+                    {rodada.pergunta?.unidade && <p className="np-round__unit">Unidade: {rodada.pergunta.unidade}</p>}
+                    <div className="np-round__status">
+                      <p>Maior palpite <strong>{formatarPalpite(rodada.maior_palpite, rodada.pergunta?.unidade)}</strong></p>
+                      <p>Jogador da vez <strong>{rodada.jogador_da_vez?.nome}</strong></p>
+                      <p>Tempo da rodada <strong>2:00</strong></p>
+                    </div>
+                    {rodada.palpites.length > 0 && (
+                      <ol className="np-guess-history" aria-label="Histórico de palpites">
+                        {rodada.palpites.map((item) => (
+                          <li key={item.ordem}>
+                            <span>{item.jogador.nome}</span>
+                            <strong>{formatarPalpite(item.valor, rodada.pergunta?.unidade)}</strong>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    {rodada.jogador_da_vez?.eh_eu ? (
+                      <form className="np-guess-form" onSubmit={confirmarPalpite}>
+                        <label htmlFor="np-guess">Seu palpite</label>
+                        <input
+                          id="np-guess"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={palpite}
+                          onChange={(event) => {
+                            setPalpite(event.target.value.replace(/\D/g, ''))
+                            acaoPalpiteRef.current = null
+                          }}
+                          disabled={carregando}
+                          required
+                        />
+                        <button type="submit" disabled={carregando || !palpite}>
+                          {carregando ? 'Enviando...' : 'Confirmar palpite'}
+                        </button>
+                      </form>
+                    ) : (
+                      <p role="status">Aguardando o palpite de {rodada.jogador_da_vez?.nome}...</p>
+                    )}
+                  </section>
+                )}
               </section>
             )}
             <section className="np-room-code" aria-label="Código da sala">

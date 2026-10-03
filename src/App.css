@@ -1434,6 +1434,105 @@ select:disabled {
   text-align: left;
 }
 
+.np-round {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.np-round h3,
+.np-round__counter,
+.np-round__question,
+.np-round__unit,
+.np-round__status p {
+  margin: 0;
+}
+
+.np-round h3,
+.np-round__counter {
+  color: var(--color-focus);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.np-round__question {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.15rem, 5vw, 1.6rem);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.np-round__unit {
+  color: var(--color-text-muted);
+}
+
+.np-round__status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+}
+
+.np-round__status p {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(9, 7, 8, 0.55);
+}
+
+.np-round__status strong {
+  overflow-wrap: anywhere;
+  color: var(--color-focus);
+  font-size: 1.1rem;
+}
+
+.np-guess-history {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 13rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.np-guess-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  background: rgba(9, 7, 8, 0.45);
+}
+
+.np-guess-history strong {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.np-guess-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.np-guess-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 3.5rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.np-guess-form button {
+  min-height: 3.25rem;
+}
+
 @media (max-width: 30rem) {
   .np-screen {
     gap: var(--space-4);
@@ -1442,6 +1541,10 @@ select:disabled {
   .np-player {
     padding-inline: var(--space-3);
     gap: var(--space-2);
+  }
+
+  .np-round__status {
+    grid-template-columns: 1fr;
   }
 }
 
