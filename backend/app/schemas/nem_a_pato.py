@@ -74,6 +74,11 @@ class ResultadoDesafioNemPatoPublico(BaseModel):
     resolvido_em: datetime
 
 
+class ResultadoTimeoutNemPatoPublico(BaseModel):
+    ultimo_palpite: PalpiteNemPatoPublico | None
+    autor_protegido: JogadorPartidaNemPatoPublico | None
+
+
 class RodadaNemPatoPublica(BaseModel):
     id: int
     numero: int
@@ -88,6 +93,7 @@ class RodadaNemPatoPublica(BaseModel):
     finalizada_em: datetime | None = None
     tipo_finalizacao: str | None = None
     resultado_desafio: ResultadoDesafioNemPatoPublico | None = None
+    resultado_timeout: ResultadoTimeoutNemPatoPublico | None = None
 
 
 class PartidaNemPatoPublica(BaseModel):

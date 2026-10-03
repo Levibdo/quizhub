@@ -2004,3 +2004,6 @@ select:disabled {
 .np-result__answer strong { color: var(--color-focus); font-size: clamp(1.4rem, 6vw, 2rem); overflow-wrap: anywhere; }
 .np-result__penalty { padding: var(--space-3); border-left: 3px solid var(--color-warning); background: rgba(109, 69, 30, .24); }
 .np-result__explanation { color: var(--color-text-muted); line-height: 1.55; }
+
+.np-timer strong { font-variant-numeric: tabular-nums; }
+.np-timer--urgent strong { color: var(--color-warning); }

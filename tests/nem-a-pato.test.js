@@ -932,3 +932,92 @@ test("não-host sincroniza R2 por polling e rodada 10 não oferece avanço", asy
   assert.equal(host.button("PRÓXIMA RODADA"), undefined)
   assert.ok(host.view().includes("10 rodadas concluídas"))
 })
+
+
+function partidaTimeout(players, euId, comPalpite = true) {
+  const base = partidaNp5(players, euId, "EM_ANDAMENTO", comPalpite ? [{ jogador: 2, valor: 700 }] : [])
+  base.rodada.status = "RESULTADO"
+  base.rodada.jogador_da_vez = null
+  base.rodada.pergunta = { ...base.rodada.pergunta, resposta_numerica: 900, explicacao: "Explicação do timeout." }
+  base.rodada.finalizada_em = "2026-10-03T12:02:01Z"
+  base.rodada.tipo_finalizacao = comPalpite ? "TEMPO_ESGOTADO" : "SEM_PALPITE"
+  base.rodada.resultado_timeout = {
+    ultimo_palpite: comPalpite ? base.rodada.palpites.at(-1) : null,
+    autor_protegido: comPalpite ? base.jogadores[2] : null,
+  }
+  base.jogadores = base.jogadores.map((jogador, indice) => ({
+    ...jogador, patos: comPalpite && indice !== 2 ? 1 : 0,
+  }))
+  if (comPalpite) {
+    base.rodada.palpites[0].jogador = base.jogadores[2]
+    base.rodada.resultado_timeout.ultimo_palpite = base.rodada.palpites[0]
+    base.rodada.resultado_timeout.autor_protegido = base.jogadores[2]
+  }
+  return base
+}
+
+test("timer deriva de termina_em, diminui e em zero aguarda o backend", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  const agoraOriginal = Date.now
+  let agora = Date.parse("2030-01-01T12:00:30Z")
+  Date.now = () => agora
+  t.after(() => { Date.now = agoraOriginal })
+  const ativa = partidaNp5(players, 1, "EM_ANDAMENTO")
+  ativa.rodada.iniciada_em = "2030-01-01T12:00:00Z"
+  ativa.rodada.termina_em = "2030-01-01T12:02:00Z"
+  const intervalos = []
+  const ui = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response({ sala: sala("K7M4QX", players, 7, "EM_PARTIDA"), participante: players[0], partida: ativa }), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host" } }) },
+  })
+  globalThis.window.setInterval = (callback) => { intervalos.push(callback); return intervalos.length }
+  globalThis.window.clearInterval = () => {}
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes("1:30"))
+  assert.ok(!ui.view().includes("resposta_numerica"))
+  agora += 1000
+  await act(async () => intervalos.at(-1)())
+  assert.ok(ui.view().includes("1:29"))
+  agora = Date.parse("2030-01-01T12:02:00Z")
+  await act(async () => intervalos.at(-1)())
+  assert.ok(ui.view().includes("0:00"))
+  assert.ok(ui.view().includes("TEMPO ESGOTADO — confirmando resultado"))
+  assert.ok(!ui.view().includes("Resposta correta"))
+})
+
+test("polling renderiza timeout com e sem palpite e mantém próxima rodada", async (t) => {
+  const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
+  let partida = partidaTimeout(players, 1, true)
+  const host = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response({ sala: sala("K7M4QX", players, 9, "EM_PARTIDA"), participante: players[0], partida }), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host" } }) },
+  })
+  await host.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(host.view().includes("TEMPO ESGOTADO"))
+  assert.ok(host.view().includes("Luana — 700 km"))
+  assert.ok(host.view().includes("Os demais jogadores ativos receberam 1 pato"))
+  assert.ok(host.view().includes("Explicação do timeout"))
+  assert.ok(host.view().includes("Levi1 🦆"))
+  assert.ok(host.button("PRÓXIMA RODADA"))
+  await host.unmount()
+
+  partida = partidaTimeout(players, 2, false)
+  const guest = setup(t, async (url) => url.endsWith("/auth/me")
+    ? response({ detail: "não autenticado" }, 401)
+    : response({ sala: sala("K7M4QX", players, 10, "EM_PARTIDA"), participante: players[1], partida }), {
+    path: "/nem-a-pato/sala/K7M4QX",
+    stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "guest" } }) },
+  })
+  await guest.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(guest.view().includes("Ninguém enviou um palpite"))
+  assert.ok(guest.view().includes("Nenhum pato foi aplicado"))
+  assert.equal(guest.button("PRÓXIMA RODADA"), undefined)
+  assert.ok(guest.view().includes("Aguardando o host iniciar a próxima rodada"))
+})

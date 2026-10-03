@@ -25,6 +25,16 @@ function novoClientActionId() {
   })
 }
 
+function segundosAteDeadline(terminaEm, agora = Date.now()) {
+  if (!terminaEm) return 0
+  return Math.max(0, Math.ceil((new Date(terminaEm).getTime() - agora) / 1000))
+}
+
+function formatarTempo(segundos) {
+  const minutos = Math.floor(segundos / 60)
+  return minutos + ":" + String(segundos % 60).padStart(2, "0")
+}
+
 function formatarPalpite(valor, unidade) {
   if (valor === null || valor === undefined) return '—'
   const numero = new Intl.NumberFormat('pt-BR').format(valor)
@@ -78,6 +88,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
   const [palpite, setPalpite] = useState('')
+  const [segundosRestantes, setSegundosRestantes] = useState(0)
   const [sessao, setSessao] = useState(() => {
     const inicial = rotaAtual()
     return inicial.tipo === 'lobby' ? carregarSessaoNemAPato(inicial.codigo) : null
@@ -172,6 +183,19 @@ function TelaNemAPato({ voltarInicio }) {
       window.clearInterval(intervalo)
     }
   }, [rota, sessao, podeSincronizar, atualizarEstado])
+
+  useEffect(() => {
+    const terminaEm = estadoSala?.partida?.rodada?.termina_em
+    const emAndamento = estadoSala?.partida?.rodada?.status === "EM_ANDAMENTO"
+    if (!emAndamento || !terminaEm) return undefined
+    const atualizar = () => setSegundosRestantes(segundosAteDeadline(terminaEm))
+    const inicio = globalThis.setTimeout(atualizar, 0)
+    const intervalo = window.setInterval(atualizar, 1000)
+    return () => {
+      globalThis.clearTimeout(inicio)
+      window.clearInterval(intervalo)
+    }
+  }, [estadoSala?.partida?.rodada?.id, estadoSala?.partida?.rodada?.status, estadoSala?.partida?.rodada?.termina_em])
 
   async function iniciarParticipacao(acao) {
     if (operacaoRef.current) return
@@ -443,8 +467,9 @@ function TelaNemAPato({ voltarInicio }) {
                     <div className="np-round__status">
                       <p>Maior palpite <strong>{formatarPalpite(rodada.maior_palpite, rodada.pergunta?.unidade)}</strong></p>
                       <p>Jogador da vez <strong>{rodada.jogador_da_vez?.nome}</strong></p>
-                      <p>Tempo da rodada <strong>2:00</strong></p>
+                      <p className={segundosRestantes <= 10 ? "np-timer np-timer--urgent" : "np-timer"}>Tempo da rodada <strong>{formatarTempo(segundosRestantes)}</strong></p>
                     </div>
+                    {segundosRestantes === 0 && <p role="status">TEMPO ESGOTADO — confirmando resultado...</p>}
                     {rodada.palpites.length > 0 && (
                       <ol className="np-guess-history" aria-label="Histórico de palpites">
                         {rodada.palpites.map((item) => (
@@ -489,7 +514,7 @@ function TelaNemAPato({ voltarInicio }) {
                     )}
                   </section>
                 )}
-                {rodada?.status === "RESULTADO" && rodada.resultado_desafio && (
+                {rodada?.status === "RESULTADO" && (
                   <section className="np-round np-result" aria-labelledby="np-result-title">
                     <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
                     <h3 id="np-result-title">RESULTADO</h3>
@@ -498,9 +523,29 @@ function TelaNemAPato({ voltarInicio }) {
                       <span>Resposta correta</span>
                       <strong>{formatarPalpite(rodada.pergunta?.resposta_numerica, rodada.pergunta?.unidade)}</strong>
                     </div>
-                    <p>Último palpite: <strong>{rodada.resultado_desafio.palpite_desafiado.jogador.nome} — {formatarPalpite(rodada.resultado_desafio.palpite_desafiado.valor, rodada.pergunta?.unidade)}</strong></p>
-                    <p><strong>{rodada.resultado_desafio.desafiante.nome}</strong> disse “Nem a Pato!”</p>
-                    <p className="np-result__penalty"><strong>{rodada.resultado_desafio.jogador_penalizado.nome}</strong> recebeu 1 pato.</p>
+                    {rodada.resultado_desafio && (
+                      <>
+                        <p>Último palpite: <strong>{rodada.resultado_desafio.palpite_desafiado.jogador.nome} — {formatarPalpite(rodada.resultado_desafio.palpite_desafiado.valor, rodada.pergunta?.unidade)}</strong></p>
+                        <p><strong>{rodada.resultado_desafio.desafiante.nome}</strong> disse “Nem a Pato!”</p>
+                        <p className="np-result__penalty"><strong>{rodada.resultado_desafio.jogador_penalizado.nome}</strong> recebeu 1 pato.</p>
+                      </>
+                    )}
+                    {rodada.resultado_timeout && (
+                      <>
+                        <h4>TEMPO ESGOTADO</h4>
+                        {rodada.resultado_timeout.ultimo_palpite ? (
+                          <>
+                            <p>Maior palpite: <strong>{rodada.resultado_timeout.autor_protegido.nome} — {formatarPalpite(rodada.resultado_timeout.ultimo_palpite.valor, rodada.pergunta?.unidade)}</strong></p>
+                            <p><strong>{rodada.resultado_timeout.autor_protegido.nome}</strong> não recebeu pato. Os demais jogadores ativos receberam 1 pato.</p>
+                          </>
+                        ) : (
+                          <>
+                            <p>Ninguém enviou um palpite.</p>
+                            <p>Nenhum pato foi aplicado.</p>
+                          </>
+                        )}
+                      </>
+                    )}
                     <p className="np-result__explanation">{rodada.pergunta?.explicacao}</p>
                     {rodada.numero < partida.total_rodadas ? (
                       eu?.eh_anfitriao ? (

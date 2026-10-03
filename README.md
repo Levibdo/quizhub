@@ -425,8 +425,17 @@ após F5. O anfitrião ativo avança uma única rodada por ação, de R1 até R1
 o backend preserva histórico e placar, escolhe o jogador inicial pela rotação
 circular dos snapshots ativos e incrementa a versão da sala uma vez. Repetições
 ou corridas de avanço não iniciam duas rodadas. Depois da R10 não há avanço nesta
-fase. A duração de 120 segundos continua apenas informativa: a NP6B não implementa
-timeout nem encerramento da partida.
+fase. Cada rodada dura 120 segundos e `termina_em` é o prazo autoritativo.
+O PostgreSQL fornece o instante de validação após os locks; o countdown local é
+apenas visual. Não há worker: `GET .../eu`, palpites e desafios detectam
+`agora >= termina_em` e convergem atomicamente para `RESULTADO`. Com palpite, o
+autor do último fica protegido e todos os demais snapshots ativos recebem um pato;
+sem palpite, ninguém é penalizado. Ações validadas após o prazo não são gravadas.
+Pollings concorrentes aplicam a transição e `estado_versao` uma única vez. O
+`finalizada_em` registra o instante efetivo da persistência, enquanto `termina_em`
+continua sendo o prazo. A ordem de locks é sala → participantes → partida → rodada
+→ snapshots → palpites. O frontend nunca finaliza a rodada nem revela dados por
+conta própria. O encerramento da partida após a R10 ainda não faz parte desta fase.
 
 ## API
 
@@ -454,7 +463,8 @@ python -m unittest discover -s tests -v
 
 Os testes de concorrência real do Nem a Pato ficam separados da suíte SQLite.
 Eles cobrem entrada, início de partida/rodada, início versus entrada, palpites
-simultâneos, retries idempotentes, avanço concorrente e avanço versus abandono.
+simultâneos, retries idempotentes, avanço concorrente, avanço versus abandono, pollings simultâneos e corridas de
+palpite/desafio versus timeout.
 Execute-os somente em um banco PostgreSQL descartável cujo nome comece
 com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0010`:
 

@@ -41,6 +41,7 @@ from app.schemas.nem_a_pato import (
     ParticipacaoSalaCriada,
     RodadaNemPatoPublica,
     ResultadoDesafioNemPatoPublico,
+    ResultadoTimeoutNemPatoPublico,
     SalaLobbyPublica,
     SalaRecuperada,
 )
@@ -137,6 +138,51 @@ def sala_publica(
 
 
 class SalasNemAPatoService:
+    @staticmethod
+    def _agora_autoritativo(db: Session) -> datetime:
+        if db.get_bind().dialect.name == "postgresql":
+            return db.scalar(select(func.clock_timestamp()))
+        return datetime.now(timezone.utc)
+
+    def _finalizar_timeout_se_expirado(
+        self,
+        db: Session,
+        sala: SalaNemPato,
+        rodada: RodadaNemPato,
+        jogadores: list[JogadorPartidaNemPato],
+        palpites: list[PalpiteNemPato],
+    ) -> bool:
+        if (
+            rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO
+            or rodada.termina_em is None
+        ):
+            return False
+        agora = self._agora_autoritativo(db)
+        prazo = rodada.termina_em
+        agora_comparavel = (
+            agora.replace(tzinfo=None)
+            if prazo.tzinfo is None and agora.tzinfo is not None
+            else agora
+        )
+        if agora_comparavel < prazo:
+            return False
+        ultimo_palpite = palpites[-1] if palpites else None
+        if ultimo_palpite is None:
+            rodada.tipo_finalizacao = TipoFinalizacaoRodadaNemPato.SEM_PALPITE
+        else:
+            rodada.tipo_finalizacao = TipoFinalizacaoRodadaNemPato.TEMPO_ESGOTADO
+            for jogador in jogadores:
+                if (
+                    jogador.status == ParticipanteNemPatoStatus.ATIVO
+                    and jogador.id != ultimo_palpite.jogador_partida_id
+                ):
+                    jogador.patos += 1
+        rodada.status = RodadaNemPatoStatus.RESULTADO
+        rodada.finalizada_em = agora
+        rodada.jogador_da_vez_id = None
+        sala.estado_versao += 1
+        return True
+
     def __init__(
         self,
         *,
@@ -396,6 +442,28 @@ class SalasNemAPatoService:
                     jogador_penalizado=self._jogador_publico(jogadores_por_id[desafio.jogador_penalizado_id], participante_id),
                     resolvido_em=desafio.resolvido_em,
                 )
+            resultado_timeout = None
+            if rodada.tipo_finalizacao in (
+                TipoFinalizacaoRodadaNemPato.TEMPO_ESGOTADO,
+                TipoFinalizacaoRodadaNemPato.SEM_PALPITE,
+            ):
+                ultimo_palpite = palpites[-1] if palpites else None
+                ultimo_publico = (
+                    PalpiteNemPatoPublico(
+                        ordem=ultimo_palpite.ordem,
+                        valor=ultimo_palpite.valor,
+                        jogador=self._jogador_publico(
+                            jogadores_por_id[ultimo_palpite.jogador_partida_id],
+                            participante_id,
+                        ),
+                        criado_em=ultimo_palpite.criado_em,
+                    )
+                    if ultimo_palpite is not None else None
+                )
+                resultado_timeout = ResultadoTimeoutNemPatoPublico(
+                    ultimo_palpite=ultimo_publico,
+                    autor_protegido=ultimo_publico.jogador if ultimo_publico else None,
+                )
             rodada_publica = RodadaNemPatoPublica(
                 id=rodada.id,
                 numero=rodada.numero,
@@ -426,6 +494,7 @@ class SalasNemAPatoService:
                 finalizada_em=rodada.finalizada_em,
                 tipo_finalizacao=rodada.tipo_finalizacao.value if rodada.tipo_finalizacao else None,
                 resultado_desafio=resultado_desafio,
+                resultado_timeout=resultado_timeout,
             )
         return PartidaNemPatoPublica(
             id=partida.id,
@@ -861,6 +930,13 @@ class SalasNemAPatoService:
                 db.rollback()
                 return self.recuperar(db, codigo, token)
 
+            if self._finalizar_timeout_se_expirado(
+                db, sala, rodada, jogadores, palpites
+            ):
+                db.flush()
+                db.commit()
+                return self.recuperar(db, codigo, token)
+
             if rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO:
                 raise HTTPException(
                     status_code=409, detail="esta rodada não aceita mais palpites"
@@ -1002,6 +1078,13 @@ class SalasNemAPatoService:
                     status_code=409,
                     detail="client_action_id já usado em outra ação",
                 )
+            if self._finalizar_timeout_se_expirado(
+                db, sala, rodada, jogadores, palpites
+            ):
+                db.flush()
+                db.commit()
+                return self.recuperar(db, codigo, token)
+
             if rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO:
                 raise HTTPException(status_code=409, detail="esta rodada não aceita desafio")
             if not palpites:
@@ -1021,7 +1104,7 @@ class SalasNemAPatoService:
                 if ultimo_palpite.valor > pergunta.resposta_numerica
                 else jogador
             )
-            agora = datetime.now(timezone.utc)
+            agora = self._agora_autoritativo(db)
             db.add(
                 DesafioNemPato(
                     rodada_id=rodada.id,
@@ -1177,6 +1260,87 @@ class SalasNemAPatoService:
             db.rollback()
             raise
 
+    def _sincronizar_timeout(self, db: Session, codigo: str, token: str) -> None:
+        codigo = self._codigo_normalizado(codigo)
+        token_digest = hash_credencial(token)
+        try:
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = next(
+                (item for item in participantes if hmac.compare_digest(item.token_hash, token_digest)),
+                None,
+            )
+            if participante is None:
+                outra_sala = db.scalar(
+                    select(ParticipanteNemPato.id).where(
+                        ParticipanteNemPato.token_hash == token_digest
+                    )
+                )
+                if outra_sala is not None:
+                    raise HTTPException(
+                        status_code=403, detail="credencial não pertence a esta sala"
+                    )
+                raise HTTPException(
+                    status_code=401, detail="credencial Nem a Pato inválida"
+                )
+            if participante.status != ParticipanteNemPatoStatus.ATIVO:
+                raise HTTPException(
+                    status_code=403, detail="participante não está ativo"
+                )
+            if sala.status != SalaNemPatoStatus.EM_PARTIDA:
+                db.rollback()
+                return
+            partida = db.scalar(
+                select(PartidaNemPato)
+                .where(
+                    PartidaNemPato.sala_id == sala.id,
+                    PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if partida is None or partida.rodada_atual == 0:
+                db.rollback()
+                return
+            rodada = db.scalar(
+                select(RodadaNemPato)
+                .where(
+                    RodadaNemPato.partida_id == partida.id,
+                    RodadaNemPato.numero == partida.rodada_atual,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            jogadores = list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(JogadorPartidaNemPato.partida_id == partida.id)
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            palpites = list(db.scalars(
+                select(PalpiteNemPato)
+                .where(PalpiteNemPato.rodada_id == rodada.id)
+                .order_by(PalpiteNemPato.ordem)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            if self._finalizar_timeout_se_expirado(
+                db, sala, rodada, jogadores, palpites
+            ):
+                db.flush()
+                db.commit()
+            else:
+                db.rollback()
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception:
+            db.rollback()
+            raise
+
     def estado_publico(self, db: Session, codigo: str) -> SalaLobbyPublica:
         codigo = self._codigo_normalizado(codigo)
         sala = db.scalar(
@@ -1191,6 +1355,9 @@ class SalasNemAPatoService:
     def recuperar(
         self, db: Session, codigo: str, token: str
     ) -> SalaRecuperada:
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        self._sincronizar_timeout(db, codigo, token)
         sala, participante = self._obter_participante_autenticado(db, codigo, token)
         partida = None
         if sala.status == SalaNemPatoStatus.EM_PARTIDA:
