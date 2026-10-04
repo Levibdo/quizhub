@@ -156,10 +156,13 @@ class TestNP6BPostgresConcurrency(unittest.TestCase):
             versao = session.scalar(
                 select(SalaNemPato.estado_versao).where(SalaNemPato.codigo == codigo)
             )
-        acao = lambda session, service: service.iniciar_proxima_rodada(
+        acao_host = lambda session, service: service.iniciar_proxima_rodada(
             session, codigo, rodada_id, tokens["host"]
         )
-        resultados = self.corrida(acao, acao)
+        acao_convidado = lambda session, service: service.iniciar_proxima_rodada(
+            session, codigo, rodada_id, tokens["p1"]
+        )
+        resultados = self.corrida(acao_host, acao_convidado)
         self.assertEqual([item[0] for item in resultados].count("accepted"), 1)
         self.assertEqual([item[0] for item in resultados].count("rejected"), 1)
         with self.sessions() as session:

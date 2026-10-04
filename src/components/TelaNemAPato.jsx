@@ -94,7 +94,7 @@ function rotaAtual() {
     : { tipo: 'inicio' }
 }
 
-function TelaNemAPato({ voltarInicio }) {
+function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
   const [rota, setRota] = useState(() => rotaAtual())
   const [formulario, setFormulario] = useState(null)
   const [nome, setNome] = useState('')
@@ -105,6 +105,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [palpite, setPalpite] = useState('')
   const [segundosRestantes, setSegundosRestantes] = useState(0)
   const [confirmacaoDesafio, setConfirmacaoDesafio] = useState(false)
+  const [modalSaida, setModalSaida] = useState(null)
   const [sessao, setSessao] = useState(() => {
     const inicial = rotaAtual()
     return inicial.tipo === 'lobby' ? carregarSessaoNemAPato(inicial.codigo) : null
@@ -118,6 +119,7 @@ function TelaNemAPato({ voltarInicio }) {
   const acaoDesafioRef = useRef(null)
   const recuperacaoInicial = useRef(false)
   const botaoCancelarDesafioRef = useRef(null)
+  const botaoCancelarSaidaRef = useRef(null)
 
   const navegar = useCallback((destino) => {
     const caminho = destino.tipo === 'lobby'
@@ -231,6 +233,16 @@ function TelaNemAPato({ voltarInicio }) {
     return () => window.removeEventListener('keydown', fecharComEscape)
   }, [confirmacaoDesafio, carregando])
 
+  useEffect(() => {
+    if (!modalSaida) return undefined
+    botaoCancelarSaidaRef.current?.focus()
+    const fecharComEscape = (event) => {
+      if (event.key === 'Escape' && !carregando) setModalSaida(null)
+    }
+    window.addEventListener('keydown', fecharComEscape)
+    return () => window.removeEventListener('keydown', fecharComEscape)
+  }, [modalSaida, carregando])
+
   async function iniciarParticipacao(acao) {
     if (operacaoRef.current) return
     operacaoRef.current = true
@@ -271,6 +283,49 @@ function TelaNemAPato({ voltarInicio }) {
     setCarregando(false)
   }
 
+  function limparParticipacaoLocal(destino = 'modo') {
+    if (sessao) removerSessaoNemAPato(sessao.codigo)
+    setSessao(null)
+    setEstadoSala(null)
+    setPodeSincronizar(false)
+    recuperacaoInicial.current = false
+    setModalSaida(null)
+    if (destino === 'home') voltarInicio()
+    else navegar({ tipo: 'inicio' })
+  }
+
+  const solicitarSaida = useCallback((destino = 'modo') => {
+    const partida = estadoSala?.partida
+    if (
+      partida?.status === 'FINALIZADA'
+      || partida?.status === 'CANCELADA'
+    ) {
+      if (sessao) removerSessaoNemAPato(sessao.codigo)
+      setSessao(null)
+      setEstadoSala(null)
+      setPodeSincronizar(false)
+      recuperacaoInicial.current = false
+      voltarInicio()
+      return
+    }
+    if (partida?.rodada?.status === 'EM_ANDAMENTO') {
+      setModalSaida({ tipo: 'bloqueio', destino })
+      return
+    }
+    if (sessao && estadoSala?.participante?.status === 'ATIVO') {
+      setErro('')
+      setModalSaida({ tipo: 'confirmacao', destino })
+      return
+    }
+    voltarInicio()
+  }, [estadoSala, sessao, voltarInicio])
+
+  useEffect(() => {
+    if (!registrarAcaoMarca) return undefined
+    registrarAcaoMarca(() => solicitarSaida('home'))
+    return () => registrarAcaoMarca(null)
+  }, [registrarAcaoMarca, solicitarSaida])
+
   async function sairDaSala() {
     if (operacaoRef.current || !sessao) return
     operacaoRef.current = true
@@ -278,13 +333,8 @@ function TelaNemAPato({ voltarInicio }) {
     setErro('')
     try {
       await abandonarSalaNemAPato(sessao.codigo, sessao.token)
-      removerSessaoNemAPato(sessao.codigo)
-      setSessao(null)
-      setEstadoSala(null)
-      setPodeSincronizar(false)
-      recuperacaoInicial.current = true
-      navegar({ tipo: 'inicio' })
-      setSucesso('Você saiu da sala.')
+      const destino = modalSaida?.destino || 'modo'
+      limparParticipacaoLocal(destino)
     } catch (error) {
       setErro(mensagemErro(error, 'abandonar'))
     } finally {
@@ -474,19 +524,23 @@ function TelaNemAPato({ voltarInicio }) {
       && ultimoPalpite
       && !ultimoPalpite.jogador.eh_eu
       && jogadorAtual?.status === 'ATIVO'
+    const podeAbandonar = eu?.status === 'ATIVO' && (
+      sala?.status === 'AGUARDANDO'
+      || (
+        sala?.status === 'EM_PARTIDA'
+        && partida?.status === 'EM_ANDAMENTO'
+        && (
+          partida.rodada_atual === 0
+          || rodada?.status === 'RESULTADO'
+        )
+      )
+    )
     const mensagemSemSessao = !sessao && !erro
       ? 'Não há uma participação salva para esta sala neste navegador.'
       : erro
     const resultadoFinal = partida?.resultado_final
     const placarFinal = ordenarPlacarFinal(partida?.jogadores || [])
-    const voltarAoInicio = () => {
-      if (sessao) removerSessaoNemAPato(sessao.codigo)
-      setSessao(null)
-      setEstadoSala(null)
-      setPodeSincronizar(false)
-      recuperacaoInicial.current = false
-      navegar({ tipo: 'inicio' })
-    }
+    const voltarAoInicio = () => limparParticipacaoLocal('home')
     return (
       <section className="np-screen" aria-labelledby="np-title" aria-busy={carregando}>
         <header className="np-heading">
@@ -494,6 +548,11 @@ function TelaNemAPato({ voltarInicio }) {
           <h1 id="np-title">NEM A PATO!</h1>
           <p>{sala?.status === 'EM_PARTIDA' ? 'Partida em andamento' : 'Lobby da sala'}</p>
         </header>
+        {podeAbandonar && (
+          <button className="np-exit-room" type="button" disabled={carregando} onClick={() => solicitarSaida('modo')}>
+            SAIR DA SALA
+          </button>
+        )}
         {mensagemSemSessao && <p className="np-message np-message--error" role="alert">{mensagemSemSessao}</p>}
         {sucesso && <p className="np-message" role="status">{sucesso}</p>}
         {!sala && sessao && !erro && <p className="np-sync" role="status">Recuperando sua participação...</p>}
@@ -720,7 +779,9 @@ function TelaNemAPato({ voltarInicio }) {
                     )}
                     <p className="np-result__explanation">{rodada.pergunta?.explicacao}</p>
                     {rodada.numero < partida.total_rodadas ? (
-                      eu?.eh_anfitriao ? (
+                      jogadorAtual?.status === 'ATIVO' ? (
+                        <>
+                          <p className="np-hint">Qualquer jogador pode iniciar a próxima rodada.</p>
                         <button
                           className="np-start-button"
                           type="button"
@@ -729,8 +790,9 @@ function TelaNemAPato({ voltarInicio }) {
                         >
                           {carregando ? "Iniciando próxima rodada..." : "PRÓXIMA RODADA"}
                         </button>
+                        </>
                       ) : (
-                        <p role="status">Aguardando o host iniciar a próxima rodada...</p>
+                        <p role="status">Aguardando um jogador ativo iniciar a próxima rodada...</p>
                       )
                     ) : (
                       <p role="status">10 rodadas concluídas. Preparando resultado final...</p>
@@ -771,10 +833,31 @@ function TelaNemAPato({ voltarInicio }) {
                     {carregando ? 'Iniciando...' : 'Iniciar partida'}
                   </button>
                 )}
-                <button className="np-leave" type="button" disabled={carregando} onClick={sairDaSala}>
-                  {carregando ? 'Aguarde...' : 'Sair da sala'}
-                </button>
               </>
+            )}
+            {modalSaida && (
+              <div className="np-dialog-backdrop" role="presentation">
+                <section className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-exit-title" aria-describedby="np-exit-description">
+                  <p className="np-eyebrow">QuizHub // Sala multiplayer</p>
+                  <h4 id="np-exit-title">{modalSaida.tipo === 'bloqueio' ? 'RODADA EM ANDAMENTO' : 'SAIR DA SALA?'}</h4>
+                  <p id="np-exit-description">
+                    {modalSaida.tipo === 'bloqueio'
+                      ? 'Você está em uma rodada em andamento. Para evitar abandonar a partida no meio da rodada, aguarde o resultado para sair da sala.'
+                      : 'Você deixará esta partida e não poderá retornar com esta participação.'}
+                  </p>
+                  {erro && <p className="np-message np-message--error" role="alert">{erro}</p>}
+                  <div className="np-dialog__actions">
+                    {modalSaida.tipo === 'confirmacao' && (
+                      <button className="np-leave" type="button" disabled={carregando} onClick={sairDaSala}>
+                        {carregando ? 'Saindo da sala...' : modalSaida.destino === 'home' ? 'SAIR E VOLTAR AO INÍCIO' : 'SAIR DA SALA'}
+                      </button>
+                    )}
+                    <button ref={botaoCancelarSaidaRef} className="button-secondary" type="button" disabled={carregando} onClick={() => setModalSaida(null)}>
+                      {modalSaida.tipo === 'bloqueio' ? 'CONTINUAR NA PARTIDA' : 'CANCELAR'}
+                    </button>
+                  </div>
+                </section>
+              </div>
             )}
           </>
         )}

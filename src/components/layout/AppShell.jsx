@@ -1,9 +1,9 @@
 import SiteHeader from './SiteHeader'
 
-function AppShell({ children }) {
+function AppShell({ children, aoClicarMarca }) {
   return (
     <div className="app-shell">
-      <SiteHeader />
+      <SiteHeader aoClicarMarca={aoClicarMarca} />
       <main className="screen-frame">{children}</main>
     </div>
   )

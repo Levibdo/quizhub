@@ -47,6 +47,7 @@ function App() {
   const [erroAuth, setErroAuth] = useState('')
   const authRef = useRef(false)
   const versaoSessao = useRef(0)
+  const acaoMarcaNemPatoRef = useRef(null)
 
   useEffect(() => {
     const versao = ++versaoSessao.current
@@ -76,6 +77,20 @@ function App() {
   }
 
   function voltarDaTelaNemAPato() {
+    window.history.pushState({}, '', '/')
+    navegar('inicio')
+  }
+
+  const registrarAcaoMarcaNemPato = useCallback((acao) => {
+    acaoMarcaNemPatoRef.current = acao
+  }, [])
+
+  function clicarMarca(event) {
+    event.preventDefault()
+    if (tela === 'nem-pato' && acaoMarcaNemPatoRef.current) {
+      acaoMarcaNemPatoRef.current()
+      return
+    }
     window.history.pushState({}, '', '/')
     navegar('inicio')
   }
@@ -277,7 +292,7 @@ function App() {
   const pergunta = partida?.pergunta_atual
 
   return (
-    <AppShell>
+    <AppShell aoClicarMarca={clicarMarca}>
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
       {statusSessao === 'carregando' && <p role="status">Verificando sessão...</p>}
       {statusSessao === 'erro' && (
@@ -305,7 +320,10 @@ function App() {
         />
       )}
       {tela === 'nem-pato' && (
-        <TelaNemAPato voltarInicio={voltarDaTelaNemAPato} />
+        <TelaNemAPato
+          voltarInicio={voltarDaTelaNemAPato}
+          registrarAcaoMarca={registrarAcaoMarcaNemPato}
+        />
       )}
       {tela === 'login' && (
         <TelaLogin entrar={(...dados) => autenticar('login', ...dados)}

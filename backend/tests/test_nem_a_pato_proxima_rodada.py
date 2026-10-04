@@ -65,11 +65,14 @@ class TestProximaRodadaNemAPato(RodadaNemAPatoTestCase):
             self.assertEqual(anterior.status, RodadaNemPatoStatus.RESULTADO)
             self.assertEqual(session.scalar(select(PalpiteNemPato).where(PalpiteNemPato.rodada_id == rodada_id)).valor, 1)
 
-    def test_nao_host_estado_incorreto_rodada_errada_e_menos_de_tres_rejeitam(self):
+    def test_nao_host_ativo_pode_avancar(self):
         host, rodada_id = self.preparar_resultado()
-        with self.assertRaises(Exception) as nao_host:
-            self.avancar(host, rodada_id, self.tokens_by_name["Jorge"])
-        self.assertEqual(nao_host.exception.status_code, 403)
+        estado = self.avancar(host, rodada_id, self.tokens_by_name["Jorge"])
+        self.assertEqual(estado.partida.rodada.numero, 2)
+        self.assertEqual(estado.partida.rodada.status, "EM_ANDAMENTO")
+
+    def test_estado_incorreto_rodada_errada_e_menos_de_tres_rejeitam(self):
+        host, rodada_id = self.preparar_resultado()
         with self.assertRaises(Exception) as errada:
             self.avancar(host, rodada_id + 999)
         self.assertEqual(errada.exception.status_code, 409)

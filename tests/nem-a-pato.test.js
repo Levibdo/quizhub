@@ -18,6 +18,8 @@ globalThis.window = {
   setInterval: globalThis.setInterval,
   clearInterval: globalThis.clearInterval,
 }
+const nativeSetInterval = globalThis.setInterval
+const nativeClearInterval = globalThis.clearInterval
 
 const bundle = await rolldown({
   input: fileURLToPath(new URL('../src/App.jsx', import.meta.url)),
@@ -48,6 +50,8 @@ function text(node) {
 function setup(t, fetcher, { path = '/nem-a-pato', stored = {} } = {}) {
   const originalFetch = globalThis.fetch
   const originalStorage = globalThis.localStorage
+  const originalPathname = location.pathname
+  const cleanupCallbacks = new Set()
   const storage = new Map(Object.entries(stored))
   globalThis.localStorage = {
     getItem: (key) => storage.get(key) ?? null,
@@ -55,20 +59,58 @@ function setup(t, fetcher, { path = '/nem-a-pato', stored = {} } = {}) {
     removeItem: (key) => storage.delete(key),
   }
   location.pathname = path
-  globalThis.window.setInterval = globalThis.setInterval
-  globalThis.window.clearInterval = globalThis.clearInterval
+  globalThis.window.setInterval = nativeSetInterval
+  globalThis.window.clearInterval = nativeClearInterval
   globalThis.fetch = fetcher
-  globalThis.window.setInterval = globalThis.setInterval
-  globalThis.window.clearInterval = globalThis.clearInterval
   let renderer
-  t.after(async () => {
-    if (renderer) await act(async () => renderer.unmount())
-    globalThis.fetch = originalFetch
-    globalThis.localStorage = originalStorage
-    t.mock.timers.reset()
-  })
+  let cleaned = false
+  let cleanupPromise = null
+  const cleanup = () => {
+    if (cleaned) return Promise.resolve()
+    if (cleanupPromise) return cleanupPromise
+    cleanupPromise = (async () => {
+      let cleanupError
+      try {
+        for (const callback of cleanupCallbacks) {
+          try {
+            callback()
+          } catch (error) {
+            cleanupError ??= error
+          }
+        }
+        cleanupCallbacks.clear()
+        if (renderer) {
+          try {
+            await act(async () => renderer.unmount())
+          } catch (error) {
+            cleanupError ??= error
+          }
+        }
+      } finally {
+        renderer = null
+        cleanupCallbacks.clear()
+        globalThis.window.setInterval = nativeSetInterval
+        globalThis.window.clearInterval = nativeClearInterval
+        globalThis.fetch = originalFetch
+        globalThis.localStorage = originalStorage
+        location.pathname = originalPathname
+        delete globalThis.np4Poll
+        try {
+          t.mock.timers.reset()
+        } catch (error) {
+          cleanupError ??= error
+        }
+        cleaned = true
+      }
+      if (cleanupError) throw cleanupError
+    })()
+    return cleanupPromise
+  }
+  t.after(cleanup)
   return {
     storage,
+    cleanup,
+    onCleanup(callback) { cleanupCallbacks.add(callback) },
     render: async () => act(async () => { renderer = create(createElement(App)) }),
     unmount: async () => {
       if (renderer) {
@@ -240,6 +282,10 @@ test('deep link recupera credencial após reload e polling atualiza jogadores', 
     pollingCallback = callback
     return 41
   }
+  globalThis.window.clearInterval = (id) => {
+    if (id === 41) pollingCallback = undefined
+  }
+  ui.onCleanup(() => { pollingCallback = undefined })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes('Jorge'))
@@ -300,13 +346,19 @@ test('falha transitória permite tentar novamente sem apagar sessão', async (t)
 
 test('sair remove somente credencial da sala atual', async (t) => {
   const token = 'current-token'
+  let chamadasAbandono = 0
+  let falharAbandono = true
   const ui = setup(t, async (url) => {
     if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
     if (url.endsWith('/eu')) return response({
       sala: sala('K7M4QX', [participante(1, 'Levi', true)]),
       participante: participante(1, 'Levi', true),
     })
-    if (url.endsWith('/abandonar')) return response(sala('K7M4QX', []))
+    if (url.endsWith('/abandonar')) {
+      chamadasAbandono += 1
+      if (falharAbandono) throw new Error('offline')
+      return response(sala('K7M4QX', []))
+    }
     throw new Error(`unexpected ${url}`)
   }, {
     path: '/nem-a-pato/sala/K7M4QX',
@@ -316,11 +368,36 @@ test('sair remove somente credencial da sala atual', async (t) => {
     }) },
   })
   await ui.render()
-  await act(async () => ui.button('Sair da sala').props.onClick())
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('SAIR DA SALA').props.onClick())
+  assert.ok(ui.view().includes('SAIR DA SALA?'))
+  assert.equal(chamadasAbandono, 0)
+  assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {
+    K7M4QX: { codigo: 'K7M4QX', token },
+    ABC234: { codigo: 'ABC234', token: 'other-token' },
+  })
+  await act(async () => ui.button('CANCELAR').props.onClick())
+  assert.ok(!ui.view().includes('SAIR DA SALA?'))
+  assert.equal(chamadasAbandono, 0)
+
+  await act(async () => ui.button('SAIR DA SALA').props.onClick())
+  const confirmarSaida = () => ui.renderer.root.findAllByType('button')
+    .find((item) => item.props.className === 'np-leave')
+  await act(async () => confirmarSaida().props.onClick())
+  assert.equal(chamadasAbandono, 1)
+  assert.ok(ui.view().includes('Não foi possível conectar ao servidor.'))
+  assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {
+    K7M4QX: { codigo: 'K7M4QX', token },
+    ABC234: { codigo: 'ABC234', token: 'other-token' },
+  })
+
+  falharAbandono = false
+  await act(async () => confirmarSaida().props.onClick())
+  assert.equal(chamadasAbandono, 2)
   assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {
     ABC234: { codigo: 'ABC234', token: 'other-token' },
   })
-  assert.ok(ui.view().includes('Você saiu da sala.'))
+  assert.ok(ui.view().includes('Criar sala'))
 })
 
 test('polling é limpo ao desmontar lobby', async (t) => {
@@ -343,12 +420,17 @@ test('polling é limpo ao desmontar lobby', async (t) => {
     pollingCallback = callback
     return 42
   }
-  globalThis.window.clearInterval = (id) => { intervaloLimpo = id === 42 }
+  globalThis.window.clearInterval = (id) => {
+    intervaloLimpo = id === 42
+    if (id === 42) pollingCallback = undefined
+  }
+  ui.onCleanup(() => { pollingCallback = undefined })
   await ui.render()
   await act(async () => Promise.resolve())
   const beforeUnmount = chamadasLobby
-  await ui.unmount()
-  await act(async () => pollingCallback())
+  const callbackAposUnmount = pollingCallback
+  await ui.cleanup()
+  await act(async () => callbackAposUnmount())
   assert.equal(chamadasLobby, beforeUnmount)
   assert.equal(intervaloLimpo, true)
 })
@@ -372,7 +454,10 @@ test('host vê início desabilitado com menos de três e habilitado ao atingir m
     }) },
   })
   globalThis.window.setInterval = (callback) => { globalThis.np4Poll = callback; return 71 }
-  globalThis.window.clearInterval = () => {}
+  globalThis.window.clearInterval = (id) => {
+    if (id === 71) delete globalThis.np4Poll
+  }
+  ui.onCleanup(() => { delete globalThis.np4Poll })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.equal(ui.button('Iniciar partida').props.disabled, true)
@@ -430,7 +515,7 @@ test('host inicia com token; polling e F5 mostram preparação EM_PARTIDA', asyn
   assert.ok(ui.view().includes('2 minutos por rodada'))
   assert.ok(!ui.view().includes('Sair da sala'))
   assert.equal(chamadas.some((call) => call.url.endsWith('/perguntas')), false)
-  await ui.unmount()
+  await ui.cleanup()
 
   const reloaded = setup(t, fetcher, {
     path: '/nem-a-pato/sala/K7M4QX',
@@ -458,7 +543,7 @@ test('não host não tem botão de início e o host vê erro retornado pelo back
   await guest.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.equal(guest.button('Iniciar partida'), undefined)
-  await guest.unmount()
+  await guest.cleanup()
 
   const host = setup(t, async (url) => {
     if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
@@ -562,7 +647,7 @@ test('host inicia com credencial e todos recuperam tela EM_PARTIDA após F5', as
   assert.ok(ui.view().includes('10 rodadas'))
   assert.ok(ui.view().includes('2 minutos por rodada'))
   assert.equal(ui.button('Sair da sala'), undefined)
-  await ui.unmount()
+  await ui.cleanup()
 
   const reloaded = setup(t, fetcher, {
     path: '/nem-a-pato/sala/K7M4QX',
@@ -626,7 +711,7 @@ test('host vê Iniciar rodada e não-host aguarda o anfitrião', async (t) => {
   await host.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(host.button('Iniciar rodada'))
-  await host.unmount()
+  await host.cleanup()
 
   const guest = setup(t, async (url) => url.endsWith('/auth/me')
     ? response({ detail: 'não autenticado' }, 401)
@@ -835,7 +920,7 @@ test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar"
   await act(async () => ui.button("CANCELAR").props.onClick())
   assert.equal(ui.button("CANCELAR"), undefined)
   assert.equal(chamadas, 0)
-  await ui.unmount()
+  await ui.cleanup()
 
   const resultado = {
     sala: sala("K7M4QX", players, 7, "EM_PARTIDA"),
@@ -852,8 +937,9 @@ test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar"
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(reloaded.view().includes("RESULTADO"))
   assert.ok(reloaded.view().includes("Luana1 🦆"))
-  assert.ok(reloaded.view().includes("Aguardando o host iniciar a próxima rodada"))
-  assert.equal(reloaded.button("NEM A PATO!"), undefined)
+  assert.ok(reloaded.button("PRÓXIMA RODADA"))
+  assert.ok(reloaded.view().includes("Qualquer jogador pode iniciar a próxima rodada"))
+  assert.ok(!reloaded.button("NEM A PATO!"))
 })
 
 
@@ -921,7 +1007,8 @@ test("host avança com um clique e recebe R2 limpa com placar preservado", async
 test("não-host sincroniza R2 por polling e rodada 10 não oferece avanço", async (t) => {
   const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
   let partida = partidaNp6(players, 2, "RESULTADO")
-  let pollingCallback
+  const intervalosParticipante = new Map()
+  let proximoIntervaloParticipante = 96
   const ui = setup(t, async (url) => {
     if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
     return response({ sala: sala("K7M4QX", players, 7, "EM_PARTIDA"), participante: players[1], partida })
@@ -929,35 +1016,60 @@ test("não-host sincroniza R2 por polling e rodada 10 não oferece avanço", asy
     path: "/nem-a-pato/sala/K7M4QX",
     stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "jorge-token" } }) },
   })
-  globalThis.window.setInterval = (callback) => { pollingCallback = callback; return 96 }
-  globalThis.window.clearInterval = () => {}
+  globalThis.window.setInterval = (callback) => {
+    const id = proximoIntervaloParticipante++
+    intervalosParticipante.set(id, callback)
+    return id
+  }
+  globalThis.window.clearInterval = (id) => {
+    intervalosParticipante.delete(id)
+  }
+  ui.onCleanup(() => intervalosParticipante.clear())
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
-  assert.equal(ui.button("PRÓXIMA RODADA"), undefined)
-  assert.ok(ui.view().includes("Aguardando o host iniciar a próxima rodada"))
+  assert.ok(ui.button("PRÓXIMA RODADA"))
+  assert.ok(ui.view().includes("Qualquer jogador pode iniciar a próxima rodada"))
+  const pollingParticipante = intervalosParticipante.get(96)
+  assert.equal(typeof pollingParticipante, "function")
   partida = partidaNp5(players, 2, "EM_ANDAMENTO", [])
   partida.rodada.numero = 2
   partida.rodada.pergunta = { id: 10, categoria_id: "geral", enunciado: "Pergunta após polling", unidade: null }
   partida.rodada.jogador_inicial = partida.jogadores[1]
   partida.rodada.jogador_da_vez = partida.jogadores[1]
-  await act(async () => pollingCallback())
+  await act(async () => pollingParticipante())
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes("Rodada 2 de 10"))
   assert.ok(ui.view().includes("Pergunta após polling"))
-  await ui.unmount()
+  assert.equal(typeof intervalosParticipante.get(97), "function")
+  await ui.cleanup()
 
   const final = partidaNp6(players, 1, "RESULTADO")
   final.rodada.numero = 10
+  const intervalosHost = new Map()
+  let proximoIntervaloHost = 196
   const host = setup(t, async (url) => url.endsWith("/auth/me")
     ? response({ detail: "não autenticado" }, 401)
     : response({ sala: sala("K7M4QX", players, 20, "EM_PARTIDA"), participante: players[0], partida: final }), {
     path: "/nem-a-pato/sala/K7M4QX",
     stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host-token" } }) },
   })
+  globalThis.window.setInterval = (callback) => {
+    const id = proximoIntervaloHost++
+    intervalosHost.set(id, callback)
+    return id
+  }
+  globalThis.window.clearInterval = (id) => {
+    intervalosHost.delete(id)
+  }
+  host.onCleanup(() => intervalosHost.clear())
   await host.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  const pollingHost = intervalosHost.get(196)
+  assert.equal(typeof pollingHost, "function")
+  await act(async () => pollingHost())
   assert.equal(host.button("PRÓXIMA RODADA"), undefined)
   assert.ok(host.view().includes("10 rodadas concluídas"))
+  await host.cleanup()
 })
 
 
@@ -1000,7 +1112,8 @@ test("timer deriva de termina_em, diminui e em zero aguarda o backend", async (t
     stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host" } }) },
   })
   globalThis.window.setInterval = (callback) => { intervalos.push(callback); return intervalos.length }
-  globalThis.window.clearInterval = () => {}
+  globalThis.window.clearInterval = (id) => { intervalos[id - 1] = undefined }
+  ui.onCleanup(() => { intervalos.length = 0 })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes("1:30"))
@@ -1018,35 +1131,58 @@ test("timer deriva de termina_em, diminui e em zero aguarda o backend", async (t
 test("polling renderiza timeout com e sem palpite e mantém próxima rodada", async (t) => {
   const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
   let partida = partidaTimeout(players, 1, true)
+  let pollingHost
   const host = setup(t, async (url) => url.endsWith("/auth/me")
     ? response({ detail: "não autenticado" }, 401)
     : response({ sala: sala("K7M4QX", players, 9, "EM_PARTIDA"), participante: players[0], partida }), {
     path: "/nem-a-pato/sala/K7M4QX",
     stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "host" } }) },
   })
+  globalThis.window.setInterval = (callback) => {
+    pollingHost = callback
+    return 101
+  }
+  globalThis.window.clearInterval = (id) => {
+    if (id === 101) pollingHost = undefined
+  }
+  host.onCleanup(() => { pollingHost = undefined })
   await host.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(typeof pollingHost, "function")
+  await act(async () => pollingHost())
   assert.ok(host.view().includes("TEMPO ESGOTADO"))
   assert.ok(host.view().includes("Luana — 700 km"))
   assert.ok(host.view().includes("Os demais jogadores ativos receberam 1 pato"))
   assert.ok(host.view().includes("Explicação do timeout"))
   assert.ok(host.view().includes("Levi1 🦆"))
   assert.ok(host.button("PRÓXIMA RODADA"))
-  await host.unmount()
+  await host.cleanup()
 
   partida = partidaTimeout(players, 2, false)
+  let pollingGuest
   const guest = setup(t, async (url) => url.endsWith("/auth/me")
     ? response({ detail: "não autenticado" }, 401)
     : response({ sala: sala("K7M4QX", players, 10, "EM_PARTIDA"), participante: players[1], partida }), {
     path: "/nem-a-pato/sala/K7M4QX",
     stored: { "quizhub-nem-pato-sessoes": JSON.stringify({ K7M4QX: { codigo: "K7M4QX", token: "guest" } }) },
   })
+  globalThis.window.setInterval = (callback) => {
+    pollingGuest = callback
+    return 102
+  }
+  globalThis.window.clearInterval = (id) => {
+    if (id === 102) pollingGuest = undefined
+  }
+  guest.onCleanup(() => { pollingGuest = undefined })
   await guest.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(typeof pollingGuest, "function")
+  await act(async () => pollingGuest())
   assert.ok(guest.view().includes("Ninguém enviou um palpite"))
   assert.ok(guest.view().includes("Nenhum pato foi aplicado"))
-  assert.equal(guest.button("PRÓXIMA RODADA"), undefined)
-  assert.ok(guest.view().includes("Aguardando o host iniciar a próxima rodada"))
+  assert.ok(guest.button("PRÓXIMA RODADA"))
+  assert.ok(guest.view().includes("Qualquer jogador pode iniciar a próxima rodada"))
+  await guest.cleanup()
 })
 
 function estadoFinal(players, patos, { abandonado = null, cancelada = false } = {}) {
@@ -1141,6 +1277,7 @@ test('sala encerrada sem partida terminal continua polling até resultado comple
     limpos.push(id)
     callbacks.delete(id)
   }
+  ui.onCleanup(() => callbacks.clear())
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes('Sincronizando resultado final'))
@@ -1219,7 +1356,10 @@ test('não-host aguarda e converge por polling para revanche sem F5', async (t) 
     stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest' } }) },
   })
   globalThis.window.setInterval = (callback) => { polling = callback; return 91 }
-  globalThis.window.clearInterval = () => {}
+  globalThis.window.clearInterval = (id) => {
+    if (id === 91) polling = undefined
+  }
+  ui.onCleanup(() => { polling = undefined })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.equal(ui.button('JOGAR NOVAMENTE'), undefined)
@@ -1260,7 +1400,7 @@ test('tela final mostra empates e abandonados sem desempatar', async (t) => {
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes('VENCEDORESA • B'))
   assert.ok(ui.view().includes('PATOS DA PARTIDAC • D'))
-  await ui.unmount()
+  await ui.cleanup()
 
   const comAbandono = estadoFinal(players, [1, 2, 5, 0], { abandonado: 'D' })
   const recarregado = setup(t, async (url) => url.endsWith('/auth/me')
@@ -1278,9 +1418,12 @@ test('tela final mostra empates e abandonados sem desempatar', async (t) => {
 test('empate geral e partida cancelada têm estados próprios', async (t) => {
   const players = [participante(1, 'A', true), participante(2, 'B'), participante(3, 'C')]
   let atual = estadoFinal(players, [3, 3, 3])
-  const ui = setup(t, async (url) => url.endsWith('/auth/me')
-    ? response({ detail: 'não autenticado' }, 401)
-    : response(atual), {
+  let chamadasAbandono = 0
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/abandonar')) chamadasAbandono += 1
+    return response(atual)
+  }, {
     path: '/nem-a-pato/sala/K7M4QX',
     stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
   })
@@ -1296,7 +1439,11 @@ test('empate geral e partida cancelada têm estados próprios', async (t) => {
   assert.ok(ui.view().includes('PARTIDA CANCELADA'))
   assert.ok(ui.view().includes('Não há jogadores ativos suficientes'))
   assert.ok(!ui.view().includes('PATO DA PARTIDA'))
-  assert.equal(ui.button('JOGAR NOVAMENTE'), undefined)
+  assert.ok(!ui.button('JOGAR NOVAMENTE'))
+  assert.ok(ui.button('VOLTAR AO INÍCIO'))
   await act(async () => ui.button('VOLTAR AO INÍCIO').props.onClick())
-  assert.ok(ui.view().includes('Criar sala'))
+  assert.ok(ui.view().includes('Quiz Clássico'))
+  assert.ok(ui.view().includes('Abrir Nem a Pato'))
+  assert.equal(chamadasAbandono, 0)
+  assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {})
 })

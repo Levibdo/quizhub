@@ -354,18 +354,36 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
         for proibido in ("pergunta_id", "resposta_numerica", "explicacao", "token_hash"):
             self.assertNotIn(proibido, dados)
 
-    def test_abandono_nao_altera_snapshot_apos_partida_iniciar(self):
+    def test_host_pode_abandonar_antes_da_r1_e_transfere_host(self):
+        host = self.sala_com(["Levi", "Jorge", "Luana", "Bia"])
+        self.iniciar(host)
+        with self.sessions() as session:
+            estado = self.service.abandonar(
+                session, host.sala.codigo, host.credencial_participante
+            )
+        self.assertEqual(next(p.nome for p in estado.participantes if p.eh_anfitriao), "Jorge")
+        sala, _, jogadores, _ = self.contagens(host.sala.codigo)
+        self.assertEqual(sala.status, SalaNemPatoStatus.EM_PARTIDA)
+        self.assertEqual(
+            next(j.status for j in jogadores if j.nome_snapshot == "Levi"),
+            ParticipanteNemPatoStatus.ABANDONOU,
+        )
+
+    def test_abandono_antes_da_r1_com_menos_de_tres_cancela(self):
         host = self.sala_com(["Levi", "Jorge", "Luana"])
         self.iniciar(host)
         with self.sessions() as session:
-            with self.assertRaises(Exception) as erro:
-                self.service.abandonar(
-                    session, host.sala.codigo, host.credencial_participante
-                )
-        self.assertEqual(erro.exception.status_code, 409)
-        sala, _, jogadores, _ = self.contagens(host.sala.codigo)
-        self.assertEqual(sala.status, SalaNemPatoStatus.EM_PARTIDA)
-        self.assertEqual(len(jogadores), 3)
+            self.service.abandonar(
+                session, host.sala.codigo, self.tokens_by_name["Luana"]
+            )
+        sala, partida, jogadores, _ = self.contagens(host.sala.codigo)
+        self.assertEqual(sala.status, SalaNemPatoStatus.ENCERRADA)
+        self.assertEqual(partida.status, PartidaNemPatoStatus.CANCELADA)
+        self.assertEqual(partida.motivo_encerramento, "JOGADORES_INSUFICIENTES")
+        self.assertEqual(
+            next(j.status for j in jogadores if j.nome_snapshot == "Luana"),
+            ParticipanteNemPatoStatus.ABANDONOU,
+        )
 
 
 class TestInicioNemAPatoApi(InicioNemAPatoTestCase):

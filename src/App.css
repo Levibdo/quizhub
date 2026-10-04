@@ -26,6 +26,18 @@
   align-items: center;
   gap: var(--space-3);
   color: var(--color-text);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.site-brand:hover {
+  color: var(--color-focus);
+}
+
+.site-brand:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: .35rem;
 }
 
 .site-brand__mark {
@@ -1273,6 +1285,18 @@ select:disabled {
   width: 100%;
   min-height: 3.25rem;
   margin: 0;
+}
+
+.np-exit-room {
+  justify-self: end;
+  min-height: 2.75rem;
+  margin: 0;
+  border-color: rgba(216, 74, 85, 0.5);
+  color: #ffd9d7;
+  background: rgba(92, 18, 28, 0.34);
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  letter-spacing: .08em;
 }
 
 .np-form label {
