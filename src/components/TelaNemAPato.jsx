@@ -76,6 +76,8 @@ function mensagemErro(error, acao = 'operacao') {
   if (error.message === 'esta rodada não aceita mais palpites') return 'Esta rodada não aceita mais palpites.'
   if (error.message === 'sua participação não está mais ativa') return 'Sua participação não está mais ativa.'
   if (error.message === 'sala já possui uma partida em andamento') return 'Esta sala já tem uma partida em andamento.'
+  if (error.message === 'rodada já foi resolvida') return 'Esta rodada já foi resolvida. Sincronizando o resultado.'
+  if (error.message === 'palpite já foi desafiado') return 'Este palpite já foi desafiado. Sincronizando o resultado.'
   if (error.status === 422) return error.message || 'Confira os dados informados.'
   if (error.message === 'Não foi possível conectar ao servidor.') return error.message
   return acao === 'recuperar'
@@ -102,6 +104,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [sucesso, setSucesso] = useState('')
   const [palpite, setPalpite] = useState('')
   const [segundosRestantes, setSegundosRestantes] = useState(0)
+  const [confirmacaoDesafio, setConfirmacaoDesafio] = useState(false)
   const [sessao, setSessao] = useState(() => {
     const inicial = rotaAtual()
     return inicial.tipo === 'lobby' ? carregarSessaoNemAPato(inicial.codigo) : null
@@ -114,6 +117,7 @@ function TelaNemAPato({ voltarInicio }) {
   const acaoPalpiteRef = useRef(null)
   const acaoDesafioRef = useRef(null)
   const recuperacaoInicial = useRef(false)
+  const botaoCancelarDesafioRef = useRef(null)
 
   const navegar = useCallback((destino) => {
     const caminho = destino.tipo === 'lobby'
@@ -217,6 +221,16 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }, [estadoSala?.partida?.rodada?.id, estadoSala?.partida?.rodada?.status, estadoSala?.partida?.rodada?.termina_em])
 
+  useEffect(() => {
+    if (!confirmacaoDesafio) return undefined
+    botaoCancelarDesafioRef.current?.focus()
+    const fecharComEscape = (event) => {
+      if (event.key === 'Escape' && !carregando) setConfirmacaoDesafio(false)
+    }
+    window.addEventListener('keydown', fecharComEscape)
+    return () => window.removeEventListener('keydown', fecharComEscape)
+  }, [confirmacaoDesafio, carregando])
+
   async function iniciarParticipacao(acao) {
     if (operacaoRef.current) return
     operacaoRef.current = true
@@ -245,6 +259,16 @@ function TelaNemAPato({ voltarInicio }) {
       operacaoRef.current = false
       setCarregando(false)
     }
+  }
+
+  async function tentarRecuperarSala() {
+    if (operacaoRef.current || !sessao) return
+    operacaoRef.current = true
+    setCarregando(true)
+    const recuperou = await atualizarEstado(sessao, false)
+    if (recuperou) setErro('')
+    operacaoRef.current = false
+    setCarregando(false)
   }
 
   async function sairDaSala() {
@@ -341,16 +365,14 @@ function TelaNemAPato({ voltarInicio }) {
   }
 
 
+  function abrirConfirmacaoDesafio() {
+    if (!operacaoRef.current) setConfirmacaoDesafio(true)
+  }
+
   async function confirmarDesafio() {
     const rodada = estadoSala?.partida?.rodada
     const ultimo = rodada?.palpites?.at(-1)
     if (operacaoRef.current || !sessao || !rodada || !ultimo) return
-    const confirmado = globalThis.window.confirm
-      ? globalThis.window.confirm(
-        `Desafiar o palpite de ${ultimo.jogador.nome}: ${formatarPalpite(ultimo.valor, rodada.pergunta?.unidade)}?`,
-      )
-      : true
-    if (!confirmado) return
     if (!acaoDesafioRef.current || acaoDesafioRef.current.rodadaId !== rodada.id) {
       acaoDesafioRef.current = { rodadaId: rodada.id, id: novoClientActionId() }
     }
@@ -366,6 +388,7 @@ function TelaNemAPato({ voltarInicio }) {
       )
       setEstadoSala(atual)
       acaoDesafioRef.current = null
+      setConfirmacaoDesafio(false)
     } catch (error) {
       setErro(mensagemErro(error, "desafio"))
     } finally {
@@ -436,9 +459,18 @@ function TelaNemAPato({ voltarInicio }) {
     const eu = estadoSala?.participante
     const partida = estadoSala?.partida
     const rodada = partida?.rodada
+    const prazoEsgotado = rodada?.status === 'EM_ANDAMENTO'
+      && Boolean(rodada.termina_em)
+      && segundosAteDeadline(rodada.termina_em) === 0
+    const tempoExibido = rodada?.status === 'EM_ANDAMENTO'
+      && segundosRestantes === 0
+      && !prazoEsgotado
+      ? segundosAteDeadline(rodada.termina_em)
+      : segundosRestantes
     const ultimoPalpite = rodada?.palpites?.at(-1)
     const jogadorAtual = partida?.jogadores?.find((jogador) => jogador.eh_eu)
     const podeDesafiar = rodada?.status === 'EM_ANDAMENTO'
+      && !prazoEsgotado
       && ultimoPalpite
       && !ultimoPalpite.jogador.eh_eu
       && jogadorAtual?.status === 'ATIVO'
@@ -456,7 +488,7 @@ function TelaNemAPato({ voltarInicio }) {
       navegar({ tipo: 'inicio' })
     }
     return (
-      <section className="np-screen" aria-labelledby="np-title">
+      <section className="np-screen" aria-labelledby="np-title" aria-busy={carregando}>
         <header className="np-heading">
           <span className="np-eyebrow">QuizHub // Sala multiplayer</span>
           <h1 id="np-title">NEM A PATO!</h1>
@@ -464,7 +496,12 @@ function TelaNemAPato({ voltarInicio }) {
         </header>
         {mensagemSemSessao && <p className="np-message np-message--error" role="alert">{mensagemSemSessao}</p>}
         {sucesso && <p className="np-message" role="status">{sucesso}</p>}
-        {!sala && sessao && !erro && <p role="status">Recuperando sua participação...</p>}
+        {!sala && sessao && !erro && <p className="np-sync" role="status">Recuperando sua participação...</p>}
+        {!sala && sessao && erro && (
+          <button className="button-secondary np-retry" type="button" disabled={carregando} onClick={tentarRecuperarSala}>
+            {carregando ? 'Reconectando...' : 'Tentar novamente'}
+          </button>
+        )}
         {!sessao && (
           <button className="button-secondary" type="button" onClick={() => navegar({ tipo: 'inicio' })}>
             Voltar para Nem a Pato
@@ -541,21 +578,13 @@ function TelaNemAPato({ voltarInicio }) {
                   <>
                     {partida.numero > 1 && <p className="np-started__eyebrow">REVANCHE</p>}
                     <p>Partida {partida.numero} · {partida.total_rodadas} rodadas · {Math.floor(partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
-                    <ul className="np-player-list" aria-label="Jogadores desta partida">
-                      {partida.jogadores.map((jogador) => (
-                        <li className="np-player" key={`${jogador.ordem_circular}-${jogador.nome}`}>
-                          <span aria-hidden="true">♙</span>
-                          <strong>{jogador.nome}</strong>
-                        </li>
-                      ))}
-                    </ul>
                     <section className="np-score" aria-label="Placar de patos">
                       <h3>PATOS</h3>
                       <ul>
                         {partida.jogadores.map((jogador) => (
                           <li key={jogador.id}>
                             <span>{jogador.nome}</span>
-                            <strong>{jogador.patos ?? 0} 🦆</strong>
+                            <strong>{jogador.patos ?? 0} 🦆{jogador.eh_eu && <small>Você</small>}</strong>
                           </li>
                         ))}
                       </ul>
@@ -571,57 +600,89 @@ function TelaNemAPato({ voltarInicio }) {
                 )}
                 {rodada?.status === 'EM_ANDAMENTO' && (
                   <section className="np-round" aria-labelledby="np-round-title">
-                    <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
-                    <h3 id="np-round-title">Pergunta</h3>
+                    <header className="np-round__header">
+                      <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
+                      <p className={tempoExibido <= 10 ? "np-timer np-timer--urgent" : "np-timer"} aria-label={`${tempoExibido} segundos restantes`}>
+                        <span>Tempo</span><strong>{formatarTempo(tempoExibido)}</strong>
+                      </p>
+                    </header>
+                    <h3 id="np-round-title" className="np-visually-hidden">Pergunta</h3>
                     <p className="np-round__question">{rodada.pergunta?.enunciado}</p>
-                    {rodada.pergunta?.unidade && <p className="np-round__unit">Unidade: {rodada.pergunta.unidade}</p>}
+                    {rodada.pergunta?.unidade && <p className="np-round__unit">Responda em <strong>{rodada.pergunta.unidade}</strong></p>}
                     <div className="np-round__status">
                       <p>Maior palpite <strong>{formatarPalpite(rodada.maior_palpite, rodada.pergunta?.unidade)}</strong></p>
-                      <p>Jogador da vez <strong>{rodada.jogador_da_vez?.nome}</strong></p>
-                      <p className={segundosRestantes <= 10 ? "np-timer np-timer--urgent" : "np-timer"}>Tempo da rodada <strong>{formatarTempo(segundosRestantes)}</strong></p>
+                      <p className={rodada.jogador_da_vez?.eh_eu ? 'np-turn np-turn--you' : 'np-turn'}>
+                        <span className="np-visually-hidden">Jogador da vez: </span>
+                        {rodada.jogador_da_vez?.eh_eu ? 'Sua vez' : 'Vez de'}
+                        <strong>{rodada.jogador_da_vez?.eh_eu ? 'Faça seu palpite' : rodada.jogador_da_vez?.nome}</strong>
+                      </p>
                     </div>
-                    {segundosRestantes === 0 && <p role="status">TEMPO ESGOTADO — confirmando resultado...</p>}
+                    {prazoEsgotado && <p className="np-sync" role="status">TEMPO ESGOTADO — confirmando resultado...</p>}
                     {rodada.palpites.length > 0 && (
                       <ol className="np-guess-history" aria-label="Histórico de palpites">
-                        {rodada.palpites.map((item) => (
-                          <li key={item.ordem}>
+                        {rodada.palpites.map((item, indice) => (
+                          <li className={indice === rodada.palpites.length - 1 ? 'np-guess-history__latest' : ''} key={item.ordem}>
                             <span>{item.jogador.nome}</span>
                             <strong>{formatarPalpite(item.valor, rodada.pergunta?.unidade)}</strong>
                           </li>
                         ))}
                       </ol>
                     )}
-                    {rodada.jogador_da_vez?.eh_eu ? (
+                    {rodada.jogador_da_vez?.eh_eu && !prazoEsgotado ? (
                       <form className="np-guess-form" onSubmit={confirmarPalpite}>
                         <label htmlFor="np-guess">Seu palpite</label>
+                        {rodada.maior_palpite !== null && rodada.maior_palpite !== undefined && (
+                          <p id="np-guess-hint">Seu palpite deve ser maior que {formatarPalpite(rodada.maior_palpite, rodada.pergunta?.unidade)}.</p>
+                        )}
                         <input
                           id="np-guess"
+                          type="number"
                           inputMode="numeric"
                           pattern="[0-9]*"
+                          min="0"
+                          step="1"
+                          aria-describedby={rodada.maior_palpite !== null && rodada.maior_palpite !== undefined ? 'np-guess-hint' : undefined}
                           value={palpite}
                           onChange={(event) => {
                             setPalpite(event.target.value.replace(/\D/g, ''))
                             acaoPalpiteRef.current = null
                           }}
-                          disabled={carregando}
+                          disabled={carregando || prazoEsgotado}
                           required
                         />
                         <button type="submit" disabled={carregando || !palpite}>
                           {carregando ? 'Enviando...' : 'Confirmar palpite'}
                         </button>
                       </form>
-                    ) : (
+                    ) : !prazoEsgotado ? (
                       <p role="status">Aguardando o palpite de {rodada.jogador_da_vez?.nome}...</p>
-                    )}
+                    ) : null}
                     {podeDesafiar && (
                       <button
                         className="np-challenge"
                         type="button"
                         disabled={carregando}
-                        onClick={confirmarDesafio}
+                        onClick={abrirConfirmacaoDesafio}
                       >
                         {carregando ? "Desafiando..." : "NEM A PATO!"}
                       </button>
+                    )}
+                    {confirmacaoDesafio && ultimoPalpite && (
+                      <div className="np-dialog-backdrop" role="presentation">
+                        <section className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-challenge-title" aria-describedby="np-challenge-description">
+                          <p className="np-eyebrow">Confirme o desafio</p>
+                          <h4 id="np-challenge-title">NEM A PATO!</h4>
+                          <p id="np-challenge-description">Você quer desafiar o palpite de <strong>{ultimoPalpite.jogador.nome}: {formatarPalpite(ultimoPalpite.valor, rodada.pergunta?.unidade)}</strong>?</p>
+                          <div className="np-dialog__actions">
+                            <button type="button" className="np-challenge" disabled={carregando} onClick={confirmarDesafio}>
+                              {carregando ? 'Confirmando desafio...' : 'CONFIRMAR DESAFIO'}
+                            </button>
+                            <button ref={botaoCancelarDesafioRef} type="button" className="button-secondary" disabled={carregando} onClick={() => setConfirmacaoDesafio(false)}>
+                              CANCELAR
+                            </button>
+                          </div>
+                        </section>
+                      </div>
                     )}
                   </section>
                 )}
@@ -678,14 +739,14 @@ function TelaNemAPato({ voltarInicio }) {
                 )}
               </section>
             )}
-            {sala.status !== 'ENCERRADA' && <section className="np-room-code" aria-label="Código da sala">
+            {sala.status === 'AGUARDANDO' && <section className="np-room-code" aria-label="Código da sala">
               <span>Código da sala</span>
               <strong>{sala.codigo}</strong>
               <p>Compartilhe este código com os outros jogadores.</p>
               <button className="button-secondary" type="button" onClick={copiarCodigo}>Copiar código</button>
             </section>}
-            {sala.status !== 'ENCERRADA' && <p className="np-room-count">{sala.participantes_ativos} / {sala.limite_jogadores} jogadores</p>}
-            {sala.status !== 'ENCERRADA' && <ul className="np-player-list" aria-label="Participantes da sala">
+            {sala.status === 'AGUARDANDO' && <p className="np-room-count">{sala.participantes_ativos} / {sala.limite_jogadores} jogadores</p>}
+            {sala.status === 'AGUARDANDO' && <ul className="np-player-list" aria-label="Participantes da sala">
               {participantes.map((participante) => (
                 <li key={participante.id} className="np-player">
                   <span aria-hidden="true">{participante.eh_anfitriao ? '♛' : '♙'}</span>
@@ -697,9 +758,9 @@ function TelaNemAPato({ voltarInicio }) {
             </ul>}
             {sala.status === 'AGUARDANDO' && (
               <>
-                <p className="np-lobby-status">Aguardando o anfitrião...</p>
+                <p className="np-lobby-status">{eu?.eh_anfitriao ? 'Sala pronta para receber jogadores.' : 'Aguardando o anfitrião iniciar a partida.'}</p>
                 {eu?.eh_anfitriao && <p className="np-host-note">Você é o anfitrião.</p>}
-                <p className="np-hint">São necessários pelo menos 3 jogadores para iniciar.</p>
+                {sala.participantes_ativos < 3 && <p className="np-hint">Aguardando pelo menos 3 jogadores.</p>}
                 {eu?.eh_anfitriao && (
                   <button
                     className="np-start-button"
@@ -722,11 +783,12 @@ function TelaNemAPato({ voltarInicio }) {
   }
 
   return (
-    <section className="np-screen" aria-labelledby="np-title">
+    <section className="np-screen" aria-labelledby="np-title" aria-busy={carregando}>
       <header className="np-heading">
         <span className="np-eyebrow">QuizHub // Modo multiplayer</span>
         <h1 id="np-title">NEM A PATO!</h1>
-        <p>Reúna de 3 a 6 jogadores para o desafio.</p>
+        <p>3–6 jogadores · 10 rodadas · 2 minutos por rodada</p>
+        <p className="np-heading__rule">Quem terminar com menos patos vence.</p>
       </header>
       {erro && <p className="np-message np-message--error" role="alert">{erro}</p>}
       {sucesso && <p className="np-message" role="status">{sucesso}</p>}
@@ -748,6 +810,9 @@ function TelaNemAPato({ voltarInicio }) {
                 onChange={(event) => setCodigo(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
                 autoCapitalize="characters"
                 autoComplete="off"
+                autoCorrect="off"
+                inputMode="text"
+                spellCheck={false}
                 maxLength={6}
                 required
               />
@@ -766,7 +831,7 @@ function TelaNemAPato({ voltarInicio }) {
             />
           </label>
           <button type="submit" disabled={carregando}>
-            {carregando ? 'Aguarde...' : formulario === 'criar' ? 'Criar sala' : 'Entrar'}
+            {carregando ? (formulario === 'criar' ? 'Criando sala...' : 'Entrando...') : formulario === 'criar' ? 'Criar sala' : 'Entrar'}
           </button>
           <button type="button" className="button-ghost" disabled={carregando} onClick={() => { setFormulario(null); setErro('') }}>Voltar</button>
         </form>

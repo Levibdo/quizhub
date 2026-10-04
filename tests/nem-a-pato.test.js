@@ -271,6 +271,33 @@ test('credencial inválida é removida e oferece retorno ao fluxo do modo', asyn
   assert.ok(ui.button('Voltar para Nem a Pato'))
 })
 
+test('falha transitória permite tentar novamente sem apagar sessão', async (t) => {
+  const token = 'temporary-network-token'
+  let tentativas = 0
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    tentativas += 1
+    if (tentativas === 1) throw new Error('offline')
+    return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true)]),
+      participante: participante(1, 'Levi', true),
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('Não foi possível conectar ao servidor.'))
+  assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {
+    K7M4QX: { codigo: 'K7M4QX', token },
+  })
+  await act(async () => ui.button('Tentar novamente').props.onClick())
+  assert.ok(ui.view().includes('Levi'))
+  assert.ok(!ui.view().includes('Não foi possível conectar ao servidor.'))
+  assert.equal(tentativas, 2)
+})
+
 test('sair remove somente credencial da sala atual', async (t) => {
   const token = 'current-token'
   const ui = setup(t, async (url) => {
@@ -577,8 +604,8 @@ function partidaNp5(players, euId, rodadaStatus = 'AGUARDANDO_INICIO', palpites 
         jogador: snapshots[item.jogador],
         criado_em: '2026-10-03T12:00:00Z',
       })),
-      iniciada_em: rodadaStatus === 'EM_ANDAMENTO' ? '2026-10-03T12:00:00Z' : null,
-      termina_em: rodadaStatus === 'EM_ANDAMENTO' ? '2026-10-03T12:02:00Z' : null,
+      iniciada_em: rodadaStatus === 'EM_ANDAMENTO' ? new Date(Date.now() - 1_000).toISOString() : null,
+      termina_em: rodadaStatus === 'EM_ANDAMENTO' ? new Date(Date.now() + 120_000).toISOString() : null,
     },
   }
 }
@@ -736,10 +763,6 @@ test("botão desafia fora de turno, confirma autor/valor e bloqueia durante requ
   let partida = partidaNp6(players, 3)
   let resolver
   let payload
-  const confirmacoes = []
-  const confirmOriginal = globalThis.window.confirm
-  globalThis.window.confirm = (mensagem) => { confirmacoes.push(mensagem); return true }
-  t.after(() => { globalThis.window.confirm = confirmOriginal })
   const ui = setup(t, async (url, options = {}) => {
     if (url.endsWith("/auth/me")) return response({ detail: "não autenticado" }, 401)
     if (url.endsWith("/desafiar")) {
@@ -769,11 +792,15 @@ test("botão desafia fora de turno, confirma autor/valor e bloqueia durante requ
   assert.ok(ui.button("NEM A PATO!"))
   let envio
   await act(async () => {
-    envio = ui.button("NEM A PATO!").props.onClick()
+    ui.button("NEM A PATO!").props.onClick()
     await Promise.resolve()
   })
-  assert.match(confirmacoes[0], /Levi: 500 km/)
-  assert.equal(ui.button("Desafiando...").props.disabled, true)
+  assert.ok(ui.view().includes("Você quer desafiar o palpite de Levi: 500 km?"))
+  await act(async () => {
+    envio = ui.button("CONFIRMAR DESAFIO").props.onClick()
+    await Promise.resolve()
+  })
+  assert.equal(ui.button("Confirmando desafio...").props.disabled, true)
   await act(async () => { resolver(); await envio })
   assert.match(payload.client_action_id, /^[0-9a-f-]{36}$/)
   assert.ok(ui.view().includes("Resposta correta"))
@@ -787,9 +814,6 @@ test("botão desafia fora de turno, confirma autor/valor e bloqueia durante requ
 test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar", async (t) => {
   const players = [participante(1, "Levi", true), participante(2, "Jorge"), participante(3, "Luana")]
   let chamadas = 0
-  const confirmOriginal = globalThis.window.confirm
-  globalThis.window.confirm = () => false
-  t.after(() => { globalThis.window.confirm = confirmOriginal })
   const estadoAtivo = {
     sala: sala("K7M4QX", players, 6, "EM_PARTIDA"),
     participante: players[1],
@@ -807,6 +831,9 @@ test("autor não desafia, cancelar não envia e F5 recompõe resultado e placar"
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.button("NEM A PATO!"))
   await act(async () => ui.button("NEM A PATO!").props.onClick())
+  assert.ok(ui.button("CANCELAR"))
+  await act(async () => ui.button("CANCELAR").props.onClick())
+  assert.equal(ui.button("CANCELAR"), undefined)
   assert.equal(chamadas, 0)
   await ui.unmount()
 
