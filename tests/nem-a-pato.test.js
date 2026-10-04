@@ -1021,3 +1021,161 @@ test("polling renderiza timeout com e sem palpite e mantém próxima rodada", as
   assert.equal(guest.button("PRÓXIMA RODADA"), undefined)
   assert.ok(guest.view().includes("Aguardando o host iniciar a próxima rodada"))
 })
+
+function estadoFinal(players, patos, { abandonado = null, cancelada = false } = {}) {
+  const jogadores = players.map((item, indice) => ({
+    id: `j${indice + 1}`,
+    nome: item.nome,
+    ordem_circular: indice + 1,
+    status: item.nome === abandonado ? 'ABANDONOU' : 'ATIVO',
+    eh_eu: indice === 0,
+    patos: patos[indice],
+  }))
+  const ativos = jogadores.filter((jogador) => jogador.status === 'ATIVO')
+  const menor = Math.min(...ativos.map((jogador) => jogador.patos))
+  const maior = Math.max(...ativos.map((jogador) => jogador.patos))
+  return {
+    sala: sala('K7M4QX', players, 22, 'ENCERRADA'),
+    participante: players[0],
+    partida: {
+      id: 'partida-final', numero: 1,
+      status: cancelada ? 'CANCELADA' : 'FINALIZADA',
+      rodada_atual: cancelada ? 4 : 10, total_rodadas: 10,
+      duracao_rodada_segundos: 120, jogadores, rodada: null,
+      resultado_final: cancelada ? null : {
+        vencedores: ativos.filter((jogador) => jogador.patos === menor),
+        patos_da_partida: ativos.filter((jogador) => jogador.patos === maior),
+        abandonados: jogadores.filter((jogador) => jogador.status === 'ABANDONOU'),
+        empate_geral: menor === maior,
+        rodadas_concluidas: 10,
+      },
+    },
+  }
+}
+
+test('F5 reconstrói final, ordena patos e encerra polling', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const final = estadoFinal(players, [2, 6, 3])
+  let intervalos = 0
+  const ui = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(final), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  globalThis.window.setInterval = () => { intervalos += 1; return intervalos }
+  globalThis.window.clearInterval = () => {}
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  const exibido = ui.view()
+  assert.ok(exibido.includes('FIM DE JOGO'))
+  assert.ok(exibido.includes('VENCEDORLevi2 patos'))
+  assert.ok(exibido.includes('PATO DA PARTIDAJorge6 patos'))
+  assert.ok(exibido.indexOf('Levi2 🦆') < exibido.indexOf('Luana3 🦆'))
+  assert.ok(exibido.indexOf('Luana3 🦆') < exibido.indexOf('Jorge6 🦆'))
+  assert.equal(intervalos, 0)
+  assert.equal(ui.button('PRÓXIMA RODADA'), undefined)
+  assert.equal(ui.button('Jogar novamente'), undefined)
+  assert.ok(ui.button('VOLTAR AO INÍCIO'))
+})
+
+test('sala encerrada sem partida terminal continua polling até resultado completo', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const final = estadoFinal(players, [2, 6, 3])
+  const intermediario = {
+    ...final,
+    partida: {
+      ...final.partida,
+      status: 'EM_ANDAMENTO',
+      resultado_final: null,
+      rodada: { numero: 10, status: 'RESULTADO' },
+    },
+  }
+  let consultas = 0
+  const callbacks = new Map()
+  const limpos = []
+  let proximoIntervalo = 1
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    consultas += 1
+    return response(consultas === 1 ? intermediario : final)
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest' } }) },
+  })
+  globalThis.window.setInterval = (callback) => {
+    const id = proximoIntervalo++
+    callbacks.set(id, callback)
+    return id
+  }
+  globalThis.window.clearInterval = (id) => {
+    limpos.push(id)
+    callbacks.delete(id)
+  }
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('Sincronizando resultado final'))
+  assert.ok(!ui.view().includes('FIM DE JOGO'))
+  assert.equal(callbacks.size, 1)
+
+  const polling = [...callbacks.values()][0]
+  await act(async () => polling())
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('FIM DE JOGO'))
+  assert.equal(consultas, 2)
+  assert.equal(callbacks.size, 0)
+  assert.ok(limpos.length >= 1)
+})
+
+test('tela final mostra empates e abandonados sem desempatar', async (t) => {
+  const players = [participante(1, 'A', true), participante(2, 'B'), participante(3, 'C'), participante(4, 'D')]
+  const empatado = estadoFinal(players, [1, 1, 5, 5])
+  const ui = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(empatado), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('VENCEDORESA • B'))
+  assert.ok(ui.view().includes('PATOS DA PARTIDAC • D'))
+  await ui.unmount()
+
+  const comAbandono = estadoFinal(players, [1, 2, 5, 0], { abandonado: 'D' })
+  const recarregado = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(comAbandono), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  await recarregado.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(recarregado.view().includes('ABANDONARAMD — 0 patos'))
+  assert.ok(recarregado.view().includes('VENCEDORA'))
+})
+
+test('empate geral e partida cancelada têm estados próprios', async (t) => {
+  const players = [participante(1, 'A', true), participante(2, 'B'), participante(3, 'C')]
+  let atual = estadoFinal(players, [3, 3, 3])
+  const ui = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(atual), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('EMPATE GERAL'))
+  assert.ok(ui.view().includes('Todo mundo venceu. Todo mundo também virou Pato da Partida.'))
+  await ui.unmount()
+
+  atual = estadoFinal(players, [1, 2, 3], { cancelada: true })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('PARTIDA CANCELADA'))
+  assert.ok(ui.view().includes('Não há jogadores ativos suficientes'))
+  assert.ok(!ui.view().includes('PATO DA PARTIDA'))
+  await act(async () => ui.button('VOLTAR AO INÍCIO').props.onClick())
+  assert.ok(ui.view().includes('Criar sala'))
+})

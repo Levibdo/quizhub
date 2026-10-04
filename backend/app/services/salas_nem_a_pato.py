@@ -41,6 +41,7 @@ from app.schemas.nem_a_pato import (
     ParticipacaoSalaCriada,
     RodadaNemPatoPublica,
     ResultadoDesafioNemPatoPublico,
+    ResultadoFinalNemPatoPublico,
     ResultadoTimeoutNemPatoPublico,
     SalaLobbyPublica,
     SalaRecuperada,
@@ -151,6 +152,7 @@ class SalasNemAPatoService:
         rodada: RodadaNemPato,
         jogadores: list[JogadorPartidaNemPato],
         palpites: list[PalpiteNemPato],
+        partida: PartidaNemPato | None = None,
     ) -> bool:
         if (
             rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO
@@ -180,7 +182,28 @@ class SalasNemAPatoService:
         rodada.status = RodadaNemPatoStatus.RESULTADO
         rodada.finalizada_em = agora
         rodada.jogador_da_vez_id = None
+        if partida is not None:
+            self._finalizar_partida_se_ultima_rodada(sala, partida, rodada, agora)
         sala.estado_versao += 1
+        return True
+
+    @staticmethod
+    def _finalizar_partida_se_ultima_rodada(
+        sala: SalaNemPato,
+        partida: PartidaNemPato,
+        rodada: RodadaNemPato,
+        agora: datetime,
+    ) -> bool:
+        if (
+            rodada.numero != partida.total_rodadas
+            or partida.status != PartidaNemPatoStatus.EM_ANDAMENTO
+        ):
+            return False
+        partida.status = PartidaNemPatoStatus.FINALIZADA
+        partida.finalizada_em = agora
+        partida.motivo_encerramento = "RODADAS_CONCLUIDAS"
+        sala.status = SalaNemPatoStatus.ENCERRADA
+        sala.encerrada_em = agora
         return True
 
     def __init__(
@@ -496,6 +519,28 @@ class SalasNemAPatoService:
                 resultado_desafio=resultado_desafio,
                 resultado_timeout=resultado_timeout,
             )
+        jogadores_publicos = [
+            self._jogador_publico(jogador, participante_id)
+            for jogador in jogadores_ordenados
+        ]
+        resultado_final = None
+        if partida.status == PartidaNemPatoStatus.FINALIZADA:
+            elegiveis = [
+                jogador for jogador in jogadores_publicos
+                if jogador.status == ParticipanteNemPatoStatus.ATIVO.value
+            ]
+            menor = min((jogador.patos for jogador in elegiveis), default=None)
+            maior = max((jogador.patos for jogador in elegiveis), default=None)
+            resultado_final = ResultadoFinalNemPatoPublico(
+                vencedores=[j for j in elegiveis if j.patos == menor],
+                patos_da_partida=[j for j in elegiveis if j.patos == maior],
+                abandonados=[
+                    j for j in jogadores_publicos
+                    if j.status == ParticipanteNemPatoStatus.ABANDONOU.value
+                ],
+                empate_geral=bool(elegiveis) and menor == maior,
+                rodadas_concluidas=partida.rodada_atual,
+            )
         return PartidaNemPatoPublica(
             id=partida.id,
             numero=partida.numero,
@@ -503,11 +548,9 @@ class SalasNemAPatoService:
             rodada_atual=partida.rodada_atual,
             total_rodadas=partida.total_rodadas,
             duracao_rodada_segundos=partida.duracao_rodada_segundos,
-            jogadores=[
-                self._jogador_publico(jogador, participante_id)
-                for jogador in jogadores_ordenados
-            ],
+            jogadores=jogadores_publicos,
             rodada=rodada_publica,
+            resultado_final=resultado_final,
         )
 
     def iniciar(
@@ -931,7 +974,7 @@ class SalasNemAPatoService:
                 return self.recuperar(db, codigo, token)
 
             if self._finalizar_timeout_se_expirado(
-                db, sala, rodada, jogadores, palpites
+                db, sala, rodada, jogadores, palpites, partida
             ):
                 db.flush()
                 db.commit()
@@ -1079,7 +1122,7 @@ class SalasNemAPatoService:
                     detail="client_action_id já usado em outra ação",
                 )
             if self._finalizar_timeout_se_expirado(
-                db, sala, rodada, jogadores, palpites
+                db, sala, rodada, jogadores, palpites, partida
             ):
                 db.flush()
                 db.commit()
@@ -1120,6 +1163,9 @@ class SalasNemAPatoService:
             rodada.tipo_finalizacao = TipoFinalizacaoRodadaNemPato.DESAFIO
             rodada.finalizada_em = agora
             rodada.jogador_da_vez_id = None
+            self._finalizar_partida_se_ultima_rodada(
+                sala, partida, rodada, agora
+            )
             sala.estado_versao += 1
             db.flush()
             db.commit()
@@ -1328,7 +1374,7 @@ class SalasNemAPatoService:
                 .execution_options(populate_existing=True)
             ))
             if self._finalizar_timeout_se_expirado(
-                db, sala, rodada, jogadores, palpites
+                db, sala, rodada, jogadores, palpites, partida
             ):
                 db.flush()
                 db.commit()
@@ -1360,13 +1406,14 @@ class SalasNemAPatoService:
         self._sincronizar_timeout(db, codigo, token)
         sala, participante = self._obter_participante_autenticado(db, codigo, token)
         partida = None
-        if sala.status == SalaNemPatoStatus.EM_PARTIDA:
+        if sala.status in (
+            SalaNemPatoStatus.EM_PARTIDA,
+            SalaNemPatoStatus.ENCERRADA,
+        ):
             partida_db = db.scalar(
                 select(PartidaNemPato)
-                .where(
-                    PartidaNemPato.sala_id == sala.id,
-                    PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
-                )
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
                 .options(selectinload(PartidaNemPato.jogadores))
             )
             if partida_db is not None:
@@ -1456,6 +1503,18 @@ class SalasNemAPatoService:
             if jogador_partida is not None:
                 jogador_partida.status = ParticipanteNemPatoStatus.ABANDONOU
                 jogador_partida.saiu_em = func.now()
+                ativos_restantes = [
+                    jogador for jogador in jogadores
+                    if jogador.id != jogador_partida.id
+                    and jogador.status == ParticipanteNemPatoStatus.ATIVO
+                ]
+                if len(ativos_restantes) < MIN_JOGADORES_NEM_A_PATO:
+                    agora = self._agora_autoritativo(db)
+                    partida.status = PartidaNemPatoStatus.CANCELADA
+                    partida.finalizada_em = agora
+                    partida.motivo_encerramento = "JOGADORES_INSUFICIENTES"
+                    sala.status = SalaNemPatoStatus.ENCERRADA
+                    sala.encerrada_em = agora
             # Uma ação de abandono incrementa a versão uma única vez, mesmo com handoff.
             sala.estado_versao += 1
             db.flush()

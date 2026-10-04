@@ -79,6 +79,14 @@ class ResultadoTimeoutNemPatoPublico(BaseModel):
     autor_protegido: JogadorPartidaNemPatoPublico | None
 
 
+class ResultadoFinalNemPatoPublico(BaseModel):
+    vencedores: list[JogadorPartidaNemPatoPublico]
+    patos_da_partida: list[JogadorPartidaNemPatoPublico]
+    abandonados: list[JogadorPartidaNemPatoPublico]
+    empate_geral: bool
+    rodadas_concluidas: int
+
+
 class RodadaNemPatoPublica(BaseModel):
     id: int
     numero: int
@@ -105,6 +113,7 @@ class PartidaNemPatoPublica(BaseModel):
     duracao_rodada_segundos: int
     jogadores: list[JogadorPartidaNemPatoPublico]
     rodada: RodadaNemPatoPublica | None = None
+    resultado_final: ResultadoFinalNemPatoPublico | None = None
 
 
 class CriarPalpiteNemPato(BaseModel):

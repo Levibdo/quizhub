@@ -41,6 +41,18 @@ function formatarPalpite(valor, unidade) {
   return unidade ? `${numero} ${unidade}` : numero
 }
 
+function ordenarPlacarFinal(jogadores) {
+  return [...jogadores]
+    .filter((jogador) => jogador.status === 'ATIVO')
+    .sort((a, b) => a.patos - b.patos || a.ordem_circular - b.ordem_circular)
+}
+
+function possuiEstadoTerminalCompleto(estado) {
+  const partida = estado?.partida
+  return partida?.status === 'CANCELADA'
+    || (partida?.status === 'FINALIZADA' && Boolean(partida.resultado_final))
+}
+
 function mensagemErro(error, acao = 'operacao') {
   if (error.message === 'sala inexistente') return 'Sala não encontrada.'
   if (error.message === 'sala cheia') return 'A sala está cheia.'
@@ -95,6 +107,7 @@ function TelaNemAPato({ voltarInicio }) {
   })
   const [estadoSala, setEstadoSala] = useState(null)
   const [podeSincronizar, setPodeSincronizar] = useState(false)
+  const estadoTerminalCompleto = possuiEstadoTerminalCompleto(estadoSala)
   const operacaoRef = useRef(false)
   const acaoPalpiteRef = useRef(null)
   const acaoDesafioRef = useRef(null)
@@ -169,7 +182,12 @@ function TelaNemAPato({ voltarInicio }) {
   }, [rota, sessao, atualizarEstado])
 
   useEffect(() => {
-    if (rota.tipo !== 'lobby' || !sessao || !podeSincronizar) return undefined
+    if (
+      rota.tipo !== 'lobby'
+      || !sessao
+      || !podeSincronizar
+      || estadoTerminalCompleto
+    ) return undefined
     let montado = true
     let requisicaoEmCurso = false
     const intervalo = window.setInterval(async () => {
@@ -182,7 +200,7 @@ function TelaNemAPato({ voltarInicio }) {
       montado = false
       window.clearInterval(intervalo)
     }
-  }, [rota, sessao, podeSincronizar, atualizarEstado])
+  }, [rota, sessao, podeSincronizar, atualizarEstado, estadoTerminalCompleto])
 
   useEffect(() => {
     const terminaEm = estadoSala?.partida?.rodada?.termina_em
@@ -406,6 +424,16 @@ function TelaNemAPato({ voltarInicio }) {
     const mensagemSemSessao = !sessao && !erro
       ? 'Não há uma participação salva para esta sala neste navegador.'
       : erro
+    const resultadoFinal = partida?.resultado_final
+    const placarFinal = ordenarPlacarFinal(partida?.jogadores || [])
+    const voltarAoInicio = () => {
+      if (sessao) removerSessaoNemAPato(sessao.codigo)
+      setSessao(null)
+      setEstadoSala(null)
+      setPodeSincronizar(false)
+      recuperacaoInicial.current = false
+      navegar({ tipo: 'inicio' })
+    }
     return (
       <section className="np-screen" aria-labelledby="np-title">
         <header className="np-heading">
@@ -423,6 +451,59 @@ function TelaNemAPato({ voltarInicio }) {
         )}
         {sala && (
           <>
+            {sala.status === 'ENCERRADA' && !estadoTerminalCompleto && (
+              <p role="status">Sincronizando resultado final...</p>
+            )}
+            {estadoTerminalCompleto && partida && (
+              <section className="np-final" aria-labelledby="np-final-title">
+                <p className="np-final__eyebrow">Nem a Pato!</p>
+                <h2 id="np-final-title">
+                  {partida.status === 'CANCELADA' ? 'PARTIDA CANCELADA' : 'FIM DE JOGO'}
+                </h2>
+                {partida.status === 'CANCELADA' ? (
+                  <p>Não há jogadores ativos suficientes para continuar.</p>
+                ) : resultadoFinal?.empate_geral ? (
+                  <section className="np-final__highlight">
+                    <h3>EMPATE GERAL</h3>
+                    <p>Todo mundo venceu. Todo mundo também virou Pato da Partida.</p>
+                  </section>
+                ) : (
+                  <div className="np-final__extremes">
+                    <section>
+                      <h3>{resultadoFinal?.vencedores.length > 1 ? 'VENCEDORES' : 'VENCEDOR'}</h3>
+                      <strong>{resultadoFinal?.vencedores.map((j) => j.nome).join(' • ')}</strong>
+                      <span>{resultadoFinal?.vencedores[0]?.patos} patos</span>
+                    </section>
+                    <section>
+                      <h3>{resultadoFinal?.patos_da_partida.length > 1 ? 'PATOS DA PARTIDA' : 'PATO DA PARTIDA'}</h3>
+                      <strong>{resultadoFinal?.patos_da_partida.map((j) => j.nome).join(' • ')}</strong>
+                      <span>{resultadoFinal?.patos_da_partida[0]?.patos} patos</span>
+                    </section>
+                  </div>
+                )}
+                <section className="np-final__score" aria-label="Placar final">
+                  <h3>PLACAR FINAL</h3>
+                  <ol>
+                    {placarFinal.map((jogador) => (
+                      <li key={jogador.id}>
+                        <span>{jogador.nome}</span><strong>{jogador.patos} 🦆</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+                {resultadoFinal?.abandonados.length > 0 && (
+                  <section className="np-final__abandoned">
+                    <h3>ABANDONARAM</h3>
+                    {resultadoFinal.abandonados.map((jogador) => (
+                      <p key={jogador.id}>{jogador.nome} — {jogador.patos} patos</p>
+                    ))}
+                  </section>
+                )}
+                <button className="np-start-button" type="button" onClick={voltarAoInicio}>
+                  VOLTAR AO INÍCIO
+                </button>
+              </section>
+            )}
             {sala.status === 'EM_PARTIDA' && (
               <section className="np-started" aria-labelledby="np-started-title">
                 <p className="np-started__eyebrow">Sala {sala.codigo}</p>
@@ -567,14 +648,14 @@ function TelaNemAPato({ voltarInicio }) {
                 )}
               </section>
             )}
-            <section className="np-room-code" aria-label="Código da sala">
+            {sala.status !== 'ENCERRADA' && <section className="np-room-code" aria-label="Código da sala">
               <span>Código da sala</span>
               <strong>{sala.codigo}</strong>
               <p>Compartilhe este código com os outros jogadores.</p>
               <button className="button-secondary" type="button" onClick={copiarCodigo}>Copiar código</button>
-            </section>
-            <p className="np-room-count">{sala.participantes_ativos} / {sala.limite_jogadores} jogadores</p>
-            <ul className="np-player-list" aria-label="Participantes da sala">
+            </section>}
+            {sala.status !== 'ENCERRADA' && <p className="np-room-count">{sala.participantes_ativos} / {sala.limite_jogadores} jogadores</p>}
+            {sala.status !== 'ENCERRADA' && <ul className="np-player-list" aria-label="Participantes da sala">
               {participantes.map((participante) => (
                 <li key={participante.id} className="np-player">
                   <span aria-hidden="true">{participante.eh_anfitriao ? '♛' : '♙'}</span>
@@ -583,8 +664,8 @@ function TelaNemAPato({ voltarInicio }) {
                   {eu?.id === participante.id && <span className="np-player__you">Você</span>}
                 </li>
               ))}
-            </ul>
-            {sala.status !== 'EM_PARTIDA' && (
+            </ul>}
+            {sala.status === 'AGUARDANDO' && (
               <>
                 <p className="np-lobby-status">Aguardando o anfitrião...</p>
                 {eu?.eh_anfitriao && <p className="np-host-note">Você é o anfitrião.</p>}

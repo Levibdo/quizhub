@@ -424,8 +424,8 @@ explicação, autor, desafiante, penalizado e placar são revelados e reconstru�
 após F5. O anfitrião ativo avança uma única rodada por ação, de R1 até R10;
 o backend preserva histórico e placar, escolhe o jogador inicial pela rotação
 circular dos snapshots ativos e incrementa a versão da sala uma vez. Repetições
-ou corridas de avanço não iniciam duas rodadas. Depois da R10 não há avanço nesta
-fase. Cada rodada dura 120 segundos e `termina_em` é o prazo autoritativo.
+ou corridas de avanço não iniciam duas rodadas. Cada rodada dura 120 segundos e
+`termina_em` é o prazo autoritativo.
 O PostgreSQL fornece o instante de validação após os locks; o countdown local é
 apenas visual. Não há worker: `GET .../eu`, palpites e desafios detectam
 `agora >= termina_em` e convergem atomicamente para `RESULTADO`. Com palpite, o
@@ -435,7 +435,25 @@ Pollings concorrentes aplicam a transição e `estado_versao` uma única vez. O
 `finalizada_em` registra o instante efetivo da persistência, enquanto `termina_em`
 continua sendo o prazo. A ordem de locks é sala → participantes → partida → rodada
 → snapshots → palpites. O frontend nunca finaliza a rodada nem revela dados por
-conta própria. O encerramento da partida após a R10 ainda não faz parte desta fase.
+conta própria.
+
+Quando a R10 chega a `RESULTADO`, por desafio, tempo esgotado ou ausência de
+palpite, a mesma transação marca a partida `FINALIZADA` e a sala `ENCERRADA`.
+Não há botão de finalização. O resultado é derivado dos snapshots persistidos:
+menor número de patos define vencedor(es), maior número define Pato(s) da Partida,
+sem desempate. Se mínimo e máximo coincidirem, todos os elegíveis ocupam os dois
+extremos e o frontend apresenta empate geral. Snapshots `ABANDONOU` preservam nome,
+ordem e patos no histórico, mas ficam fora da classificação competitiva. O placar
+visual ordena ativos por patos crescentes e usa a ordem original apenas para
+estabilidade de exibição.
+
+Se restarem menos de três snapshots ativos entre rodadas, a partida muda para
+`CANCELADA` e a sala para `ENCERRADA`, sem vencedores ou Patos da Partida. O estado
+terminal e sua classificação são reconstruídos por `GET .../eu` após F5. Ao
+observá-los, o frontend encerra o polling e oferece somente voltar ao início; não
+há revanche ou reabertura de sala. A resolução da R10, as penalizações, o
+encerramento e o único incremento de `estado_versao` formam uma mudança lógica
+atômica. Retries e pollings posteriores não voltam a alterar placar ou versão.
 
 ## API
 
