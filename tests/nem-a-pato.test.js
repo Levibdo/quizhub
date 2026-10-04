@@ -1053,7 +1053,7 @@ function estadoFinal(players, patos, { abandonado = null, cancelada = false } = 
   }
 }
 
-test('F5 reconstrói final, ordena patos e encerra polling', async (t) => {
+test('F5 reconstrói final, ordena patos e mantém polling para revanche', async (t) => {
   const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
   const final = estadoFinal(players, [2, 6, 3])
   let intervalos = 0
@@ -1073,10 +1073,12 @@ test('F5 reconstrói final, ordena patos e encerra polling', async (t) => {
   assert.ok(exibido.includes('PATO DA PARTIDAJorge6 patos'))
   assert.ok(exibido.indexOf('Levi2 🦆') < exibido.indexOf('Luana3 🦆'))
   assert.ok(exibido.indexOf('Luana3 🦆') < exibido.indexOf('Jorge6 🦆'))
-  assert.equal(intervalos, 0)
+  assert.equal(intervalos, 1)
   assert.equal(ui.button('PRÓXIMA RODADA'), undefined)
   assert.equal(ui.button('Jogar novamente'), undefined)
   assert.ok(ui.button('VOLTAR AO INÍCIO'))
+  await act(async () => ui.button('VOLTAR AO INÍCIO').props.onClick())
+  assert.equal(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')).K7M4QX, undefined)
 })
 
 test('sala encerrada sem partida terminal continua polling até resultado completo', async (t) => {
@@ -1123,8 +1125,99 @@ test('sala encerrada sem partida terminal continua polling até resultado comple
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(ui.view().includes('FIM DE JOGO'))
   assert.equal(consultas, 2)
-  assert.equal(callbacks.size, 0)
-  assert.ok(limpos.length >= 1)
+  assert.equal(callbacks.size, 1)
+  assert.equal(limpos.length, 0)
+})
+
+function estadoRevanche(players, eu = players[0]) {
+  const jogadores = players.map((item, indice) => ({
+    id: `r${indice + 1}`, nome: item.nome, ordem_circular: indice + 1,
+    status: 'ATIVO', eh_eu: item.id === eu.id, patos: 0,
+  }))
+  return {
+    sala: sala('K7M4QX', players, 23, 'EM_PARTIDA'),
+    participante: eu,
+    partida: {
+      id: 'partida-2', numero: 2, status: 'EM_ANDAMENTO', rodada_atual: 0,
+      total_rodadas: 10, duracao_rodada_segundos: 120, jogadores,
+      resultado_final: null,
+      rodada: {
+        id: 21, numero: 1, status: 'AGUARDANDO_INICIO', pergunta: null,
+        jogador_inicial: jogadores[0], jogador_da_vez: null, maior_palpite: null,
+        palpites: [], iniciada_em: null, termina_em: null,
+      },
+    },
+  }
+}
+
+test('host cria revanche com botão bloqueado e recebe partida 2 zerada', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const final = estadoFinal(players, [2, 6, 3])
+  let resolver
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/jogar-novamente')) {
+      return new Promise((resolve) => { resolver = () => resolve(response(estadoRevanche(players))) })
+    }
+    return response(final)
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'host' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.button('JOGAR NOVAMENTE'))
+  let envio
+  await act(async () => { envio = ui.button('JOGAR NOVAMENTE').props.onClick(); await Promise.resolve() })
+  assert.equal(ui.button('Preparando revanche...').props.disabled, true)
+  await act(async () => { resolver(); await envio })
+  assert.ok(ui.view().includes('REVANCHE'))
+  assert.ok(ui.view().includes('Partida 2'))
+  assert.ok(ui.view().includes('Levi0 🦆'))
+  assert.ok(ui.view().includes('Jorge0 🦆'))
+  assert.ok(ui.view().includes('Luana0 🦆'))
+  assert.ok(ui.button('Iniciar rodada'))
+})
+
+test('não-host aguarda e converge por polling para revanche sem F5', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const final = estadoFinal(players, [2, 6, 3])
+  final.participante = players[1]
+  let atual = final
+  let polling
+  const ui = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(atual), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest' } }) },
+  })
+  globalThis.window.setInterval = (callback) => { polling = callback; return 91 }
+  globalThis.window.clearInterval = () => {}
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.equal(ui.button('JOGAR NOVAMENTE'), undefined)
+  assert.ok(ui.view().includes('Esperando o host decidir se haverá revanche'))
+  atual = estadoRevanche(players, players[1])
+  await act(async () => polling())
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('Partida 2'))
+  assert.ok(ui.view().includes('Aguardando o anfitrião iniciar a rodada'))
+})
+
+test('F5 recupera revanche preparada sem criar nova participação', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const revanche = estadoRevanche(players, players[1])
+  const ui = setup(t, async (url) => url.endsWith('/auth/me')
+    ? response({ detail: 'não autenticado' }, 401)
+    : response(revanche), {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'guest' } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('REVANCHE'))
+  assert.ok(ui.view().includes('Partida 2'))
+  assert.ok(ui.view().includes('Aguardando o anfitrião iniciar a rodada'))
 })
 
 test('tela final mostra empates e abandonados sem desempatar', async (t) => {
@@ -1176,6 +1269,7 @@ test('empate geral e partida cancelada têm estados próprios', async (t) => {
   assert.ok(ui.view().includes('PARTIDA CANCELADA'))
   assert.ok(ui.view().includes('Não há jogadores ativos suficientes'))
   assert.ok(!ui.view().includes('PATO DA PARTIDA'))
+  assert.equal(ui.button('JOGAR NOVAMENTE'), undefined)
   await act(async () => ui.button('VOLTAR AO INÍCIO').props.onClick())
   assert.ok(ui.view().includes('Criar sala'))
 })

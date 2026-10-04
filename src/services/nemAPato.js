@@ -69,6 +69,13 @@ export function iniciarPartidaNemAPato(codigo, token) {
   })
 }
 
+export function jogarNovamenteNemAPato(codigo, token) {
+  return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/jogar-novamente`, {
+    method: 'POST',
+    headers: { 'X-Nem-Pato-Token': token },
+  })
+}
+
 export function iniciarRodadaNemAPato(codigo, token) {
   return requisitar(`/api/v1/nem-pato/salas/${encodeURIComponent(codigo)}/rodadas/iniciar`, {
     method: 'POST',

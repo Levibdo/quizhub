@@ -64,6 +64,15 @@ def iniciar_partida(
     return salas_nem_a_pato.iniciar(db, codigo, token)
 
 
+@router.post("/{codigo}/jogar-novamente", response_model=SalaRecuperada)
+def jogar_novamente(
+    codigo: str,
+    token: str | None = Header(default=None, alias=HEADER_TOKEN_NEM_PATO),
+    db: Session = Depends(get_db),
+):
+    return salas_nem_a_pato.jogar_novamente(db, codigo, token)
+
+
 @router.post("/{codigo}/rodadas/iniciar", response_model=SalaRecuperada)
 def iniciar_rodada(
     codigo: str,

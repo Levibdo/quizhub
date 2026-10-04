@@ -737,6 +737,188 @@ class SalasNemAPatoService:
             db.rollback()
             raise
 
+    def _perguntas_da_revanche(
+        self,
+        db: Session,
+        partida_anterior: PartidaNemPato,
+    ) -> list[PerguntaNemPato]:
+        usadas = set(db.scalars(
+            select(RodadaNemPato.pergunta_id).where(
+                RodadaNemPato.partida_id == partida_anterior.id
+            )
+        ))
+        perguntas_ativas = list(db.scalars(
+            select(PerguntaNemPato)
+            .where(PerguntaNemPato.ativa.is_(True))
+            .order_by(
+                PerguntaNemPato.id if self.selecionar_perguntas is not None
+                else func.random()
+            )
+            .with_for_update()
+        ))
+        if len(perguntas_ativas) < TOTAL_RODADAS_NEM_A_PATO:
+            raise HTTPException(
+                status_code=409,
+                detail="não há 10 perguntas Nem a Pato ativas disponíveis",
+            )
+        novas = [p for p in perguntas_ativas if p.id not in usadas]
+        repetidas = [p for p in perguntas_ativas if p.id in usadas]
+        if self.selecionar_perguntas is None:
+            return (novas[:TOTAL_RODADAS_NEM_A_PATO] + repetidas)[
+                :TOTAL_RODADAS_NEM_A_PATO
+            ]
+        quantidade_novas = min(len(novas), TOTAL_RODADAS_NEM_A_PATO)
+        escolhidas = self.selecionar_perguntas(novas, quantidade_novas)
+        faltantes = TOTAL_RODADAS_NEM_A_PATO - len(escolhidas)
+        if faltantes:
+            escolhidas += self.selecionar_perguntas(repetidas, faltantes)
+        return escolhidas
+
+    def jogar_novamente(
+        self, db: Session, codigo: str, token: str | None
+    ) -> SalaRecuperada:
+        codigo = self._codigo_normalizado(codigo)
+        if not token:
+            raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
+        token_digest = hash_credencial(token)
+        try:
+            # Mesma disciplina global: sala → participantes → partida anterior
+            # → perguntas → nova partida/snapshots/rodadas.
+            sala = self._sala_bloqueada(db, codigo)
+            if sala is None:
+                raise HTTPException(status_code=404, detail="sala inexistente")
+            participantes = self._participantes_bloqueados(db, sala.id)
+            participante = self._participante_autenticado_bloqueado(
+                participantes, token_digest
+            )
+            if not participante.eh_anfitriao:
+                raise HTTPException(
+                    status_code=403,
+                    detail="somente o anfitrião pode iniciar a revanche",
+                )
+            if sala.status != SalaNemPatoStatus.ENCERRADA:
+                raise HTTPException(
+                    status_code=409, detail="sala não está encerrada"
+                )
+
+            partidas = list(db.scalars(
+                select(PartidaNemPato)
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ))
+            anterior = partidas[0] if partidas else None
+            if anterior is None or anterior.status != PartidaNemPatoStatus.FINALIZADA:
+                raise HTTPException(
+                    status_code=409,
+                    detail="a última partida não permite revanche",
+                )
+            if any(
+                partida.status == PartidaNemPatoStatus.EM_ANDAMENTO
+                for partida in partidas
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="a sala já possui uma partida em andamento",
+                )
+
+            snapshots_anteriores = list(db.scalars(
+                select(JogadorPartidaNemPato)
+                .where(JogadorPartidaNemPato.partida_id == anterior.id)
+                .order_by(JogadorPartidaNemPato.ordem_circular)
+                .with_for_update()
+            ))
+            ativos_por_participante = {
+                item.id: item for item in participantes
+                if item.status == ParticipanteNemPatoStatus.ATIVO
+            }
+            elegiveis = [
+                snapshot for snapshot in snapshots_anteriores
+                if snapshot.status == ParticipanteNemPatoStatus.ATIVO
+                and snapshot.participante_id in ativos_por_participante
+            ]
+            if not MIN_JOGADORES_NEM_A_PATO <= len(elegiveis) <= MAX_JOGADORES_NEM_A_PATO:
+                raise HTTPException(
+                    status_code=409,
+                    detail="são necessários de 3 a 6 participantes ativos para a revanche",
+                )
+
+            perguntas = self._perguntas_da_revanche(db, anterior)
+            if (
+                len(perguntas) != TOTAL_RODADAS_NEM_A_PATO
+                or len({pergunta.id for pergunta in perguntas})
+                != TOTAL_RODADAS_NEM_A_PATO
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="não foi possível selecionar 10 perguntas distintas",
+                )
+
+            partida = PartidaNemPato(
+                sala_id=sala.id,
+                categoria_id=perguntas[0].categoria_id,
+                numero=anterior.numero + 1,
+                status=PartidaNemPatoStatus.EM_ANDAMENTO,
+                rodada_atual=0,
+                total_rodadas=TOTAL_RODADAS_NEM_A_PATO,
+                duracao_rodada_segundos=DURACAO_RODADA_NEM_A_PATO_SEGUNDOS,
+            )
+            db.add(partida)
+            db.flush()
+
+            novos_jogadores = []
+            for ordem, snapshot_anterior in enumerate(elegiveis, start=1):
+                membro = ativos_por_participante[snapshot_anterior.participante_id]
+                jogador = JogadorPartidaNemPato(
+                    partida_id=partida.id,
+                    participante_id=membro.id,
+                    nome_snapshot=membro.nome,
+                    ordem_circular=ordem,
+                    status=ParticipanteNemPatoStatus.ATIVO,
+                    patos=0,
+                )
+                db.add(jogador)
+                novos_jogadores.append(jogador)
+            db.flush()
+
+            for numero, pergunta in enumerate(perguntas, start=1):
+                jogador_inicial = novos_jogadores[(numero - 1) % len(novos_jogadores)]
+                db.add(RodadaNemPato(
+                    partida_id=partida.id,
+                    pergunta_id=pergunta.id,
+                    numero=numero,
+                    status=RodadaNemPatoStatus.AGUARDANDO_INICIO,
+                    jogador_inicial_id=jogador_inicial.id,
+                    jogador_da_vez_id=None,
+                ))
+
+            sala.status = SalaNemPatoStatus.EM_PARTIDA
+            sala.encerrada_em = None
+            sala.estado_versao += 1
+            db.flush()
+            db.commit()
+            membros_ativos = list(ativos_por_participante.values())
+            return SalaRecuperada(
+                sala=sala_publica(sala, membros_ativos),
+                participante=participante_publico(participante),
+                partida=self._partida_publica(
+                    db, partida, participante.id, novos_jogadores
+                ),
+            )
+        except HTTPException:
+            db.rollback()
+            raise
+        except IntegrityError as erro:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="conflito ao iniciar revanche; atualize o estado da sala",
+            ) from erro
+        except Exception:
+            db.rollback()
+            raise
+
     @staticmethod
     def _participante_autenticado_bloqueado(
         participantes: list[ParticipanteNemPato],

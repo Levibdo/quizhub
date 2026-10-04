@@ -455,6 +455,25 @@ há revanche ou reabertura de sala. A resolução da R10, as penalizações, o
 encerramento e o único incremento de `estado_versao` formam uma mudança lógica
 atômica. Retries e pollings posteriores não voltam a alterar placar ou versão.
 
+Após uma partida `FINALIZADA`, o anfitrião ativo pode iniciar uma revanche pelo
+endpoint `POST /api/v1/nem-pato/salas/{codigo}/jogar-novamente`. A sala é
+reutilizada diretamente de `ENCERRADA` para `EM_PARTIDA`, sem reabrir entrada de
+participantes. A nova partida recebe o próximo número, novos snapshots somente
+dos participantes que terminaram ativos, ordem circular compactada, patos zerados
+e dez rodadas em `AGUARDANDO_INICIO`; a primeira rodada continua sendo iniciada
+pelo anfitrião no fluxo normal. Participantes abandonados permanecem apenas no
+histórico anterior. Partidas `CANCELADA` e grupos com menos de três ativos não
+permitem revanche.
+
+A seleção prefere perguntas não usadas na partida imediatamente anterior. Se
+restarem menos de dez, reutiliza apenas o necessário, mantendo as dez perguntas
+da nova partida distintas. Partidas anteriores nunca são alteradas, a mesma
+credencial da sala continua válida e cada revanche incrementa `estado_versao`
+uma vez. O lock da sala torna duplo clique concorrente seguro. Enquanto a tela
+final permanece aberta, os clientes continuam em polling para convergir sem F5
+quando o host criar a nova partida; “Voltar ao início” remove a credencial local
+e encerra essa sincronização.
+
 ## API
 
 Principais endpoints:

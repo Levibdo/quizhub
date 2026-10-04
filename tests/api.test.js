@@ -196,3 +196,17 @@ test("próxima rodada usa endpoint NP6B e token do host", async () => {
   assert.equal(chamada.opcoes.headers["X-Nem-Pato-Token"], "token-host")
   assert.equal(chamada.opcoes.body, undefined)
 })
+
+test('jogar novamente usa endpoint NP9 e credencial do host', async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify({ partida: { numero: 2 } }), { status: 200 })
+  }
+  const resposta = await nemAPatoApi.jogarNovamenteNemAPato('K7M4QX', 'token-host')
+  assert.equal(chamada.url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/jogar-novamente')
+  assert.equal(chamada.opcoes.method, 'POST')
+  assert.equal(chamada.opcoes.headers['X-Nem-Pato-Token'], 'token-host')
+  assert.equal(chamada.opcoes.body, undefined)
+  assert.equal(resposta.partida.numero, 2)
+})

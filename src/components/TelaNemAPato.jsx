@@ -7,6 +7,7 @@ import {
   entrarSalaNemAPato,
   enviarPalpiteNemAPato,
   iniciarPartidaNemAPato,
+  jogarNovamenteNemAPato,
   iniciarProximaRodadaNemAPato,
   iniciarRodadaNemAPato,
   recuperarSalaNemAPato,
@@ -108,6 +109,7 @@ function TelaNemAPato({ voltarInicio }) {
   const [estadoSala, setEstadoSala] = useState(null)
   const [podeSincronizar, setPodeSincronizar] = useState(false)
   const estadoTerminalCompleto = possuiEstadoTerminalCompleto(estadoSala)
+  const estadoSemRevanche = estadoSala?.partida?.status === 'CANCELADA'
   const operacaoRef = useRef(false)
   const acaoPalpiteRef = useRef(null)
   const acaoDesafioRef = useRef(null)
@@ -186,7 +188,7 @@ function TelaNemAPato({ voltarInicio }) {
       rota.tipo !== 'lobby'
       || !sessao
       || !podeSincronizar
-      || estadoTerminalCompleto
+      || estadoSemRevanche
     ) return undefined
     let montado = true
     let requisicaoEmCurso = false
@@ -200,7 +202,7 @@ function TelaNemAPato({ voltarInicio }) {
       montado = false
       window.clearInterval(intervalo)
     }
-  }, [rota, sessao, podeSincronizar, atualizarEstado, estadoTerminalCompleto])
+  }, [rota, sessao, podeSincronizar, atualizarEstado, estadoSemRevanche])
 
   useEffect(() => {
     const terminaEm = estadoSala?.partida?.rodada?.termina_em
@@ -397,6 +399,25 @@ function TelaNemAPato({ voltarInicio }) {
     }
   }
 
+  async function jogarNovamente() {
+    if (operacaoRef.current || !sessao) return
+    operacaoRef.current = true
+    setCarregando(true)
+    setErro('')
+    try {
+      const atual = await jogarNovamenteNemAPato(sessao.codigo, sessao.token)
+      setEstadoSala(atual)
+      setPalpite('')
+      acaoPalpiteRef.current = null
+      acaoDesafioRef.current = null
+    } catch (error) {
+      setErro(mensagemErro(error, 'revanche'))
+    } finally {
+      operacaoRef.current = false
+      setCarregando(false)
+    }
+  }
+
   function copiarCodigo() {
     const escrita = navigator.clipboard?.writeText(rota.codigo)
     if (!escrita) {
@@ -499,6 +520,14 @@ function TelaNemAPato({ voltarInicio }) {
                     ))}
                   </section>
                 )}
+                {partida.status === 'FINALIZADA' && eu?.eh_anfitriao && sala.participantes_ativos >= 3 && (
+                  <button className="np-start-button" type="button" disabled={carregando} onClick={jogarNovamente}>
+                    {carregando ? 'Preparando revanche...' : 'JOGAR NOVAMENTE'}
+                  </button>
+                )}
+                {partida.status === 'FINALIZADA' && !eu?.eh_anfitriao && (
+                  <p role="status">Esperando o host decidir se haverá revanche...</p>
+                )}
                 <button className="np-start-button" type="button" onClick={voltarAoInicio}>
                   VOLTAR AO INÍCIO
                 </button>
@@ -510,6 +539,7 @@ function TelaNemAPato({ voltarInicio }) {
                 <h2 id="np-started-title">A PARTIDA COMEÇOU</h2>
                 {partida ? (
                   <>
+                    {partida.numero > 1 && <p className="np-started__eyebrow">REVANCHE</p>}
                     <p>Partida {partida.numero} · {partida.total_rodadas} rodadas · {Math.floor(partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
                     <ul className="np-player-list" aria-label="Jogadores desta partida">
                       {partida.jogadores.map((jogador) => (
