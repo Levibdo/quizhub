@@ -13,8 +13,8 @@ function TelaRanking({
   const [filtroCategoria, setFiltroCategoria] = useState(null)
   const rankingOrdenado = classificarRanking(ranking, filtroCategoria)
 
-  function nomeCategoria(id) {
-    return categorias.find((categoria) => categoria.id === id)?.nome ?? id
+  function nomeCategoria(slug) {
+    return categorias.find((categoria) => categoria.slug === slug)?.nome ?? slug
   }
 
   const filtroAtual = filtroCategoria === null
@@ -40,9 +40,9 @@ function TelaRanking({
         {categorias.map((categoria) => (
           <button
             key={categoria.id}
-            className={filtroCategoria === categoria.id ? 'filtro-ativo' : ''}
-            aria-pressed={filtroCategoria === categoria.id}
-            onClick={() => setFiltroCategoria(categoria.id)}
+            className={filtroCategoria === categoria.slug ? 'filtro-ativo' : ''}
+            aria-pressed={filtroCategoria === categoria.slug}
+            onClick={() => setFiltroCategoria(categoria.slug)}
           >
             {categoria.nome}
           </button>

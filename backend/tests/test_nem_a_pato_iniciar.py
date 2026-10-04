@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_NEM_A_PATO
 from app.db.session import get_db
 from app.main import app
 from app.models import (
@@ -18,6 +19,7 @@ from app.models import (
     PerguntaNemPato,
     RodadaNemPato,
     SalaNemPato,
+    Usuario,
 )
 from app.nem_a_pato import (
     PartidaNemPatoStatus,
@@ -39,9 +41,9 @@ class InicioNemAPatoTestCase(unittest.TestCase):
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         with self.sessions() as session:
             session.add_all([
-                Categoria(id="geral", nome="Geral", ativa=True),
-                Categoria(id="tecnologia", nome="Tecnologia", ativa=True),
-                Categoria(id="inativa", nome="Inativa", ativa=False),
+                Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"], slug="geral", nome="Geral", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
+                Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["tecnologia"], slug="tecnologia", nome="Tecnologia", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
+                Categoria(id=uuid4(), slug="inativa", nome="Inativa", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=False),
             ])
             session.commit()
         self.counter = 0
@@ -70,7 +72,7 @@ class InicioNemAPatoTestCase(unittest.TestCase):
         with self.sessions() as session:
             session.add_all([
                 PerguntaNemPato(
-                    categoria_id="geral" if indice % 2 else "tecnologia",
+                    categoria_id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral" if indice % 2 else "tecnologia"],
                     enunciado=f"Pergunta numérica de teste {uuid4()}-{indice}",
                     resposta_numerica=indice,
                     explicacao="Explicação privada de teste.",
@@ -123,6 +125,26 @@ class InicioNemAPatoTestCase(unittest.TestCase):
 
 
 class TestInicioNemAPatoService(InicioNemAPatoTestCase):
+    def test_partida_copia_proprietario_do_catalogo_da_sala(self):
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Conta", email="owner-inicio@example.com", senha_hash="hash"
+            )
+            session.add(usuario)
+            session.commit()
+            usuario_id = usuario.id
+            host = self.service.criar(session, "Levi", usuario)
+        self.tokens_by_name = {"Levi": host.credencial_participante}
+        for nome in ("Jorge", "Luana"):
+            with self.sessions() as session:
+                entrada = self.service.entrar(session, host.sala.codigo, nome)
+                self.tokens_by_name[nome] = entrada.credencial_participante
+
+        self.iniciar(host)
+        sala, partida, _, _ = self.contagens(host.sala.codigo)
+        self.assertEqual(sala.catalogo_usuario_id, usuario_id)
+        self.assertEqual(partida.catalogo_usuario_id, usuario_id)
+
     def test_host_inicia_com_tres_jogadores_e_prepara_partida_completa(self):
         host = self.sala_com(["Levi", "Jorge", "Luana"])
         resposta = self.iniciar(host)
@@ -144,7 +166,10 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
                 .join(RodadaNemPato, RodadaNemPato.pergunta_id == PerguntaNemPato.id)
                 .where(RodadaNemPato.partida_id == partida.id)
             ))
-        self.assertEqual(categorias_rodadas, {"geral", "tecnologia"})
+        self.assertEqual(categorias_rodadas, {
+            CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"],
+            CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["tecnologia"],
+        })
         self.assertEqual([r.jogador_inicial_id for r in rodadas], [
             jogadores[0].id, jogadores[1].id, jogadores[2].id,
             jogadores[0].id, jogadores[1].id, jogadores[2].id,
@@ -288,7 +313,7 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
             sala = session.scalar(select(SalaNemPato).where(SalaNemPato.codigo == host.sala.codigo))
             session.add(PartidaNemPato(
                 sala_id=sala.id,
-                categoria_id="geral",
+                categoria_id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"],
                 numero=1,
                 status=PartidaNemPatoStatus.FINALIZADA,
                 rodada_atual=10,

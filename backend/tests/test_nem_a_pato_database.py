@@ -5,13 +5,14 @@ from uuid import uuid4
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import BigInteger, create_engine, inspect, select
+from sqlalchemy import BigInteger, Boolean, Column, MetaData, String, Table, create_engine, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from unittest.mock import patch
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_NEM_A_PATO
 from app.models import (
     Categoria,
     JogadorPartidaNemPato,
@@ -32,6 +33,7 @@ from app.nem_a_pato import (
 
 
 class NemAPatoDatabaseTestCase(unittest.TestCase):
+    CATEGORIA_ID = CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"]
     def setUp(self):
         self.engine = create_engine(
             "sqlite://",
@@ -45,7 +47,10 @@ class NemAPatoDatabaseTestCase(unittest.TestCase):
 
     @staticmethod
     def categoria():
-        return Categoria(id="geral", nome="Geral", ativa=True)
+        return Categoria(
+            id=NemAPatoDatabaseTestCase.CATEGORIA_ID, slug="geral", nome="Geral",
+            modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True,
+        )
 
     @staticmethod
     def sala(codigo="NP123456", **kwargs):
@@ -64,7 +69,7 @@ class NemAPatoDatabaseTestCase(unittest.TestCase):
     @staticmethod
     def pergunta(**kwargs):
         dados = {
-            "categoria_id": "geral",
+            "categoria_id": NemAPatoDatabaseTestCase.CATEGORIA_ID,
             "enunciado": "Quantos itens há?",
             "resposta_numerica": 42,
             "explicacao": "Contagem de teste.",
@@ -74,7 +79,7 @@ class NemAPatoDatabaseTestCase(unittest.TestCase):
 
     @staticmethod
     def partida(sala_id, **kwargs):
-        dados = {"sala_id": sala_id, "categoria_id": "geral", "numero": 1}
+        dados = {"sala_id": sala_id, "categoria_id": NemAPatoDatabaseTestCase.CATEGORIA_ID, "numero": 1}
         dados.update(kwargs)
         return PartidaNemPato(**dados)
 
@@ -90,13 +95,18 @@ class NemAPatoDatabaseTestCase(unittest.TestCase):
 
     @staticmethod
     def rodada(partida_id, pergunta_id, jogador_id, *, numero=1, **kwargs):
-        return RodadaNemPato(
+        dados = dict(
             partida_id=partida_id,
             pergunta_id=pergunta_id,
             numero=numero,
             jogador_inicial_id=jogador_id,
-            **kwargs,
+            categoria_id_snapshot=NemAPatoDatabaseTestCase.CATEGORIA_ID,
+            enunciado_snapshot="Quantos itens há?",
+            resposta_numerica_snapshot=42,
+            explicacao_snapshot="Contagem de teste.",
         )
+        dados.update(kwargs)
+        return RodadaNemPato(**dados)
 
     def criar_base(self, session):
         categoria = self.categoria()
@@ -428,9 +438,17 @@ class TestMigration0009(unittest.TestCase):
         engine = create_engine("sqlite://")
         try:
             with engine.begin() as connection:
-                Categoria.__table__.create(connection)
+                metadata = MetaData()
+                categorias = Table(
+                    "categorias", metadata,
+                    Column("id", String, primary_key=True),
+                    Column("nome", String, nullable=False),
+                    Column("descricao", String),
+                    Column("ativa", Boolean, nullable=False, server_default="1"),
+                )
+                categorias.create(connection)
                 connection.execute(
-                    Categoria.__table__.insert().values(
+                    categorias.insert().values(
                         id="geral", nome="Geral", ativa=True
                     )
                 )
@@ -456,8 +474,8 @@ class TestMigration0009(unittest.TestCase):
                     )
                     self.assertEqual(
                         connection.execute(
-                            Categoria.__table__.select().with_only_columns(
-                                Categoria.__table__.c.id
+                            categorias.select().with_only_columns(
+                                categorias.c.id
                             )
                         ).scalar_one(),
                         "geral",

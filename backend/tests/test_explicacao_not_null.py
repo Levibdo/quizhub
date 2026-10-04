@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.seed import seed_database
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.data.perguntas import PERGUNTAS
 from app.models import Pergunta
 from app.services.backfill_explicacoes import ler_explicacoes
@@ -45,7 +46,7 @@ class TestExplicacaoObrigatoria(unittest.TestCase):
         tabela = Pergunta.__table__
         with self.assertRaises(IntegrityError), engine.begin() as conn:
             conn.execute(tabela.insert().values(
-                id=999, categoria_id="geral", enunciado="Teste",
+                id=999, categoria_id=CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"], enunciado="Teste",
                 alternativa_a="A", alternativa_b="B", alternativa_c="C",
                 alternativa_d="D", alternativa_correta=0,
             ))

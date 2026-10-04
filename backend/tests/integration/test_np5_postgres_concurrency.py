@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_NEM_A_PATO
 from app.db.base import Base  # noqa: F401
 from app.models import (
     Categoria,
@@ -53,9 +54,9 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
         with cls.engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0010":
+        if revision != "0011":
             cls.engine.dispose()
-            raise RuntimeError(f"expected revision 0010, received {revision!r}")
+            raise RuntimeError(f"expected revision 0011, received {revision!r}")
 
     @classmethod
     def tearDownClass(cls):
@@ -75,11 +76,12 @@ class TestNemAPatoRoundPostgresConcurrency(unittest.TestCase):
                 )
                 tokens[chave] = entrada.credencial_participante
         with self.sessions() as session:
-            if session.get(Categoria, "geral") is None:
+            categoria_id = CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"]
+            if session.get(Categoria, categoria_id) is None:
                 self.fail("base category geral missing from migration 0009")
             session.add_all([
                 PerguntaNemPato(
-                    categoria_id="geral",
+                    categoria_id=categoria_id,
                     enunciado=f"PostgreSQL NP5 {uuid4()}",
                     resposta_numerica=indice,
                     explicacao="private integration explanation",

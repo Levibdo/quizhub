@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models import Usuario
+from app.security import usuario_atual_opcional
 from app.schemas.nem_a_pato import (
     CriarDesafioNemPato,
     CriarPalpiteNemPato,
@@ -24,8 +26,9 @@ router = APIRouter(prefix="/nem-pato/salas", tags=["nem-pato"])
 def criar_sala(
     entrada: CriarSalaNemAPato,
     db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual_opcional),
 ):
-    return salas_nem_a_pato.criar(db, entrada.nome)
+    return salas_nem_a_pato.criar(db, entrada.nome, usuario)
 
 
 @router.post(

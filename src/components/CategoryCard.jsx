@@ -31,7 +31,7 @@ function iniciais(nome) {
 }
 
 function CategorySymbol({ categoria }) {
-  const simbolo = SIMBOLOS[categoria.id]
+  const simbolo = SIMBOLOS[categoria.slug]
   if (!simbolo) {
     return (
       <span
@@ -45,7 +45,7 @@ function CategorySymbol({ categoria }) {
   }
 
   return (
-    <span className="category-symbol" data-symbol={categoria.id} aria-hidden="true">
+    <span className="category-symbol" data-symbol={categoria.slug} aria-hidden="true">
       <svg viewBox="0 0 24 24" focusable="false">
         {simbolo}
       </svg>
@@ -57,7 +57,7 @@ function CategoryCard({ categoria, indice, onSelect, disabled }) {
   return (
     <button
       className="categoria-card"
-      onClick={() => onSelect(categoria.id)}
+      onClick={() => onSelect(categoria.slug)}
       disabled={disabled}
       aria-busy={disabled || undefined}
     >

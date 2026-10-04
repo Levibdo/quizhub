@@ -281,12 +281,13 @@ def validar_registro_nem_a_pato(
             return None, f"campo opcional deve ser texto: {campo}"
         opcionais[campo] = valor.strip() or None if isinstance(valor, str) else None
     return {
-        "categoria_id": categoria_id,
+        "categoria_id": categoria.id,
         "enunciado": enunciado,
         "resposta_numerica": resposta,
         "explicacao": explicacao,
         **opcionais,
         "ativa": ativa,
+        "origem": "OFICIAL",
     }, None
 
 
@@ -309,8 +310,12 @@ class CatalogoPerguntasNemAPato:
         self, db: Session, dados: dict[str, object]
     ) -> tuple[dict[str, object] | None, str | None, bool]:
         categorias = {
-            categoria.id: categoria
-            for categoria in db.scalars(select(Categoria))
+            categoria.slug: categoria
+            for categoria in db.scalars(select(Categoria).where(
+                Categoria.modo == "NEM_A_PATO",
+                Categoria.origem == "OFICIAL",
+                Categoria.excluida_em.is_(None),
+            ))
         }
         validado, erro = validar_registro_nem_a_pato(dados, categorias)
         if erro:
@@ -377,11 +382,11 @@ class CatalogoPerguntasNemAPato:
         linhas = db.execute(
             select(
                 PerguntaNemPato.id,
-                PerguntaNemPato.categoria_id,
+                Categoria.slug,
                 PerguntaNemPato.enunciado,
                 PerguntaNemPato.unidade,
                 PerguntaNemPato.ativa,
-            ).order_by(PerguntaNemPato.id)
+            ).join(Categoria).order_by(PerguntaNemPato.id)
         )
         return list(linhas.tuples())
 
@@ -395,11 +400,12 @@ class CatalogoPerguntasNemAPato:
         ).one()
         por_categoria = db.execute(
             select(
-                PerguntaNemPato.categoria_id,
+                Categoria.slug,
                 func.count(PerguntaNemPato.id),
             )
-            .group_by(PerguntaNemPato.categoria_id)
-            .order_by(PerguntaNemPato.categoria_id)
+            .join(Categoria)
+            .group_by(Categoria.slug)
+            .order_by(Categoria.slug)
         ).all()
         return {
             "total": total,
@@ -418,7 +424,7 @@ class CatalogoPerguntasNemAPato:
             select(PerguntaNemPato.categoria_id, PerguntaNemPato.enunciado)
         ).tuples()
         return {
-            (categoria_id, enunciado.strip())
+            (str(categoria_id), enunciado.strip())
             for categoria_id, enunciado in existentes
         }
 
@@ -426,8 +432,12 @@ class CatalogoPerguntasNemAPato:
         self, db: Session, candidatas: list[CandidataNemAPato], formato: str
     ) -> RelatorioCatalogoNemAPato:
         categorias = {
-            categoria.id: categoria
-            for categoria in db.scalars(select(Categoria))
+            categoria.slug: categoria
+            for categoria in db.scalars(select(Categoria).where(
+                Categoria.modo == "NEM_A_PATO",
+                Categoria.origem == "OFICIAL",
+                Categoria.excluida_em.is_(None),
+            ))
         }
         chaves_conhecidas = self._chaves_existentes(db)
         validas = []

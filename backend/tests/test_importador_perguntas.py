@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.db.base import Base
 from app.db.seed import seed_database
 from app.models import Categoria, Pergunta
@@ -149,7 +150,10 @@ class TestImportadorPerguntas(unittest.TestCase):
         self.assertEqual(relatorio.erros[0].motivo, "categoria inexistente")
 
     def test_categoria_inativa(self):
-        self.session.get(Categoria, "tecnologia").ativa = False
+        self.session.get(
+            Categoria,
+            CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"],
+        ).ativa = False
         self.session.commit()
         relatorio = self.importar(
             [("tecnologia", "Nova?", "A", "B", "C", "D", 0, "  Explicacao de teste  ")]

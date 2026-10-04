@@ -36,7 +36,7 @@ def _listar(session, output: Callable[[str], None]) -> int:
     for categoria in categorias:
         descricao = categoria.descricao or "—"
         status = "ativa" if categoria.ativa else "inativa"
-        output(f"{categoria.id} | {categoria.nome} | {descricao} | {status}")
+        output(f"{categoria.slug} | {categoria.nome} | {descricao} | {status}")
     return 0
 
 
@@ -62,7 +62,7 @@ def _criar(
     except (CategoriaInvalida, CategoriaDuplicada) as erro:
         output(f"Erro: {erro}")
         return 1
-    output(f"Categoria '{categoria.id}' criada com sucesso.")
+    output(f"Categoria '{categoria.slug}' criada com sucesso.")
     return 0
 
 
@@ -146,14 +146,14 @@ def _gerar_prompt(
 
     output("Categorias ativas:")
     for indice, categoria in enumerate(categorias, start=1):
-        output(f"{indice}. {categoria.nome} ({categoria.id})")
+        output(f"{indice}. {categoria.nome} ({categoria.slug})")
 
     escolha_categoria = input_fn("Categoria (número ou id): ").strip()
     categoria = next(
         (
             item
             for indice, item in enumerate(categorias, start=1)
-            if escolha_categoria in {str(indice), item.id}
+            if escolha_categoria in {str(indice), item.slug}
         ),
         None,
     )
@@ -189,7 +189,7 @@ def _gerar_prompt(
     try:
         prompt = gerar_prompt_perguntas(
             ParametrosPrompt(
-                categoria_id=categoria.id,
+                categoria_id=categoria.slug,
                 tema=tema,
                 quantidade=quantidade,
                 dificuldade=dificuldade,

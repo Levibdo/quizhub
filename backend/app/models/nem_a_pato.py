@@ -60,6 +60,23 @@ class PerguntaNemPato(Base):
             "length(trim(enunciado)) > 0",
             name="ck_perguntas_nem_pato_enunciado_nao_vazio",
         ),
+        CheckConstraint(
+            "origem IN ('OFICIAL', 'USUARIO')",
+            name="ck_perguntas_nem_pato_origem",
+        ),
+        CheckConstraint(
+            "(origem = 'OFICIAL' AND usuario_id IS NULL) OR "
+            "(origem = 'USUARIO' AND usuario_id IS NOT NULL)",
+            name="ck_perguntas_nem_pato_origem_usuario",
+        ),
+        CheckConstraint(
+            "excluida_em IS NULL OR ativa IS FALSE",
+            name="ck_perguntas_nem_pato_excluida_inativa",
+        ),
+        CheckConstraint(
+            "origem <> 'OFICIAL' OR excluida_em IS NULL",
+            name="ck_perguntas_nem_pato_oficial_nao_excluida",
+        ),
         Index("ix_perguntas_nem_pato_categoria_ativa", "categoria_id", "ativa"),
     )
 
@@ -68,8 +85,8 @@ class PerguntaNemPato(Base):
         primary_key=True,
         autoincrement=True,
     )
-    categoria_id: Mapped[str] = mapped_column(
-        String, ForeignKey("categorias.id"), nullable=False
+    categoria_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("categorias.id"), nullable=False
     )
     enunciado: Mapped[str] = mapped_column(Text, nullable=False)
     resposta_numerica: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -81,6 +98,18 @@ class PerguntaNemPato(Base):
     )
     criada_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    origem: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="OFICIAL", server_default="OFICIAL"
+    )
+    usuario_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("usuarios.id"), nullable=True
+    )
+    atualizada_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    excluida_em: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     categoria: Mapped["Categoria"] = relationship(
@@ -123,6 +152,9 @@ class SalaNemPato(Base):
     )
     encerrada_em: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    catalogo_usuario_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("usuarios.id"), nullable=True
     )
 
     participantes: Mapped[list["ParticipanteNemPato"]] = relationship(
@@ -228,8 +260,11 @@ class PartidaNemPato(Base):
     sala_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("salas_nem_pato.id"), nullable=False
     )
-    categoria_id: Mapped[str] = mapped_column(
-        String, ForeignKey("categorias.id"), nullable=False
+    categoria_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("categorias.id"), nullable=False
+    )
+    catalogo_usuario_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("usuarios.id"), nullable=True
     )
     numero: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[PartidaNemPatoStatus] = mapped_column(
@@ -397,6 +432,14 @@ class RodadaNemPato(Base):
     tipo_finalizacao: Mapped[TipoFinalizacaoRodadaNemPato | None] = mapped_column(
         _enum_string(TipoFinalizacaoRodadaNemPato, 24), nullable=True
     )
+    categoria_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    enunciado_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    resposta_numerica_snapshot: Mapped[int] = mapped_column(
+        BigInteger, nullable=False
+    )
+    explicacao_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    unidade_snapshot: Mapped[str | None] = mapped_column(String, nullable=True)
+    fonte_snapshot: Mapped[str | None] = mapped_column(String, nullable=True)
 
     partida: Mapped["PartidaNemPato"] = relationship(back_populates="rodadas")
     pergunta: Mapped[PerguntaNemPato] = relationship(back_populates="rodadas")

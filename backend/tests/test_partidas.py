@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.main import app
 from app.db.base import Base
 from app.db.seed import seed_database
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.models import (
     Categoria,
     Jogador,
@@ -50,7 +51,7 @@ def seed_catalogo_partidas(session):
             session.add(
                 Pergunta(
                     id=proximo_id,
-                    categoria_id=categoria_id,
+                    categoria_id=CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO][categoria_id],
                     enunciado=f"Pergunta {numero} de {categoria_id}",
                     alternativa_a="A",
                     alternativa_b="B",
@@ -117,7 +118,7 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.assertEqual([item.ordem for item in ocorrencias], list(range(1, 11)))
             self.assertEqual(len({item.pergunta_id for item in ocorrencias}), 10)
             self.assertTrue(
-                all(item.pergunta.categoria_id == "tecnologia" for item in ocorrencias)
+                all(item.pergunta.categoria.slug == "tecnologia" for item in ocorrencias)
             )
             self.assertTrue(all(item.pergunta.ativa for item in ocorrencias))
             self.assertEqual(
@@ -198,17 +199,21 @@ class TestPartidasPersistentes(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 422)
 
         with self.sessions() as session:
-            session.get(Categoria, "tecnologia").ativa = False
+            session.get(
+                Categoria,
+                CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"],
+            ).ativa = False
             session.commit()
         with self.assertRaises(HTTPException) as error:
             self.criar("tecnologia")
         self.assertEqual(error.exception.status_code, 422)
 
         with self.sessions() as session:
-            session.get(Categoria, "tecnologia").ativa = True
+            categoria_id = CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"]
+            session.get(Categoria, categoria_id).ativa = True
             perguntas = list(
                 session.scalars(
-                    select(Pergunta).where(Pergunta.categoria_id == "tecnologia")
+                    select(Pergunta).where(Pergunta.categoria_id == categoria_id)
                 )
             )
             for pergunta in perguntas[2:]:
@@ -394,7 +399,8 @@ class TestPartidasPersistentes(unittest.TestCase):
             pergunta.enunciado = "Texto exclusivamente persistido"
             for item in session.scalars(
                 select(Pergunta).where(
-                    Pergunta.categoria_id == "tecnologia", Pergunta.id != 6
+                    Pergunta.categoria_id == CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"],
+                    Pergunta.id != 6,
                 )
             ):
                 item.ativa = False
@@ -403,8 +409,9 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.criar()
 
         with self.sessions() as session:
+            categoria_id = CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"]
             perguntas_tecnologia = list(session.scalars(
-                select(Pergunta).where(Pergunta.categoria_id == "tecnologia")
+                select(Pergunta).where(Pergunta.categoria_id == categoria_id)
             ))
             ids_disponiveis = {item.id for item in perguntas_tecnologia[:10]}
             for item in perguntas_tecnologia:
@@ -473,9 +480,12 @@ class TestPartidasPersistentes(unittest.TestCase):
                 with self.sessions() as session:
                     atual = self.atual(session, criada.partida_id)
                     pergunta_id = atual.pergunta_id
-                    correta = atual.pergunta.alternativa_correta
-                    atual.pergunta.explicacao = f'Persistida para {pergunta_id}: {modo}'
-                    explicacao = atual.pergunta.explicacao
+                    correta = atual.alternativa_correta_snapshot
+                    explicacao = atual.explicacao_snapshot
+                    atual.pergunta.enunciado = f'Pergunta original alterada: {modo}'
+                    atual.pergunta.alternativa_a = 'Alternativa original alterada'
+                    atual.pergunta.alternativa_correta = (correta + 1) % 4
+                    atual.pergunta.explicacao = f'Pergunta original alterada: {modo}'
                     session.commit()
                 if modo == 'timeout':
                     self.relogio.agora += timedelta(seconds=16)

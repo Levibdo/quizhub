@@ -5,12 +5,13 @@ from unittest.mock import patch
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import Text, create_engine, inspect, select
+from sqlalchemy import Boolean, Column, MetaData, String, Table, Text, create_engine, inspect, select
 from sqlalchemy.orm import Session
 
 from app.data.perguntas import PERGUNTAS
 from app.db.base import Base
 from app.db.seed import CATEGORIAS_INICIAIS, seed_database
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.models import Categoria, Pergunta
 
 
@@ -130,7 +131,15 @@ class TestMigration0008(unittest.TestCase):
         self.migration = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.migration)
         self.engine = create_engine("sqlite://")
-        Base.metadata.create_all(self.engine)
+        metadata = MetaData()
+        self.categorias_legadas = Table(
+            "categorias", metadata,
+            Column("id", String, primary_key=True),
+            Column("nome", String, nullable=False),
+            Column("descricao", Text),
+            Column("ativa", Boolean, nullable=False, server_default="1"),
+        )
+        metadata.create_all(self.engine)
 
     def tearDown(self):
         self.engine.dispose()
@@ -150,46 +159,42 @@ class TestMigration0008(unittest.TestCase):
         with self.engine.begin() as conexao:
             self.executar_upgrade(conexao)
             self.executar_upgrade(conexao)
-        with Session(self.engine) as session:
-            categorias = session.scalars(select(Categoria).order_by(Categoria.id)).all()
+        with self.engine.connect() as connection:
+            categorias = connection.execute(
+                select(self.categorias_legadas).order_by(self.categorias_legadas.c.id)
+            ).mappings().all()
         self.assertEqual(
-            [(item.id, item.nome) for item in categorias],
+            [(item["id"], item["nome"]) for item in categorias],
             [("entretenimento", "Entretenimento"), ("geral", "Geral"),
              ("matematica", "Matemática"), ("tecnologia", "Tecnologia")],
         )
 
     def test_upgrade_preserva_customizacoes_e_corrige_apenas_legado(self):
-        with Session(self.engine) as session:
-            session.add_all([
-                Categoria(id="geral", nome="Conhecimentos", descricao="Personalizada", ativa=False),
-                Categoria(id="matematica", nome="Matematica", descricao="Legada", ativa=False),
-                Categoria(id="tecnologia", nome="Tecnologia Avançada", descricao="Custom", ativa=True),
-                Categoria(id="macabro", nome="Macabro", descricao="Extra", ativa=True),
+        with self.engine.begin() as connection:
+            connection.execute(self.categorias_legadas.insert(), [
+                dict(id="geral", nome="Conhecimentos", descricao="Personalizada", ativa=False),
+                dict(id="matematica", nome="Matematica", descricao="Legada", ativa=False),
+                dict(id="tecnologia", nome="Tecnologia Avançada", descricao="Custom", ativa=True),
+                dict(id="macabro", nome="Macabro", descricao="Extra", ativa=True),
             ])
-            session.commit()
         with self.engine.begin() as conexao:
             self.executar_upgrade(conexao)
-        with Session(self.engine) as session:
-            geral = session.get(Categoria, "geral")
-            matematica = session.get(Categoria, "matematica")
-            tecnologia = session.get(Categoria, "tecnologia")
-            macabro = session.get(Categoria, "macabro")
-            entretenimento = session.get(Categoria, "entretenimento")
-            self.assertEqual((geral.nome, geral.descricao, geral.ativa), ("Conhecimentos", "Personalizada", False))
-            self.assertEqual((matematica.nome, matematica.descricao, matematica.ativa), ("Matemática", "Legada", False))
-            self.assertEqual((tecnologia.nome, tecnologia.descricao), ("Tecnologia Avançada", "Custom"))
-            self.assertEqual((macabro.nome, macabro.descricao), ("Macabro", "Extra"))
-            self.assertEqual(entretenimento.nome, "Entretenimento")
+        with self.engine.connect() as connection:
+            dados = {row["id"]: row for row in connection.execute(select(self.categorias_legadas)).mappings()}
+            self.assertEqual((dados["geral"]["nome"], dados["geral"]["descricao"], dados["geral"]["ativa"]), ("Conhecimentos", "Personalizada", False))
+            self.assertEqual((dados["matematica"]["nome"], dados["matematica"]["descricao"], dados["matematica"]["ativa"]), ("Matemática", "Legada", False))
+            self.assertEqual((dados["tecnologia"]["nome"], dados["tecnologia"]["descricao"]), ("Tecnologia Avançada", "Custom"))
+            self.assertEqual((dados["macabro"]["nome"], dados["macabro"]["descricao"]), ("Macabro", "Extra"))
+            self.assertEqual(dados["entretenimento"]["nome"], "Entretenimento")
 
     def test_upgrade_preserva_nome_personalizado_de_matematica(self):
-        with Session(self.engine) as session:
-            session.add(Categoria(id="matematica", nome="Matemática e Lógica", descricao="Custom"))
-            session.commit()
+        with self.engine.begin() as connection:
+            connection.execute(self.categorias_legadas.insert().values(id="matematica", nome="Matemática e Lógica", descricao="Custom"))
         with self.engine.begin() as conexao:
             self.executar_upgrade(conexao)
-        with Session(self.engine) as session:
-            categoria = session.get(Categoria, "matematica")
-            self.assertEqual((categoria.nome, categoria.descricao), ("Matemática e Lógica", "Custom"))
+        with self.engine.connect() as connection:
+            categoria = connection.execute(select(self.categorias_legadas).where(self.categorias_legadas.c.id == "matematica")).mappings().one()
+            self.assertEqual((categoria["nome"], categoria["descricao"]), ("Matemática e Lógica", "Custom"))
 
 
 class TestSeed(unittest.TestCase):
@@ -205,7 +210,7 @@ class TestSeed(unittest.TestCase):
             self.assertEqual(seed_database(session), (4, 15))
             self.assertEqual(seed_database(session), (0, 0))
             categorias = session.scalars(
-                select(Categoria).order_by(Categoria.id)
+                select(Categoria).order_by(Categoria.nome)
             ).all()
             perguntas = session.scalars(select(Pergunta).order_by(Pergunta.id)).all()
 
@@ -217,15 +222,16 @@ class TestSeed(unittest.TestCase):
         )
         self.assertEqual([pergunta.id for pergunta in perguntas], list(range(1, 16)))
         self.assertEqual(
-            [pergunta.categoria_id for pergunta in perguntas[:5]], ["geral"] * 5
+            [pergunta.categoria_id for pergunta in perguntas[:5]],
+            [CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"]] * 5,
         )
         self.assertEqual(
             [pergunta.categoria_id for pergunta in perguntas[5:10]],
-            ["tecnologia"] * 5,
+            [CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"]] * 5,
         )
         self.assertEqual(
             [pergunta.categoria_id for pergunta in perguntas[10:]],
-            ["matematica"] * 5,
+            [CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["matematica"]] * 5,
         )
 
         for persistida, fonte in zip(perguntas, PERGUNTAS, strict=True):

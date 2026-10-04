@@ -33,15 +33,15 @@ class PartidasPersistentes:
         self.relogio = relogio
 
     @staticmethod
-    def _pergunta_publica(pergunta: Pergunta) -> PerguntaPublica:
+    def _pergunta_publica(ocorrencia: PartidaPergunta) -> PerguntaPublica:
         return PerguntaPublica(
-            id=pergunta.id,
-            pergunta=pergunta.enunciado,
+            id=ocorrencia.pergunta_id,
+            pergunta=ocorrencia.enunciado_snapshot,
             alternativas=[
-                pergunta.alternativa_a,
-                pergunta.alternativa_b,
-                pergunta.alternativa_c,
-                pergunta.alternativa_d,
+                ocorrencia.alternativa_a_snapshot,
+                ocorrencia.alternativa_b_snapshot,
+                ocorrencia.alternativa_c_snapshot,
+                ocorrencia.alternativa_d_snapshot,
             ],
         )
 
@@ -53,7 +53,7 @@ class PartidasPersistentes:
         return PartidaPublica(
             partida_id=str(partida.id),
             jogador=partida.jogador.nome,
-            categoria=partida.categoria_id,
+            categoria=partida.categoria.slug,
             status=partida.status,
             iniciada_em=partida.iniciada_em,
             pergunta_disponibilizada_em=(
@@ -64,7 +64,7 @@ class PartidasPersistentes:
             acertos=partida.acertos,
             erros=partida.erros,
             pergunta_atual=(
-                self._pergunta_publica(pergunta_partida.pergunta)
+                self._pergunta_publica(pergunta_partida)
                 if pergunta_partida is not None and partida.status == "EM_ANDAMENTO"
                 else None
             ),
@@ -85,7 +85,12 @@ class PartidasPersistentes:
                     detail="jogador é obrigatório para partidas como convidado",
                 )
 
-            categoria = db.get(Categoria, categoria_id)
+            categoria = db.scalar(select(Categoria).where(
+                Categoria.slug == categoria_id,
+                Categoria.modo == "QUIZ_CLASSICO",
+                Categoria.origem == "OFICIAL",
+                Categoria.excluida_em.is_(None),
+            ))
             if categoria is None or not categoria.ativa:
                 raise HTTPException(
                     status_code=422,
@@ -95,8 +100,10 @@ class PartidasPersistentes:
             candidatas = list(
                 db.scalars(
                     select(Pergunta).where(
-                        Pergunta.categoria_id == categoria_id,
+                        Pergunta.categoria_id == categoria.id,
                         Pergunta.ativa.is_(True),
+                        Pergunta.origem == "OFICIAL",
+                        Pergunta.excluida_em.is_(None),
                     )
                 )
             )
@@ -132,6 +139,14 @@ class PartidasPersistentes:
                         if ordem == 1
                         else None
                     ),
+                    categoria_id_snapshot=pergunta.categoria_id,
+                    enunciado_snapshot=pergunta.enunciado,
+                    alternativa_a_snapshot=pergunta.alternativa_a,
+                    alternativa_b_snapshot=pergunta.alternativa_b,
+                    alternativa_c_snapshot=pergunta.alternativa_c,
+                    alternativa_d_snapshot=pergunta.alternativa_d,
+                    alternativa_correta_snapshot=pergunta.alternativa_correta,
+                    explicacao_snapshot=pergunta.explicacao,
                 )
                 ocorrencias.append(ocorrencia)
                 db.add(ocorrencia)
@@ -219,7 +234,7 @@ class PartidasPersistentes:
                     raise HTTPException(
                         status_code=422, detail="alternativa fora do intervalo"
                     )
-                correta = alternativa == atual.pergunta.alternativa_correta
+                correta = alternativa == atual.alternativa_correta_snapshot
                 alternativa_persistida = alternativa
                 segundos_restantes = max(
                     0,
@@ -265,9 +280,9 @@ class PartidasPersistentes:
             db.flush()
             resposta_publica = ResultadoResposta(
                 **self._publica(partida, exibida).model_dump(),
-                explicacao=atual.pergunta.explicacao,
+                explicacao=atual.explicacao_snapshot,
                 correta=correta,
-                alternativa_correta=atual.pergunta.alternativa_correta,
+                alternativa_correta=atual.alternativa_correta_snapshot,
                 timeout=timeout,
                 pontos_ganhos=pontos_ganhos,
             )

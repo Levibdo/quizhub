@@ -5,6 +5,7 @@ import unittest
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 from openpyxl import Workbook
 from sqlalchemy import create_engine, func, select
@@ -13,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.cli import main as cli_main
 from app.db.base import Base
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_NEM_A_PATO
 from app.models import Categoria, PerguntaNemPato
 from app.services.catalogo_nem_a_pato import (
     ArquivoCatalogoNemAPatoInvalido,
@@ -95,9 +97,9 @@ class CatalogoNemAPatoTestCase(unittest.TestCase):
         with self.sessions() as session:
             session.add_all(
                 [
-                    Categoria(id="geral", nome="Geral", ativa=True),
-                    Categoria(id="tecnologia", nome="Tecnologia", ativa=True),
-                    Categoria(id="arquivada", nome="Arquivada", ativa=False),
+                    Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"], slug="geral", nome="Geral", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
+                    Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["tecnologia"], slug="tecnologia", nome="Tecnologia", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
+                    Categoria(id=uuid4(), slug="arquivada", nome="Arquivada", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=False),
                 ]
             )
             session.commit()
@@ -122,7 +124,7 @@ class CatalogoNemAPatoTestCase(unittest.TestCase):
         with self.sessions() as session:
             session.add(
                 PerguntaNemPato(
-                    categoria_id=categoria,
+                    categoria_id=(CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO].get(categoria) or categoria),
                     enunciado=enunciado,
                     resposta_numerica=1,
                     explicacao="Explicação.",
@@ -273,13 +275,14 @@ class TestCatalogoNemAPatoValidacao(CatalogoNemAPatoTestCase):
             "json",
         )
         self.assertEqual(relatorio.validas[0], {
-            "categoria_id": "geral",
+            "categoria_id": CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"],
             "enunciado": "Trim",
             "resposta_numerica": 42,
             "explicacao": "Explica",
             "unidade": "km",
             "fonte": "F",
             "ativa": True,
+            "origem": "OFICIAL",
         })
 
 

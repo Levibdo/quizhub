@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import ParticipanteNemPato, SalaNemPato
+from app.models import ParticipanteNemPato, SalaNemPato, Usuario
 from app.nem_a_pato import ParticipanteNemPatoStatus, SalaNemPatoStatus
 from app.services.salas_nem_a_pato import (
 	ALFABETO_CODIGO_SALA,
@@ -72,6 +72,29 @@ class SalasNemAPatoTestCase(unittest.TestCase):
 
 
 class TestLobbyNemAPatoService(SalasNemAPatoTestCase):
+	def test_catalogo_guest_autenticado_e_transferencia_de_host_sao_imutaveis(self):
+		guest = self.criar("Guest")
+		self.assertIsNone(self.sala_db(guest.sala.codigo).catalogo_usuario_id)
+
+		with self.sessions() as session:
+			usuario = Usuario(
+				nome="Conta", email="catalogo@example.com", senha_hash="hash"
+			)
+			session.add(usuario)
+			session.commit()
+			usuario_id = usuario.id
+			host = self.service.criar(session, "Levi", usuario)
+		with self.sessions() as session:
+			membro = self.service.entrar(session, host.sala.codigo, "Jorge")
+		with self.sessions() as session:
+			self.service.abandonar(
+				session, host.sala.codigo, host.credencial_participante
+			)
+
+		sala = self.sala_db(host.sala.codigo)
+		self.assertEqual(sala.catalogo_usuario_id, usuario_id)
+		self.assertTrue(self.participante(membro.participante.id).eh_anfitriao)
+
 	def test_criar_sala_host_ordem_token_hash_e_versao_inicial(self):
 		criado = self.criar("  Levi  ")
 		self.assertEqual(criado.sala.codigo, "NPABCD")
@@ -318,6 +341,15 @@ class TestLobbyNemAPatoApi(SalasNemAPatoTestCase):
 			self.assertEqual(public.status_code, 200)
 			self.assertNotIn("credencial_participante", public.text)
 			self.assertNotIn("token_hash", public.text)
+
+	def test_cliente_nao_escolhe_catalogo_usuario_id(self):
+		with self.client() as client:
+			criado = client.post(
+				"/api/v1/nem-pato/salas",
+				json={"nome": "Levi", "catalogo_usuario_id": str(hashlib.sha256(b"x").hexdigest())},
+			)
+		self.assertEqual(criado.status_code, 201, criado.text)
+		self.assertIsNone(self.sala_db(criado.json()["sala"]["codigo"]).catalogo_usuario_id)
 
 	def test_endpoints_publico_recuperacao_abandono_e_auth_token(self):
 		with self.client() as client:

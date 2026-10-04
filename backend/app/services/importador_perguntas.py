@@ -219,7 +219,13 @@ class ImportadorPerguntas:
         self, db: Session, candidatas: list[PerguntaCandidata], formato: str
     ) -> AuditoriaPerguntas:
         categorias = {
-            categoria.id: categoria for categoria in db.scalars(select(Categoria))
+            categoria.slug: categoria for categoria in db.scalars(
+                select(Categoria).where(
+                    Categoria.modo == "QUIZ_CLASSICO",
+                    Categoria.origem == "OFICIAL",
+                    Categoria.excluida_em.is_(None),
+                )
+            )
         }
         chaves_conhecidas = set(
             db.execute(select(Pergunta.categoria_id, Pergunta.enunciado)).tuples()
@@ -279,7 +285,13 @@ class ImportadorPerguntas:
             return None, "categoria inexistente"
         if not categoria.ativa:
             return None, "categoria inativa"
-        return {**textos, "alternativa_correta": alternativa, "ativa": True}, None
+        return {
+            **textos,
+            "categoria_id": categoria.id,
+            "alternativa_correta": alternativa,
+            "ativa": True,
+            "origem": "OFICIAL",
+        }, None
 
 
 importador_perguntas = ImportadorPerguntas()

@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from sqlalchemy import MetaData, create_engine, event, select
 
 from app.db.base import Base
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.models import Categoria, Pergunta
 from app.services.backfill_explicacoes import backfill_explicacoes
 
@@ -25,11 +26,13 @@ class TestBackfillExplicacoes(unittest.TestCase):
         ]
         with self.engine.begin() as conn:
             conn.execute(Categoria.__table__.insert(), [
-                {"id": categoria, "nome": categoria}
+                {"id": CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO][categoria],
+                 "slug": categoria, "nome": categoria,
+                 "modo": MODO_QUIZ_CLASSICO, "origem": "OFICIAL"}
                 for categoria in ("geral", "matematica", "tecnologia")
             ])
             conn.execute(Pergunta.__table__.insert(), [
-                dict(id=1000 + i * 3, categoria_id=cat, enunciado=enunciado,
+                dict(id=1000 + i * 3, categoria_id=CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO][cat], enunciado=enunciado,
                      alternativa_a="A", alternativa_b="B", alternativa_c="C",
                      alternativa_d="D", alternativa_correta=i % 4, ativa=bool(i % 2))
                 for i, (cat, enunciado, _) in enumerate(self.linhas)
@@ -83,7 +86,8 @@ class TestBackfillExplicacoes(unittest.TestCase):
         depois = self.snapshot()
         esperado = {(cat, enunciado): exp for cat, enunciado, exp in self.linhas}
         for original, atual in zip(antes, depois):
-            self.assertEqual(atual.pop("explicacao"), esperado[(original["categoria_id"], original["enunciado"])])
+            slug = next(slug for slug, id_ in CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO].items() if id_ == original["categoria_id"])
+            self.assertEqual(atual.pop("explicacao"), esperado[(slug, original["enunciado"])])
             original.pop("explicacao")
             self.assertEqual(atual, original)
         completo = self.snapshot()
@@ -116,7 +120,7 @@ class TestBackfillExplicacoes(unittest.TestCase):
     def test_pergunta_banco_ausente_no_xlsx(self):
         with self.engine.begin() as conn:
             conn.execute(Pergunta.__table__.insert().values(
-                id=9999, categoria_id="geral", enunciado="Extra",
+                id=9999, categoria_id=CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"], enunciado="Extra",
                 alternativa_a="A", alternativa_b="B", alternativa_c="C",
                 alternativa_d="D", alternativa_correta=0,
             ))

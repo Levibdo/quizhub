@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
+    Categoria,
     DesafioNemPato,
     JogadorPartidaNemPato,
     PalpiteNemPato,
@@ -19,6 +20,7 @@ from app.models import (
     PerguntaNemPato,
     RodadaNemPato,
     SalaNemPato,
+    Usuario,
 )
 from app.nem_a_pato import (
     MAX_JOGADORES_NEM_A_PATO,
@@ -221,10 +223,15 @@ class SalasNemAPatoService:
         self.selecionar_perguntas = selecionar_perguntas
         self.tentativas_codigo = tentativas_codigo
 
-    def criar(self, db: Session, nome: str) -> ParticipacaoSalaCriada:
+    def criar(
+        self, db: Session, nome: str, usuario: Usuario | None = None
+    ) -> ParticipacaoSalaCriada:
         nome = normalizar_nome(nome)
         for tentativa in range(self.tentativas_codigo):
-            sala = SalaNemPato(codigo=self.gerador_codigo())
+            sala = SalaNemPato(
+                codigo=self.gerador_codigo(),
+                catalogo_usuario_id=usuario.id if usuario is not None else None,
+            )
             db.add(sala)
             try:
                 # Inserir sala separadamente torna retry limitado a colisões de código.
@@ -436,14 +443,13 @@ class SalasNemAPatoService:
             ))
             pergunta = None
             if rodada.status in (RodadaNemPatoStatus.EM_ANDAMENTO, RodadaNemPatoStatus.RESULTADO):
-                pergunta_db = db.get(PerguntaNemPato, rodada.pergunta_id)
                 pergunta_schema = PerguntaResultadoNemPatoPublica if rodada.status == RodadaNemPatoStatus.RESULTADO else PerguntaRodadaNemPatoPublica
                 pergunta = pergunta_schema(
-                    id=pergunta_db.id,
-                    categoria_id=pergunta_db.categoria_id,
-                    enunciado=pergunta_db.enunciado,
-                    unidade=pergunta_db.unidade,
-                    **({"resposta_numerica": pergunta_db.resposta_numerica, "explicacao": pergunta_db.explicacao} if rodada.status == RodadaNemPatoStatus.RESULTADO else {}),
+                    id=rodada.pergunta_id,
+                    categoria_id=str(rodada.categoria_id_snapshot),
+                    enunciado=rodada.enunciado_snapshot,
+                    unidade=rodada.unidade_snapshot,
+                    **({"resposta_numerica": rodada.resposta_numerica_snapshot, "explicacao": rodada.explicacao_snapshot} if rodada.status == RodadaNemPatoStatus.RESULTADO else {}),
                 )
             jogador_inicial = jogadores_por_id[rodada.jogador_inicial_id]
             jogador_da_vez = (
@@ -614,7 +620,13 @@ class SalasNemAPatoService:
                 perguntas = list(
                     db.scalars(
                         select(PerguntaNemPato)
-                        .where(PerguntaNemPato.ativa.is_(True))
+                        .join(Categoria)
+                        .where(
+                            PerguntaNemPato.ativa.is_(True),
+                            PerguntaNemPato.origem == "OFICIAL",
+                            PerguntaNemPato.excluida_em.is_(None),
+                            Categoria.modo == "NEM_A_PATO",
+                        )
                         .order_by(func.random())
                         .limit(TOTAL_RODADAS_NEM_A_PATO)
                         .with_for_update()
@@ -625,7 +637,13 @@ class SalasNemAPatoService:
                 perguntas_ativas = list(
                     db.scalars(
                         select(PerguntaNemPato)
-                        .where(PerguntaNemPato.ativa.is_(True))
+                        .join(Categoria)
+                        .where(
+                            PerguntaNemPato.ativa.is_(True),
+                            PerguntaNemPato.origem == "OFICIAL",
+                            PerguntaNemPato.excluida_em.is_(None),
+                            Categoria.modo == "NEM_A_PATO",
+                        )
                         .order_by(PerguntaNemPato.id)
                     )
                 )
@@ -669,6 +687,7 @@ class SalasNemAPatoService:
                 # A coluna requerida pelo schema 0009 serve de categoria-base;
                 # cada rodada conserva sua própria categoria e a seleção pode variar.
                 categoria_id=perguntas[0].categoria_id,
+                catalogo_usuario_id=sala.catalogo_usuario_id,
                 numero=numero_partida,
                 status=PartidaNemPatoStatus.EM_ANDAMENTO,
                 rodada_atual=0,
@@ -707,6 +726,12 @@ class SalasNemAPatoService:
                         termina_em=None,
                         finalizada_em=None,
                         tipo_finalizacao=None,
+                        categoria_id_snapshot=pergunta.categoria_id,
+                        enunciado_snapshot=pergunta.enunciado,
+                        resposta_numerica_snapshot=pergunta.resposta_numerica,
+                        explicacao_snapshot=pergunta.explicacao,
+                        unidade_snapshot=pergunta.unidade,
+                        fonte_snapshot=pergunta.fonte,
                     )
                 )
 
@@ -749,7 +774,13 @@ class SalasNemAPatoService:
         ))
         perguntas_ativas = list(db.scalars(
             select(PerguntaNemPato)
-            .where(PerguntaNemPato.ativa.is_(True))
+            .join(Categoria)
+            .where(
+                PerguntaNemPato.ativa.is_(True),
+                PerguntaNemPato.origem == "OFICIAL",
+                PerguntaNemPato.excluida_em.is_(None),
+                Categoria.modo == "NEM_A_PATO",
+            )
             .order_by(
                 PerguntaNemPato.id if self.selecionar_perguntas is not None
                 else func.random()
@@ -858,6 +889,7 @@ class SalasNemAPatoService:
             partida = PartidaNemPato(
                 sala_id=sala.id,
                 categoria_id=perguntas[0].categoria_id,
+                catalogo_usuario_id=sala.catalogo_usuario_id,
                 numero=anterior.numero + 1,
                 status=PartidaNemPatoStatus.EM_ANDAMENTO,
                 rodada_atual=0,
@@ -891,6 +923,12 @@ class SalasNemAPatoService:
                     status=RodadaNemPatoStatus.AGUARDANDO_INICIO,
                     jogador_inicial_id=jogador_inicial.id,
                     jogador_da_vez_id=None,
+                    categoria_id_snapshot=pergunta.categoria_id,
+                    enunciado_snapshot=pergunta.enunciado,
+                    resposta_numerica_snapshot=pergunta.resposta_numerica,
+                    explicacao_snapshot=pergunta.explicacao,
+                    unidade_snapshot=pergunta.unidade,
+                    fonte_snapshot=pergunta.fonte,
                 ))
 
             sala.status = SalaNemPatoStatus.EM_PARTIDA
@@ -1321,12 +1359,9 @@ class SalasNemAPatoService:
                     status_code=409,
                     detail="você não pode desafiar seu próprio palpite",
                 )
-            pergunta = db.get(PerguntaNemPato, rodada.pergunta_id)
-            if pergunta is None:
-                raise HTTPException(status_code=409, detail="pergunta da rodada não encontrada")
             penalizado = (
                 next(item for item in jogadores if item.id == ultimo_palpite.jogador_partida_id)
-                if ultimo_palpite.valor > pergunta.resposta_numerica
+                if ultimo_palpite.valor > rodada.resposta_numerica_snapshot
                 else jogador
             )
             agora = self._agora_autoritativo(db)

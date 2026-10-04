@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.cli import main as cli_main
 from app.db.base import Base
 from app.db.seed import seed_database
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
 from app.models import Categoria, Partida, Pergunta, Resposta
 from app.services.gerador_prompt import (
     DIFICULDADES,
@@ -156,7 +157,7 @@ class TestCliGeradorPrompt(unittest.TestCase):
         self.assertTrue(any("categoria ativa existente" in linha for linha in saidas))
 
         with self.sessions() as session:
-            session.get(Categoria, "geral").ativa = False
+            session.get(Categoria, CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"]).ativa = False
             session.commit()
         codigo, saidas = self.executar(("geral",))
         self.assertEqual(codigo, 1)

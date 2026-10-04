@@ -37,8 +37,7 @@ class TestDesafioNemAPato(RodadaNemAPatoTestCase):
     def resposta(self, valor):
         with self.sessions() as session:
             rodada = session.get(RodadaNemPato, self.rodada_id)
-            pergunta = session.get(PerguntaNemPato, rodada.pergunta_id)
-            pergunta.resposta_numerica = valor
+            rodada.resposta_numerica_snapshot = valor
             session.commit()
 
     def persistido(self):
@@ -164,6 +163,27 @@ class TestDesafioNemAPato(RodadaNemAPatoTestCase):
         self.assertIn("explicacao", corpo["partida"]["rodada"]["pergunta"])
         for segredo in ("token_hash", "credencial_participante"):
             self.assertNotIn(segredo, resposta.text)
+
+    def test_rodada_permanece_no_snapshot_apos_mutacao_da_pergunta_original(self):
+        antes = self.recuperar(self.host).partida.rodada.pergunta
+        with self.sessions() as session:
+            rodada = session.get(RodadaNemPato, self.rodada_id)
+            resposta_snapshot = rodada.resposta_numerica_snapshot
+            explicacao_snapshot = rodada.explicacao_snapshot
+            pergunta = session.get(PerguntaNemPato, rodada.pergunta_id)
+            pergunta.enunciado = "Conteúdo original alterado"
+            pergunta.resposta_numerica = 999_999
+            pergunta.explicacao = "Explicação original alterada"
+            pergunta.unidade = "unidade alterada"
+            session.commit()
+
+        recuperada = self.recuperar(self.host).partida.rodada.pergunta
+        self.assertEqual(recuperada.enunciado, antes.enunciado)
+        self.assertEqual(recuperada.unidade, antes.unidade)
+        self.palpitar(self.host, "Levi", self.rodada_id, 1)
+        resultado = self.desafiar("Jorge").partida.rodada.pergunta
+        self.assertEqual(resultado.resposta_numerica, resposta_snapshot)
+        self.assertEqual(resultado.explicacao, explicacao_snapshot)
 
 
 if __name__ == "__main__":

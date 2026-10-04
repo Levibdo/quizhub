@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO, ORIGEM_OFICIAL
 from app.db.base import Base
 from app.db.seed import seed_database
 from app.models import Partida, PartidaPergunta, Pergunta, Resposta
@@ -139,16 +140,25 @@ class DatabaseConstraintTestCase(unittest.TestCase):
         engine = create_engine("sqlite://")
         Base.metadata.create_all(engine)
         partida_id = uuid4()
+        categoria_id = CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"]
         with engine.begin() as connection:
             connection.execute(
                 Base.metadata.tables["categorias"].insert(),
-                {"id": "geral", "nome": "Geral", "ativa": True},
+                {
+                    "id": categoria_id,
+                    "slug": "geral",
+                    "nome": "Geral",
+                    "modo": MODO_QUIZ_CLASSICO,
+                    "origem": ORIGEM_OFICIAL,
+                    "ativa": True,
+                },
             )
             connection.execute(
                 Base.metadata.tables["perguntas"].insert(),
                 {
                     "id": 1,
-                    "categoria_id": "geral",
+                    "categoria_id": categoria_id,
+                    "origem": ORIGEM_OFICIAL,
                     "enunciado": "Pergunta",
                     "alternativa_a": "A",
                     "alternativa_b": "B",
@@ -169,7 +179,7 @@ class DatabaseConstraintTestCase(unittest.TestCase):
                 {
                     "id": partida_id,
                     "jogador_id": jogador_id,
-                    "categoria_id": "geral",
+                    "categoria_id": categoria_id,
                 },
             )
             connection.execute(
@@ -179,6 +189,16 @@ class DatabaseConstraintTestCase(unittest.TestCase):
                     "partida_id": partida_id,
                     "pergunta_id": 1,
                     "ordem": 1,
+                    "categoria_id_snapshot": categoria_id,
+                    "enunciado_snapshot": "Pergunta",
+                    "alternativa_a_snapshot": "A",
+                    "alternativa_b_snapshot": "B",
+                    "alternativa_c_snapshot": "C",
+                    "alternativa_d_snapshot": "D",
+                    "alternativa_correta_snapshot": 0,
+                    "explicacao_snapshot": (
+                        "A alternativa A e a correta nesta pergunta de teste."
+                    ),
                     "disponibilizada_em": disponibilizada_em,
                     "prazo_resposta_em": prazo_resposta_em,
                 },

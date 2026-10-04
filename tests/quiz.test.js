@@ -67,7 +67,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
       let value
       if (url.endsWith('/auth/me')) value = { nome: 'Jogador' }
       else if (url.endsWith('/categorias')) value = [
-        { id: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.' },
+        { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.', modo: 'QUIZ_CLASSICO' },
       ]
       else if (url.endsWith('/respostas')) value = await new Promise((resolve) => { confirmarResposta = () => resolve(resultado) })
       else if (url.endsWith('/proxima')) value = await new Promise((resolve) => {
@@ -196,7 +196,7 @@ test('categorias da API incluem categoria desconhecida com fallback e id correto
   assert.ok(texto(renderer.root).includes('Carregando categorias...'))
   assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
   await act(async () => resolverCategorias([
-    { id: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.' },
+    { id: '11111111-1111-4111-8111-111111111111', slug: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.', modo: 'QUIZ_CLASSICO' },
   ]))
   assert.ok(texto(renderer.root).includes('Ciências'))
   assert.equal(
@@ -225,7 +225,7 @@ test('erro ao carregar categorias permite tentar novamente', async (t) => {
         return new Response(JSON.stringify({ detail: 'Falha temporária' }), { status: 503 })
       }
       return new Response(JSON.stringify([
-        { id: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.' },
+        { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.', modo: 'QUIZ_CLASSICO' },
       ]), { status: 200 })
     }
     throw new Error(`URL inesperada: ${url}`)
@@ -293,9 +293,9 @@ test('ranking usa categorias dinâmicas e separa Todos da categoria geral', asyn
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     if (url.endsWith('/categorias')) return new Response(JSON.stringify([
-      { id: 'geral', nome: 'Geral', descricao: '' },
-      { id: 'entretenimento', nome: 'Entretenimento', descricao: '' },
-      { id: 'macabro', nome: 'Macabro', descricao: '' },
+      { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' },
+      { id: '2a01b416-ae0c-53b4-8081-b5f33230048c', slug: 'entretenimento', nome: 'Entretenimento', descricao: '', modo: 'QUIZ_CLASSICO' },
+      { id: '11111111-1111-4111-8111-111111111111', slug: 'macabro', nome: 'Macabro', descricao: '', modo: 'QUIZ_CLASSICO' },
     ]), { status: 200 })
     throw new Error(`URL inesperada: ${url}`)
   }
@@ -336,7 +336,7 @@ test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) =
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     if (url.endsWith('/categorias')) return new Response(JSON.stringify([
-      { id: 'geral', nome: 'Geral', descricao: '' },
+      { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' },
     ]), { status: 200 })
     throw new Error(`URL inesperada: ${url}`)
   }

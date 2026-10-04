@@ -354,7 +354,7 @@ function App() {
       {tela === 'jogando' && pergunta && (
         <TelaQuiz
           pergunta={pergunta}
-          categoria={categorias.find((item) => item.id === categoriaSelecionada)}
+          categoria={categorias.find((item) => item.slug === categoriaSelecionada)}
           perguntaAtual={perguntaAtual}
           totalPerguntas={TOTAL_PERGUNTAS}
           tempoTotal={TEMPO_POR_PERGUNTA}
@@ -375,7 +375,7 @@ function App() {
           acertos={partida.acertos}
           erros={partida.erros}
           pontuacao={partida.pontuacao}
-          categoria={categorias.find((item) => item.id === categoriaSelecionada)}
+          categoria={categorias.find((item) => item.slug === categoriaSelecionada)}
           iniciarQuiz={abrirCategorias}
           verRanking={abrirRanking}
           voltarInicio={() => { setErro(''); setTela('inicio') }}

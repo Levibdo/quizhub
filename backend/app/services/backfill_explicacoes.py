@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 from sqlalchemy import select, text, update
 from sqlalchemy.engine import Engine
 
-from app.models import Pergunta
+from app.models import Categoria, Pergunta
 
 
 DISTRIBUICAO = {"geral": 35, "matematica": 35, "tecnologia": 35}
@@ -63,8 +63,11 @@ def backfill_explicacoes(engine: Engine, conteudo: bytes, *, aplicar: bool = Fal
         dados = ler_explicacoes(conteudo)
         if conn.dialect.name == "postgresql":
             conn.execute(text("LOCK TABLE perguntas IN SHARE ROW EXCLUSIVE MODE"))
-        antes = [dict(row) for row in conn.execute(select(tabela)).mappings()]
-        chaves = [(row["categoria_id"], row["enunciado"]) for row in antes]
+        antes = [dict(row) for row in conn.execute(
+            select(tabela, Categoria.slug.label("categoria_slug"))
+            .join(Categoria, Categoria.id == tabela.c.categoria_id)
+        ).mappings()]
+        chaves = [(row["categoria_slug"], row["enunciado"]) for row in antes]
         if len(set(chaves)) != len(chaves):
             raise ValueError("Correspondencia multipla no banco")
         ausentes_banco = set(dados) - set(chaves)
@@ -79,11 +82,13 @@ def backfill_explicacoes(engine: Engine, conteudo: bytes, *, aplicar: bool = Fal
         if not aplicar:
             return len(antes)
         atualizadas = 0
-        for (categoria, enunciado), explicacao in dados.items():
+        ids_por_chave = {
+            (row["categoria_slug"], row["enunciado"]): row["id"] for row in antes
+        }
+        for chave, explicacao in dados.items():
             resultado = conn.execute(
                 update(tabela).where(
-                    tabela.c.categoria_id == categoria,
-                    tabela.c.enunciado == enunciado,
+                    tabela.c.id == ids_por_chave[chave],
                 ).values(explicacao=explicacao)
             )
             if resultado.rowcount != 1:
@@ -91,13 +96,11 @@ def backfill_explicacoes(engine: Engine, conteudo: bytes, *, aplicar: bool = Fal
             atualizadas += resultado.rowcount
         if atualizadas != 105:
             raise ValueError("Exigidos exatamente 105 updates")
-        depois = {
-            (row["categoria_id"], row["enunciado"]): dict(row)
-            for row in conn.execute(select(tabela)).mappings()
-        }
+        depois = {row["id"]: dict(row) for row in conn.execute(select(tabela)).mappings()}
         esperado = {
-            (row["categoria_id"], row["enunciado"]): {
-                **row, "explicacao": dados[(row["categoria_id"], row["enunciado"])]
+            row["id"]: {
+                **{key: value for key, value in row.items() if key != "categoria_slug"},
+                "explicacao": dados[(row["categoria_slug"], row["enunciado"])],
             }
             for row in antes
         }

@@ -1,4 +1,5 @@
 import re
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,11 +21,17 @@ class CategoriaDuplicada(ValueError):
 
 class CategoriasService:
     @staticmethod
-    def listar(db: Session, *, somente_ativas: bool = False) -> list[Categoria]:
-        consulta = select(Categoria)
+    def listar(
+        db: Session, *, somente_ativas: bool = False,
+        modo: str = "QUIZ_CLASSICO",
+    ) -> list[Categoria]:
+        consulta = select(Categoria).where(
+            Categoria.modo == modo,
+            Categoria.excluida_em.is_(None),
+        )
         if somente_ativas:
             consulta = consulta.where(Categoria.ativa.is_(True))
-        return list(db.scalars(consulta.order_by(Categoria.nome, Categoria.id)))
+        return list(db.scalars(consulta.order_by(Categoria.nome, Categoria.slug)))
 
     @staticmethod
     def criar(
@@ -48,13 +55,20 @@ class CategoriasService:
             )
         if not nome_normalizado:
             raise CategoriaInvalida("nome é obrigatório")
-        if db.get(Categoria, codigo) is not None:
+        if db.scalar(select(Categoria).where(
+            Categoria.slug == codigo,
+            Categoria.modo == "QUIZ_CLASSICO",
+            Categoria.origem == "OFICIAL",
+        )) is not None:
             raise CategoriaDuplicada(f"categoria com id '{codigo}' já existe")
 
         categoria = Categoria(
-            id=codigo,
+            id=uuid4(),
+            slug=codigo,
             nome=nome_normalizado,
             descricao=descricao_normalizada,
+            modo="QUIZ_CLASSICO",
+            origem="OFICIAL",
             ativa=True,
         )
         try:

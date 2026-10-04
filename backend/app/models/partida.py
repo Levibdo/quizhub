@@ -40,8 +40,8 @@ class Partida(Base):
     jogador_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("jogadores.id"), nullable=False
     )
-    categoria_id: Mapped[str] = mapped_column(
-        String, ForeignKey("categorias.id"), nullable=False
+    categoria_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("categorias.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(
         String,
