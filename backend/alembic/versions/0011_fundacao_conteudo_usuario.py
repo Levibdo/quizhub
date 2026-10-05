@@ -26,6 +26,20 @@ CATEGORY_IDS = {
     ("NEM_A_PATO", "entretenimento"): "6feed2ed-5be2-58a8-ad78-37077af2cfca",
 }
 
+CATEGORY_CONSTRAINTS = {
+    "categorias_0011_pkey": "categorias_pkey",
+    "categorias_0011_usuario_id_fkey": "categorias_usuario_id_fkey",
+    "ck_categorias_0011_modo": "ck_categorias_modo",
+    "ck_categorias_0011_origem": "ck_categorias_origem",
+    "ck_categorias_0011_origem_usuario": "ck_categorias_origem_usuario",
+    "ck_categorias_0011_excluida_inativa": "ck_categorias_excluida_inativa",
+    "ck_categorias_0011_oficial_nao_excluida": "ck_categorias_oficial_nao_excluida",
+    "ck_categorias_0011_nome_normalizado": "ck_categorias_nome_normalizado",
+    "ck_categorias_0011_slug_normalizado": "ck_categorias_slug_normalizado",
+    "uq_categorias_0011_id_modo_origem": "uq_categorias_id_modo_origem",
+    "uq_categorias_0011_id_usuario": "uq_categorias_id_usuario",
+}
+
 
 def _require_postgresql() -> None:
     if op.get_bind().dialect.name != "postgresql":
@@ -107,23 +121,24 @@ def upgrade() -> None:
         sa.Column("criada_em", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("atualizada_em", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("excluida_em", sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint("id", name="categorias_pkey"),
+        sa.PrimaryKeyConstraint("id", name="categorias_0011_pkey"),
         sa.ForeignKeyConstraint(
-            ["usuario_id"], ["usuarios.id"], name="categorias_usuario_id_fkey"
+            ["usuario_id"], ["usuarios.id"],
+            name="categorias_0011_usuario_id_fkey",
         ),
-        sa.CheckConstraint("modo IN ('QUIZ_CLASSICO', 'NEM_A_PATO')", name="ck_categorias_modo"),
-        sa.CheckConstraint("origem IN ('OFICIAL', 'USUARIO')", name="ck_categorias_origem"),
+        sa.CheckConstraint("modo IN ('QUIZ_CLASSICO', 'NEM_A_PATO')", name="ck_categorias_0011_modo"),
+        sa.CheckConstraint("origem IN ('OFICIAL', 'USUARIO')", name="ck_categorias_0011_origem"),
         sa.CheckConstraint(
             "(origem = 'OFICIAL' AND usuario_id IS NULL) OR "
             "(origem = 'USUARIO' AND usuario_id IS NOT NULL)",
-            name="ck_categorias_origem_usuario",
+            name="ck_categorias_0011_origem_usuario",
         ),
-        sa.CheckConstraint("excluida_em IS NULL OR ativa IS FALSE", name="ck_categorias_excluida_inativa"),
-        sa.CheckConstraint("origem <> 'OFICIAL' OR excluida_em IS NULL", name="ck_categorias_oficial_nao_excluida"),
-        sa.CheckConstraint("length(trim(nome)) > 0 AND nome = trim(nome)", name="ck_categorias_nome_normalizado"),
-        sa.CheckConstraint("length(trim(slug)) > 0 AND slug = lower(trim(slug))", name="ck_categorias_slug_normalizado"),
-        sa.UniqueConstraint("id", "modo", "origem", name="uq_categorias_id_modo_origem"),
-        sa.UniqueConstraint("id", "usuario_id", name="uq_categorias_id_usuario"),
+        sa.CheckConstraint("excluida_em IS NULL OR ativa IS FALSE", name="ck_categorias_0011_excluida_inativa"),
+        sa.CheckConstraint("origem <> 'OFICIAL' OR excluida_em IS NULL", name="ck_categorias_0011_oficial_nao_excluida"),
+        sa.CheckConstraint("length(trim(nome)) > 0 AND nome = trim(nome)", name="ck_categorias_0011_nome_normalizado"),
+        sa.CheckConstraint("length(trim(slug)) > 0 AND slug = lower(trim(slug))", name="ck_categorias_0011_slug_normalizado"),
+        sa.UniqueConstraint("id", "modo", "origem", name="uq_categorias_0011_id_modo_origem"),
+        sa.UniqueConstraint("id", "usuario_id", name="uq_categorias_0011_id_usuario"),
     )
 
     bind = op.get_bind()
@@ -228,6 +243,11 @@ def upgrade() -> None:
         )
     op.drop_table("categorias")
     op.rename_table("categorias_0011", "categorias")
+    for temporary_name, canonical_name in CATEGORY_CONSTRAINTS.items():
+        op.execute(
+            f"ALTER TABLE categorias RENAME CONSTRAINT "
+            f"{temporary_name} TO {canonical_name}"
+        )
 
     op.create_index("ix_partidas_categoria_id", "partidas", ["categoria_id"])
     op.create_index("ix_perguntas_nem_pato_categoria_ativa", "perguntas_nem_pato", ["categoria_id", "ativa"])
@@ -275,7 +295,7 @@ def downgrade() -> None:
         sa.Column("nome", sa.String(), nullable=False),
         sa.Column("descricao", sa.Text(), nullable=True),
         sa.Column("ativa", sa.Boolean(), server_default=sa.true(), nullable=False),
-        sa.PrimaryKeyConstraint("id", name="pk_categorias_0010"),
+        sa.PrimaryKeyConstraint("id", name="categorias_0010_pkey"),
     )
     op.execute(
         "INSERT INTO categorias_0010 (id, nome, descricao, ativa) "
@@ -305,6 +325,10 @@ def downgrade() -> None:
         )
     op.drop_table("categorias")
     op.rename_table("categorias_0010", "categorias")
+    op.execute(
+        "ALTER TABLE categorias RENAME CONSTRAINT "
+        "categorias_0010_pkey TO categorias_pkey"
+    )
     op.create_index("ix_partidas_categoria_id", "partidas", ["categoria_id"])
     op.create_index("ix_perguntas_nem_pato_categoria_ativa", "perguntas_nem_pato", ["categoria_id", "ativa"])
 
