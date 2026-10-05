@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.conteudo import CATEGORIAS_OFICIAIS, MODO_NEM_A_PATO
+from app.conteudo import (
+    CATEGORIAS_OFICIAIS,
+    MODO_NEM_A_PATO,
+    ORIGEM_OFICIAL,
+    ORIGEM_USUARIO,
+)
 from app.db.session import get_db
 from app.main import app
 from app.models import (
@@ -125,6 +130,93 @@ class InicioNemAPatoTestCase(unittest.TestCase):
 
 
 class TestInicioNemAPatoService(InicioNemAPatoTestCase):
+    def test_inicio_ignora_perguntas_e_categorias_privadas(self):
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Dona do catálogo",
+                email="privada-nem@example.com",
+                senha_hash="hash",
+            )
+            session.add(usuario)
+            session.flush()
+            categoria_privada = Categoria(
+                slug="privada-nem",
+                nome="Privada Nem",
+                modo=MODO_NEM_A_PATO,
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            )
+            session.add(categoria_privada)
+            session.flush()
+            pergunta_privada = PerguntaNemPato(
+                categoria_id=categoria_privada.id,
+                enunciado="Pergunta privada perfeitamente válida",
+                resposta_numerica=123,
+                explicacao="Não pode entrar antes da C1.4.",
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            )
+            pergunta_oficial_em_categoria_privada = PerguntaNemPato(
+                categoria_id=categoria_privada.id,
+                enunciado="Pergunta oficial em categoria privada",
+                resposta_numerica=456,
+                explicacao="A categoria também precisa ser oficial.",
+                origem=ORIGEM_OFICIAL,
+                ativa=True,
+            )
+            pergunta_privada_em_categoria_oficial = PerguntaNemPato(
+                categoria_id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"],
+                enunciado="Pergunta privada em categoria oficial",
+                resposta_numerica=789,
+                explicacao="A pergunta precisa ser oficial.",
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            )
+            categoria_inativa = session.scalar(select(Categoria).where(
+                Categoria.slug == "inativa"
+            ))
+            pergunta_em_categoria_inativa = PerguntaNemPato(
+                categoria_id=categoria_inativa.id,
+                enunciado="Pergunta oficial em categoria inativa",
+                resposta_numerica=987,
+                explicacao="A categoria precisa estar ativa.",
+                origem=ORIGEM_OFICIAL,
+                ativa=True,
+            )
+            session.add_all((
+                pergunta_privada,
+                pergunta_oficial_em_categoria_privada,
+                pergunta_privada_em_categoria_oficial,
+                pergunta_em_categoria_inativa,
+            ))
+            session.commit()
+            bloqueadas = {
+                pergunta_privada.id,
+                pergunta_oficial_em_categoria_privada.id,
+                pergunta_privada_em_categoria_oficial.id,
+                pergunta_em_categoria_inativa.id,
+            }
+
+        host = self.sala_com(["Levi", "Jorge", "Luana"])
+        with self.sessions() as session:
+            sala = session.scalar(select(SalaNemPato).where(
+                SalaNemPato.codigo == host.sala.codigo
+            ))
+            usuario = session.scalar(select(Usuario).where(
+                Usuario.email == "privada-nem@example.com"
+            ))
+            sala.catalogo_usuario_id = usuario.id
+            session.commit()
+
+        self.iniciar(host)
+        _, _, _, rodadas = self.contagens(host.sala.codigo)
+        self.assertTrue(bloqueadas.isdisjoint(
+            {rodada.pergunta_id for rodada in rodadas}
+        ))
+
     def test_partida_copia_proprietario_do_catalogo_da_sala(self):
         with self.sessions() as session:
             usuario = Usuario(

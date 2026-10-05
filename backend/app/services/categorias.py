@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.conteudo import ORIGEM_OFICIAL
 from app.models import Categoria
 
 
@@ -27,6 +28,7 @@ class CategoriasService:
     ) -> list[Categoria]:
         consulta = select(Categoria).where(
             Categoria.modo == modo,
+            Categoria.origem == ORIGEM_OFICIAL,
             Categoria.excluida_em.is_(None),
         )
         if somente_ativas:

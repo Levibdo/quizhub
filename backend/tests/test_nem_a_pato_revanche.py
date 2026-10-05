@@ -1,14 +1,19 @@
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from uuid import uuid4
 
+from app.conteudo import MODO_NEM_A_PATO, ORIGEM_USUARIO
 from app.db.base import Base  # noqa: F401
 from app.models import (
+    Categoria,
     JogadorPartidaNemPato,
     PartidaNemPato,
     ParticipanteNemPato,
+    PerguntaNemPato,
     RodadaNemPato,
     SalaNemPato,
+    Usuario,
 )
 from app.nem_a_pato import (
     PartidaNemPatoStatus,
@@ -127,6 +132,53 @@ class TestRevancheNemAPato(TestFinalizacaoNemAPato):
         ids_novos = {r.pergunta_id for r in depois[1][2]}
         self.assertEqual(len(ids_novos), 10)
         self.assertTrue(ids_anteriores.isdisjoint(ids_novos))
+
+    def test_revanche_ignora_catalogo_privado_mesmo_associado_a_sala(self):
+        host, _ = self.finalizar_primeira(catalogo=30)
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Catálogo privado",
+                email="privada-revanche@example.com",
+                senha_hash="hash",
+            )
+            session.add(usuario)
+            session.flush()
+            categoria = Categoria(
+                id=uuid4(),
+                slug="privada-revanche",
+                nome="Privada revanche",
+                modo=MODO_NEM_A_PATO,
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            )
+            session.add(categoria)
+            session.flush()
+            perguntas = [
+                PerguntaNemPato(
+                    categoria_id=categoria.id,
+                    enunciado=f"Privada para revanche {indice}",
+                    resposta_numerica=indice,
+                    explicacao="Não elegível antes da C1.4.",
+                    origem=ORIGEM_USUARIO,
+                    usuario_id=usuario.id,
+                    ativa=True,
+                )
+                for indice in range(10)
+            ]
+            session.add_all(perguntas)
+            session.flush()
+            ids_privados = {pergunta.id for pergunta in perguntas}
+            sala = session.scalar(select(SalaNemPato).where(
+                SalaNemPato.codigo == host.sala.codigo
+            ))
+            sala.catalogo_usuario_id = usuario.id
+            session.commit()
+
+        self.revanche(host)
+        _, partidas = self.partidas(host.sala.codigo)
+        ids_revanche = {rodada.pergunta_id for rodada in partidas[1][2]}
+        self.assertTrue(ids_privados.isdisjoint(ids_revanche))
 
 
     def test_fallback_com_catalogo_reduzido_reutiliza_so_o_necessario(self):

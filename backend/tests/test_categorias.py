@@ -206,6 +206,21 @@ class TestCategoriasApi(CategoriasTestCase):
     def test_endpoint_publico_retorna_apenas_ativas_ordenadas(self):
         with self.sessions() as session:
             session.get(Categoria, CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["geral"]).ativa = False
+            usuario = Usuario(
+                nome="Dona do conteúdo",
+                email="privada-catalogo@example.com",
+                senha_hash="hash",
+            )
+            session.add(usuario)
+            session.flush()
+            session.add(Categoria(
+                slug="privada-ativa",
+                nome="Privada ativa",
+                modo=MODO_QUIZ_CLASSICO,
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            ))
             session.commit()
 
         def banco_teste():

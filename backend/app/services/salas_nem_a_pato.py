@@ -626,6 +626,9 @@ class SalasNemAPatoService:
                             PerguntaNemPato.origem == "OFICIAL",
                             PerguntaNemPato.excluida_em.is_(None),
                             Categoria.modo == "NEM_A_PATO",
+                            Categoria.origem == "OFICIAL",
+                            Categoria.ativa.is_(True),
+                            Categoria.excluida_em.is_(None),
                         )
                         .order_by(func.random())
                         .limit(TOTAL_RODADAS_NEM_A_PATO)
@@ -643,6 +646,9 @@ class SalasNemAPatoService:
                             PerguntaNemPato.origem == "OFICIAL",
                             PerguntaNemPato.excluida_em.is_(None),
                             Categoria.modo == "NEM_A_PATO",
+                            Categoria.origem == "OFICIAL",
+                            Categoria.ativa.is_(True),
+                            Categoria.excluida_em.is_(None),
                         )
                         .order_by(PerguntaNemPato.id)
                     )
@@ -780,6 +786,9 @@ class SalasNemAPatoService:
                 PerguntaNemPato.origem == "OFICIAL",
                 PerguntaNemPato.excluida_em.is_(None),
                 Categoria.modo == "NEM_A_PATO",
+                Categoria.origem == "OFICIAL",
+                Categoria.ativa.is_(True),
+                Categoria.excluida_em.is_(None),
             )
             .order_by(
                 PerguntaNemPato.id if self.selecionar_perguntas is not None

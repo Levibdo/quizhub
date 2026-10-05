@@ -17,7 +17,11 @@ from app.db.session import get_db
 from app.main import app
 from app.db.base import Base
 from app.db.seed import seed_database
-from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
+from app.conteudo import (
+    CATEGORIAS_OFICIAIS,
+    MODO_QUIZ_CLASSICO,
+    ORIGEM_USUARIO,
+)
 from app.models import (
     Categoria,
     Jogador,
@@ -222,6 +226,67 @@ class TestPartidasPersistentes(unittest.TestCase):
         with self.assertRaises(HTTPException) as error:
             self.criar("tecnologia")
         self.assertEqual(error.exception.status_code, 422)
+
+    def test_catalogo_privado_nao_entra_na_criacao_ou_sorteio_publicos(self):
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Proprietária",
+                email="privada-partida@example.com",
+                senha_hash="hash",
+            )
+            session.add(usuario)
+            session.flush()
+            categoria_privada = Categoria(
+                slug="privada-jogo",
+                nome="Privada jogo",
+                modo=MODO_QUIZ_CLASSICO,
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+                ativa=True,
+            )
+            session.add(categoria_privada)
+            session.flush()
+            for indice in range(10):
+                session.add(Pergunta(
+                    id=1000 + indice,
+                    categoria_id=categoria_privada.id,
+                    enunciado=f"Pergunta privada {indice}",
+                    alternativa_a="A",
+                    alternativa_b="B",
+                    alternativa_c="C",
+                    alternativa_d="D",
+                    alternativa_correta=0,
+                    explicacao="Privada.",
+                    origem=ORIGEM_USUARIO,
+                    usuario_id=usuario.id,
+                ))
+            session.add(Pergunta(
+                id=1100,
+                categoria_id=CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"],
+                enunciado="Pergunta privada em categoria oficial",
+                alternativa_a="A",
+                alternativa_b="B",
+                alternativa_c="C",
+                alternativa_d="D",
+                alternativa_correta=0,
+                explicacao="Privada.",
+                origem=ORIGEM_USUARIO,
+                usuario_id=usuario.id,
+            ))
+            session.commit()
+
+        with self.assertRaises(HTTPException) as error:
+            self.criar("privada-jogo")
+        self.assertEqual(error.exception.status_code, 422)
+
+        criada = self.criar("tecnologia")
+        with self.sessions() as session:
+            ids = set(session.scalars(
+                select(PartidaPergunta.pergunta_id).where(
+                    PartidaPergunta.partida_id == UUID(criada.partida_id)
+                )
+            ))
+        self.assertNotIn(1100, ids)
 
     def test_nome_vazio_mantem_validacao_do_schema(self):
         with self.assertRaises(ValidationError):
