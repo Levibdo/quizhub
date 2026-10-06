@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -21,6 +21,10 @@ from app.schemas.meu_conteudo_perguntas import (
     PerguntaNemPatoEditar,
     PerguntaNemPatoResposta,
 )
+from app.schemas.meu_conteudo_importacoes import (
+    PreviewImportacaoPrivada,
+    ResultadoImportacaoPrivada,
+)
 from app.security import usuario_atual
 from app.services.meu_conteudo_categorias import (
     CategoriaNaoEncontrada,
@@ -33,10 +37,63 @@ from app.services.meu_conteudo_perguntas import (
     PerguntaNaoEncontrada,
     meu_conteudo_perguntas_service,
 )
+from app.services.meu_conteudo_importacoes import (
+    MAX_ARQUIVO,
+    ArquivoImportacaoPrivadaInvalido,
+    ConflitoImportacaoPrivada,
+    TokenPreviewInvalido,
+    meu_conteudo_importacoes_service,
+)
 from app.models import Pergunta, PerguntaNemPato
 
 
 router = APIRouter(prefix="/meu-conteudo", tags=["Meu Conteúdo"])
+
+
+def _ler_upload_limitado(arquivo: UploadFile) -> bytes:
+    conteudo = arquivo.file.read(MAX_ARQUIVO + 1)
+    if len(conteudo) > MAX_ARQUIVO:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="arquivo excede o limite de 5 MiB",
+        )
+    if not conteudo:
+        raise HTTPException(status_code=422, detail="arquivo vazio")
+    return conteudo
+
+
+@router.post("/importacoes/validar", response_model=PreviewImportacaoPrivada)
+def validar_importacao_privada(
+    modo: ModoConteudo = Form(...),
+    arquivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_atual),
+):
+    conteudo = _ler_upload_limitado(arquivo)
+    try:
+        return meu_conteudo_importacoes_service.validar(
+            db, usuario.id, modo, arquivo.filename or "", conteudo
+        )
+    except ArquivoImportacaoPrivadaInvalido as erro:
+        raise HTTPException(status_code=422, detail=str(erro)) from None
+
+
+@router.post("/importacoes/confirmar", response_model=ResultadoImportacaoPrivada)
+def confirmar_importacao_privada(
+    token_preview: str = Form(...),
+    arquivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_atual),
+):
+    conteudo = _ler_upload_limitado(arquivo)
+    try:
+        return meu_conteudo_importacoes_service.confirmar(
+            db, usuario.id, token_preview, arquivo.filename or "", conteudo
+        )
+    except (ArquivoImportacaoPrivadaInvalido, TokenPreviewInvalido) as erro:
+        raise HTTPException(status_code=422, detail=str(erro)) from None
+    except ConflitoImportacaoPrivada as erro:
+        raise HTTPException(status_code=409, detail=erro.detalhe) from None
 
 
 def _traduzir_erro(erro: MeuConteudoErro) -> HTTPException:
