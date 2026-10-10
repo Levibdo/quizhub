@@ -126,6 +126,13 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
   const enviandoRef = useRef(false)
   const requisicaoRef = useRef(0)
   const perguntasRef = useRef([])
+  const retornoFocoRef = useRef(null)
+
+  const fecharExclusao = useCallback(() => {
+    setExclusao(null)
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => retornoFocoRef.current?.focus())
+    else retornoFocoRef.current?.focus?.()
+  }, [])
 
   const carregar = useCallback(async ({ acumular = false } = {}) => {
     const requisicao = ++requisicaoRef.current
@@ -190,8 +197,8 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
     <div className="question-filters"><label htmlFor="question-filter-category">Categoria</label><select id="question-filter-category" value={categoriaFiltro} onChange={(e) => { requisicaoRef.current += 1; setCategoriaFiltro(e.target.value) }}><option value="">Todas</option>{categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><label htmlFor="question-filter-active">Estado</label><select id="question-filter-active" value={ativaFiltro} onChange={(e) => { requisicaoRef.current += 1; setAtivaFiltro(e.target.value) }}><option value="">Todos</option><option value="true">Ativas</option><option value="false">Inativas</option></select></div>
     {sucesso && <p className="content-message" role="status">{sucesso}</p>}{erro && <p className="mensagem-erro" role="alert">{erro}</p>}
     {formulario && <Formulario key={formulario.id ?? `nova-${modo}`} categorias={categoriasFormulario} pergunta={formulario.id ? formulario : null} enviando={enviando} aoSalvar={salvar} aoCancelar={() => setFormulario(null)} />}
-    {carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Ajuste os filtros ou crie a primeira pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={() => { setFormulario(pergunta); setSucesso(''); setErro('') }}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={() => setExclusao(pergunta)}>Excluir</button></div></li>)}</ul>}
+    {carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Ajuste os filtros ou crie a primeira pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={() => { setFormulario(pergunta); setSucesso(''); setErro('') }}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setExclusao(pergunta) }}>Excluir</button></div></li>)}</ul>}
     {temMais && !carregando && <button className="button-secondary question-load-more" disabled={carregandoMais} onClick={() => carregar({ acumular: true })}>{carregandoMais ? 'Carregando...' : 'Carregar mais'}</button>}
-    {exclusao && <ModalExcluirPergunta pergunta={exclusao} enviando={enviando} aoCancelar={() => setExclusao(null)} aoConfirmar={() => executarMutacao(() => excluirPerguntaMeuConteudo(modo, exclusao.id), 'Pergunta excluída.')} />}
+    {exclusao && <ModalExcluirPergunta pergunta={exclusao} enviando={enviando} aoCancelar={fecharExclusao} aoConfirmar={() => executarMutacao(() => excluirPerguntaMeuConteudo(modo, exclusao.id), 'Pergunta excluída.')} />}
   </section>
 }
