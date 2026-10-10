@@ -130,7 +130,7 @@ class InicioNemAPatoTestCase(unittest.TestCase):
 
 
 class TestInicioNemAPatoService(InicioNemAPatoTestCase):
-    def test_inicio_ignora_perguntas_e_categorias_privadas(self):
+    def test_inicio_usa_privadas_do_catalogo_e_rejeita_proveniencia_divergente(self):
         with self.sessions() as session:
             usuario = Usuario(
                 nome="Dona do catálogo",
@@ -149,15 +149,15 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
             )
             session.add(categoria_privada)
             session.flush()
-            pergunta_privada = PerguntaNemPato(
+            perguntas_privadas = [PerguntaNemPato(
                 categoria_id=categoria_privada.id,
-                enunciado="Pergunta privada perfeitamente válida",
-                resposta_numerica=123,
-                explicacao="Não pode entrar antes da C1.4.",
+                enunciado=f"Pergunta privada perfeitamente válida {indice}",
+                resposta_numerica=123 + indice,
+                explicacao="Elegível na C1.4.",
                 origem=ORIGEM_USUARIO,
                 usuario_id=usuario.id,
                 ativa=True,
-            )
+            ) for indice in range(10)]
             pergunta_oficial_em_categoria_privada = PerguntaNemPato(
                 categoria_id=categoria_privada.id,
                 enunciado="Pergunta oficial em categoria privada",
@@ -187,18 +187,24 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
                 ativa=True,
             )
             session.add_all((
-                pergunta_privada,
+                *perguntas_privadas,
                 pergunta_oficial_em_categoria_privada,
                 pergunta_privada_em_categoria_oficial,
                 pergunta_em_categoria_inativa,
             ))
             session.commit()
+            ids_privados = {pergunta.id for pergunta in perguntas_privadas}
             bloqueadas = {
-                pergunta_privada.id,
                 pergunta_oficial_em_categoria_privada.id,
                 pergunta_privada_em_categoria_oficial.id,
                 pergunta_em_categoria_inativa.id,
             }
+            for pergunta in session.scalars(select(PerguntaNemPato).where(
+                PerguntaNemPato.origem == ORIGEM_OFICIAL,
+                PerguntaNemPato.categoria_id != categoria_inativa.id,
+            )):
+                pergunta.ativa = False
+            session.commit()
 
         host = self.sala_com(["Levi", "Jorge", "Luana"])
         with self.sessions() as session:
@@ -213,6 +219,9 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
 
         self.iniciar(host)
         _, _, _, rodadas = self.contagens(host.sala.codigo)
+        self.assertEqual(
+            {rodada.pergunta_id for rodada in rodadas}, ids_privados
+        )
         self.assertTrue(bloqueadas.isdisjoint(
             {rodada.pergunta_id for rodada in rodadas}
         ))

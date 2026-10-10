@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -141,6 +141,33 @@ def sala_publica(
 
 
 class SalasNemAPatoService:
+    @staticmethod
+    def _filtros_perguntas_elegiveis(catalogo_usuario_id: UUID | None):
+        origem_permitida = and_(
+            PerguntaNemPato.origem == "OFICIAL",
+            PerguntaNemPato.usuario_id.is_(None),
+            Categoria.origem == "OFICIAL",
+            Categoria.usuario_id.is_(None),
+        )
+        if catalogo_usuario_id is not None:
+            origem_permitida = or_(
+                origem_permitida,
+                and_(
+                    PerguntaNemPato.origem == "USUARIO",
+                    PerguntaNemPato.usuario_id == catalogo_usuario_id,
+                    Categoria.origem == "USUARIO",
+                    Categoria.usuario_id == catalogo_usuario_id,
+                ),
+            )
+        return (
+            PerguntaNemPato.ativa.is_(True),
+            PerguntaNemPato.excluida_em.is_(None),
+            Categoria.modo == "NEM_A_PATO",
+            Categoria.ativa.is_(True),
+            Categoria.excluida_em.is_(None),
+            origem_permitida,
+        )
+
     @staticmethod
     def _agora_autoritativo(db: Session) -> datetime:
         if db.get_bind().dialect.name == "postgresql":
@@ -621,15 +648,9 @@ class SalasNemAPatoService:
                     db.scalars(
                         select(PerguntaNemPato)
                         .join(Categoria)
-                        .where(
-                            PerguntaNemPato.ativa.is_(True),
-                            PerguntaNemPato.origem == "OFICIAL",
-                            PerguntaNemPato.excluida_em.is_(None),
-                            Categoria.modo == "NEM_A_PATO",
-                            Categoria.origem == "OFICIAL",
-                            Categoria.ativa.is_(True),
-                            Categoria.excluida_em.is_(None),
-                        )
+                        .where(*self._filtros_perguntas_elegiveis(
+                            sala.catalogo_usuario_id
+                        ))
                         .order_by(func.random())
                         .limit(TOTAL_RODADAS_NEM_A_PATO)
                         .with_for_update()
@@ -641,15 +662,9 @@ class SalasNemAPatoService:
                     db.scalars(
                         select(PerguntaNemPato)
                         .join(Categoria)
-                        .where(
-                            PerguntaNemPato.ativa.is_(True),
-                            PerguntaNemPato.origem == "OFICIAL",
-                            PerguntaNemPato.excluida_em.is_(None),
-                            Categoria.modo == "NEM_A_PATO",
-                            Categoria.origem == "OFICIAL",
-                            Categoria.ativa.is_(True),
-                            Categoria.excluida_em.is_(None),
-                        )
+                        .where(*self._filtros_perguntas_elegiveis(
+                            sala.catalogo_usuario_id
+                        ))
                         .order_by(PerguntaNemPato.id)
                     )
                 )
@@ -781,15 +796,9 @@ class SalasNemAPatoService:
         perguntas_ativas = list(db.scalars(
             select(PerguntaNemPato)
             .join(Categoria)
-            .where(
-                PerguntaNemPato.ativa.is_(True),
-                PerguntaNemPato.origem == "OFICIAL",
-                PerguntaNemPato.excluida_em.is_(None),
-                Categoria.modo == "NEM_A_PATO",
-                Categoria.origem == "OFICIAL",
-                Categoria.ativa.is_(True),
-                Categoria.excluida_em.is_(None),
-            )
+            .where(*self._filtros_perguntas_elegiveis(
+                partida_anterior.catalogo_usuario_id
+            ))
             .order_by(
                 PerguntaNemPato.id if self.selecionar_perguntas is not None
                 else func.random()

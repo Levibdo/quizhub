@@ -240,6 +240,7 @@ class TestCategoriasApi(CategoriasTestCase):
                         "nome": "Entretenimento",
                         "descricao": "Cinema, música, televisão e cultura.",
                         "modo": MODO_QUIZ_CLASSICO,
+                        "origem": "OFICIAL",
                     },
                     {
                         "id": str(CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["matematica"]),
@@ -247,6 +248,7 @@ class TestCategoriasApi(CategoriasTestCase):
                         "nome": "Matemática",
                         "descricao": "Conceitos básicos de matemática.",
                         "modo": MODO_QUIZ_CLASSICO,
+                        "origem": "OFICIAL",
                     },
                     {
                         "id": str(CATEGORIAS_OFICIAIS[MODO_QUIZ_CLASSICO]["tecnologia"]),
@@ -254,6 +256,7 @@ class TestCategoriasApi(CategoriasTestCase):
                         "nome": "Tecnologia",
                         "descricao": "Fundamentos de tecnologia.",
                         "modo": MODO_QUIZ_CLASSICO,
+                        "origem": "OFICIAL",
                     },
                 ],
             )

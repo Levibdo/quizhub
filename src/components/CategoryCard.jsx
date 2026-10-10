@@ -57,7 +57,7 @@ function CategoryCard({ categoria, indice, onSelect, disabled }) {
   return (
     <button
       className="categoria-card"
-      onClick={() => onSelect(categoria.slug)}
+      onClick={() => onSelect(categoria.id)}
       disabled={disabled}
       aria-busy={disabled || undefined}
     >
@@ -71,6 +71,9 @@ function CategoryCard({ categoria, indice, onSelect, disabled }) {
       <span className="categoria-info">
         <strong>{categoria.nome}</strong>
         <small>{categoria.descricao || 'Desafio de conhecimentos.'}</small>
+        {categoria.origem === 'USUARIO' && (
+          <small className="categoria-info__origem">Conteúdo privado</small>
+        )}
       </span>
 
       <span className="categoria-card__footer">

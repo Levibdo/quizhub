@@ -133,7 +133,7 @@ class TestRevancheNemAPato(TestFinalizacaoNemAPato):
         self.assertEqual(len(ids_novos), 10)
         self.assertTrue(ids_anteriores.isdisjoint(ids_novos))
 
-    def test_revanche_ignora_catalogo_privado_mesmo_associado_a_sala(self):
+    def test_revanche_preserva_e_usa_catalogo_privado_da_sala(self):
         host, _ = self.finalizar_primeira(catalogo=30)
         with self.sessions() as session:
             usuario = Usuario(
@@ -173,12 +173,21 @@ class TestRevancheNemAPato(TestFinalizacaoNemAPato):
                 SalaNemPato.codigo == host.sala.codigo
             ))
             sala.catalogo_usuario_id = usuario.id
+            anterior = session.scalar(select(PartidaNemPato).where(
+                PartidaNemPato.sala_id == sala.id
+            ))
+            anterior.catalogo_usuario_id = usuario.id
+            for pergunta in session.scalars(select(PerguntaNemPato).where(
+                PerguntaNemPato.origem == "OFICIAL"
+            )):
+                pergunta.ativa = False
             session.commit()
 
         self.revanche(host)
         _, partidas = self.partidas(host.sala.codigo)
         ids_revanche = {rodada.pergunta_id for rodada in partidas[1][2]}
-        self.assertTrue(ids_privados.isdisjoint(ids_revanche))
+        self.assertEqual(ids_privados, ids_revanche)
+        self.assertEqual(partidas[1][0].catalogo_usuario_id, usuario.id)
 
 
     def test_fallback_com_catalogo_reduzido_reutiliza_so_o_necessario(self):

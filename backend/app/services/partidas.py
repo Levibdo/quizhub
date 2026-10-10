@@ -5,7 +5,7 @@ from math import ceil
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -29,6 +29,12 @@ def utc_now() -> datetime:
 
 
 class PartidasPersistentes:
+    @staticmethod
+    def _chave_categoria(categoria: Categoria) -> str:
+        if categoria.origem == "OFICIAL":
+            return categoria.slug
+        return f"privada:{categoria.id}"
+
     def __init__(self, relogio: Callable[[], datetime] = utc_now):
         self.relogio = relogio
 
@@ -53,7 +59,7 @@ class PartidasPersistentes:
         return PartidaPublica(
             partida_id=str(partida.id),
             jogador=partida.jogador.nome,
-            categoria=partida.categoria.slug,
+            categoria=self._chave_categoria(partida.categoria),
             status=partida.status,
             iniciada_em=partida.iniciada_em,
             pergunta_disponibilizada_em=(
@@ -85,25 +91,60 @@ class PartidasPersistentes:
                     detail="jogador é obrigatório para partidas como convidado",
                 )
 
-            categoria = db.scalar(select(Categoria).where(
-                Categoria.slug == categoria_id,
-                Categoria.modo == "QUIZ_CLASSICO",
-                Categoria.origem == "OFICIAL",
-                Categoria.excluida_em.is_(None),
-            ))
-            if categoria is None or not categoria.ativa:
+            try:
+                categoria_uuid = UUID(categoria_id)
+            except (TypeError, ValueError, AttributeError):
+                categoria_uuid = None
+
+            autorizacao = Categoria.origem == "OFICIAL"
+            if usuario is not None:
+                autorizacao = or_(
+                    autorizacao,
+                    and_(
+                        Categoria.origem == "USUARIO",
+                        Categoria.usuario_id == usuario.id,
+                    ),
+                )
+            identificador = (
+                Categoria.id == categoria_uuid
+                if categoria_uuid is not None
+                else and_(
+                    Categoria.slug == categoria_id,
+                    Categoria.origem == "OFICIAL",
+                )
+            )
+            categoria = db.scalar(
+                select(Categoria).where(
+                    identificador,
+                    Categoria.modo == "QUIZ_CLASSICO",
+                    Categoria.ativa.is_(True),
+                    Categoria.excluida_em.is_(None),
+                    autorizacao,
+                )
+            )
+            if categoria is None:
                 raise HTTPException(
                     status_code=422,
                     detail="categoria inexistente, inativa ou sem perguntas suficientes",
                 )
 
+            if categoria.origem == "OFICIAL":
+                propriedade = and_(
+                    Pergunta.origem == "OFICIAL",
+                    Pergunta.usuario_id.is_(None),
+                )
+            else:
+                propriedade = and_(
+                    Pergunta.origem == "USUARIO",
+                    Pergunta.usuario_id == usuario.id,
+                )
             candidatas = list(
                 db.scalars(
                     select(Pergunta).where(
                         Pergunta.categoria_id == categoria.id,
                         Pergunta.ativa.is_(True),
-                        Pergunta.origem == "OFICIAL",
                         Pergunta.excluida_em.is_(None),
+                        propriedade,
                     )
                 )
             )

@@ -8,3 +8,4 @@ class CategoriaPublica(BaseModel):
     nome: str
     descricao: str | None
     modo: str
+    origem: str

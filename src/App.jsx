@@ -11,7 +11,7 @@ import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
 import TelaNemAPato from './components/TelaNemAPato'
 import AppShell from './components/layout/AppShell'
-import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategorias } from './services/api'
+import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
@@ -99,10 +99,17 @@ function App() {
     setCarregandoCategorias(true)
     setErroCategorias('')
     try {
-      setCategorias(await listarCategorias())
+      setCategorias(await listarCategoriasJogaveis())
     } catch (error) {
       setCategorias([])
-      setErroCategorias(`Não foi possível carregar as categorias. ${error.message}`)
+      if (error.status === 401) {
+        try { await logout() } catch { /* O estado local ainda deve expirar. */ }
+        setUsuario(null)
+        setStatusSessao('anonimo')
+        setErroCategorias('Sua sessão expirou. Entre novamente ou tente como convidado.')
+      } else {
+        setErroCategorias(`Não foi possível carregar as categorias. ${error.message}`)
+      }
     } finally {
       setCarregandoCategorias(false)
     }
@@ -354,7 +361,9 @@ function App() {
       {tela === 'jogando' && pergunta && (
         <TelaQuiz
           pergunta={pergunta}
-          categoria={categorias.find((item) => item.slug === categoriaSelecionada)}
+          categoria={categorias.find((item) => (
+            item.origem === 'USUARIO' ? `privada:${item.id}` : item.slug
+          ) === categoriaSelecionada)}
           perguntaAtual={perguntaAtual}
           totalPerguntas={TOTAL_PERGUNTAS}
           tempoTotal={TEMPO_POR_PERGUNTA}
@@ -375,7 +384,9 @@ function App() {
           acertos={partida.acertos}
           erros={partida.erros}
           pontuacao={partida.pontuacao}
-          categoria={categorias.find((item) => item.slug === categoriaSelecionada)}
+          categoria={categorias.find((item) => (
+            item.origem === 'USUARIO' ? `privada:${item.id}` : item.slug
+          ) === categoriaSelecionada)}
           iniciarQuiz={abrirCategorias}
           verRanking={abrirRanking}
           voltarInicio={() => { setErro(''); setTela('inicio') }}

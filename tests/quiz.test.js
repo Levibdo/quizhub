@@ -66,7 +66,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
       chamadas.push({ url, options })
       let value
       if (url.endsWith('/auth/me')) value = { nome: 'Jogador' }
-      else if (url.endsWith('/categorias')) value = [
+      else if (url.endsWith('/categorias/jogaveis')) value = [
         { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: 'Conhecimentos gerais.', modo: 'QUIZ_CLASSICO' },
       ]
       else if (url.endsWith('/respostas')) value = await new Promise((resolve) => { confirmarResposta = () => resolve(resultado) })
@@ -163,7 +163,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
   })
 }
 
-test('categorias da API incluem categoria desconhecida com fallback e id correto', async (t) => {
+test('categoria privada usa fallback, selo de origem e UUID correto', async (t) => {
   const fetchOriginal = globalThis.fetch
   const storageOriginal = globalThis.localStorage
   globalThis.localStorage = { getItem: () => null, setItem: () => {} }
@@ -174,12 +174,13 @@ test('categorias da API incluem categoria desconhecida com fallback e id correto
     if (url.endsWith('/auth/me')) {
       return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     }
-    if (url.endsWith('/categorias')) {
+    if (url.endsWith('/categorias/jogaveis')) {
       const categorias = await new Promise((resolve) => { resolverCategorias = resolve })
       return new Response(JSON.stringify(categorias), { status: 200 })
     }
     return new Response(JSON.stringify({
-      partida_id: 'nova', jogador: 'Jogador', categoria: 'ciencias',
+      partida_id: 'nova', jogador: 'Jogador',
+      categoria: 'privada:11111111-1111-4111-8111-111111111111',
       status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0,
       pergunta_atual: { id: 1, pergunta: 'Ciência?', alternativas: ['A', 'B', 'C', 'D'] },
     }), { status: 200 })
@@ -196,9 +197,10 @@ test('categorias da API incluem categoria desconhecida com fallback e id correto
   assert.ok(texto(renderer.root).includes('Carregando categorias...'))
   assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
   await act(async () => resolverCategorias([
-    { id: '11111111-1111-4111-8111-111111111111', slug: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.', modo: 'QUIZ_CLASSICO' },
+    { id: '11111111-1111-4111-8111-111111111111', slug: 'ciencias', nome: 'Ciências', descricao: 'Uma categoria dinâmica.', modo: 'QUIZ_CLASSICO', origem: 'USUARIO' },
   ]))
   assert.ok(texto(renderer.root).includes('Ciências'))
+  assert.ok(texto(renderer.root).includes('Conteúdo privado'))
   assert.equal(
     renderer.root.findByProps({
       className: 'category-symbol category-symbol--fallback',
@@ -207,7 +209,9 @@ test('categorias da API incluem categoria desconhecida com fallback e id correto
   )
   await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
   const criacao = chamadas.find((item) => item.url.endsWith('/partidas'))
-  assert.deepEqual(JSON.parse(criacao.options.body), { categoria: 'ciencias' })
+  assert.deepEqual(JSON.parse(criacao.options.body), {
+    categoria: '11111111-1111-4111-8111-111111111111',
+  })
 })
 
 test('erro ao carregar categorias permite tentar novamente', async (t) => {
@@ -219,7 +223,7 @@ test('erro ao carregar categorias permite tentar novamente', async (t) => {
     if (url.endsWith('/auth/me')) {
       return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     }
-    if (url.endsWith('/categorias')) {
+    if (url.endsWith('/categorias/jogaveis')) {
       tentativas += 1
       if (tentativas === 1) {
         return new Response(JSON.stringify({ detail: 'Falha temporária' }), { status: 503 })
@@ -256,7 +260,7 @@ test('lista vazia de categorias exibe estado vazio sem permitir partida', async 
     if (url.endsWith('/auth/me')) {
       return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     }
-    if (url.endsWith('/categorias')) {
+    if (url.endsWith('/categorias/jogaveis')) {
       return new Response(JSON.stringify([]), { status: 200 })
     }
     throw new Error(`URL inesperada: ${url}`)
@@ -292,7 +296,7 @@ test('ranking usa categorias dinâmicas e separa Todos da categoria geral', asyn
   }
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
-    if (url.endsWith('/categorias')) return new Response(JSON.stringify([
+    if (url.endsWith('/categorias/jogaveis')) return new Response(JSON.stringify([
       { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' },
       { id: '2a01b416-ae0c-53b4-8081-b5f33230048c', slug: 'entretenimento', nome: 'Entretenimento', descricao: '', modo: 'QUIZ_CLASSICO' },
       { id: '11111111-1111-4111-8111-111111111111', slug: 'macabro', nome: 'Macabro', descricao: '', modo: 'QUIZ_CLASSICO' },
@@ -335,7 +339,7 @@ test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) =
   globalThis.localStorage = { getItem: () => null, setItem: () => {} }
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
-    if (url.endsWith('/categorias')) return new Response(JSON.stringify([
+    if (url.endsWith('/categorias/jogaveis')) return new Response(JSON.stringify([
       { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' },
     ]), { status: 200 })
     throw new Error(`URL inesperada: ${url}`)

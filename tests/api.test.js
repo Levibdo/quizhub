@@ -87,6 +87,17 @@ test('listar categorias consulta o endpoint público', async () => {
   assert.equal(categorias[0].id, 'geral')
 })
 
+test('listar categorias jogáveis usa o catálogo com autenticação opcional', async () => {
+  let chamada
+  globalThis.fetch = async (url, opcoes) => {
+    chamada = { url, opcoes }
+    return new Response(JSON.stringify([]), { status: 200 })
+  }
+  await api.listarCategoriasJogaveis()
+  assert.equal(chamada.url, 'http://localhost:8001/api/v1/categorias/jogaveis')
+  assert.equal(chamada.opcoes.method, 'GET')
+})
+
 test('Nem a Pato envia token somente nos endpoints autenticados', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {

@@ -1,12 +1,12 @@
 import re
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.conteudo import ORIGEM_OFICIAL
-from app.models import Categoria
+from app.models import Categoria, Usuario
 
 
 PADRAO_CATEGORIA_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
@@ -34,6 +34,31 @@ class CategoriasService:
         if somente_ativas:
             consulta = consulta.where(Categoria.ativa.is_(True))
         return list(db.scalars(consulta.order_by(Categoria.nome, Categoria.slug)))
+
+    @staticmethod
+    def listar_jogaveis(
+        db: Session, usuario: Usuario | None = None
+    ) -> list[Categoria]:
+        origens_permitidas = Categoria.origem == ORIGEM_OFICIAL
+        if usuario is not None:
+            origens_permitidas = or_(
+                origens_permitidas,
+                and_(
+                    Categoria.origem == "USUARIO",
+                    Categoria.usuario_id == usuario.id,
+                ),
+            )
+        consulta = (
+            select(Categoria)
+            .where(
+                Categoria.modo == "QUIZ_CLASSICO",
+                Categoria.ativa.is_(True),
+                Categoria.excluida_em.is_(None),
+                origens_permitidas,
+            )
+            .order_by(Categoria.nome, Categoria.slug)
+        )
+        return list(db.scalars(consulta))
 
     @staticmethod
     def criar(
