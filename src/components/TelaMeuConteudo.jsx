@@ -8,6 +8,7 @@ import {
 } from '../services/api'
 import PainelPerguntas from './meu-conteudo/PainelPerguntas'
 import PainelImportacao from './meu-conteudo/PainelImportacao'
+import PainelGeradorPrompt from './meu-conteudo/PainelGeradorPrompt'
 
 const MODOS = [
   { id: 'QUIZ_CLASSICO', nome: 'Quiz Clássico' },
@@ -275,6 +276,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
         <button type="button" disabled={importando} aria-current={aba === 'categorias' ? 'page' : undefined} onClick={() => setAba('categorias')}>Categorias</button>
         <button type="button" disabled={importando} aria-current={aba === 'perguntas' ? 'page' : undefined} onClick={() => setAba('perguntas')}>Perguntas</button>
         <button type="button" disabled={importando} aria-current={aba === 'importar' ? 'page' : undefined} onClick={() => setAba('importar')}>Importar</button>
+        <button type="button" disabled={importando} aria-current={aba === 'prompt' ? 'page' : undefined} onClick={() => setAba('prompt')}>Gerar prompt</button>
       </nav>
 
       {sucesso && <p className="content-message" role="status">{sucesso}</p>}
@@ -333,6 +335,12 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
           aoExpirarSessao={aoExpirarSessao}
           aoEstadoOperacao={setImportando}
           aoConcluir={async () => { setVersaoPerguntas((atual) => atual + 1); await carregar(modo) }}
+        />
+      )}
+      {!carregando && !erroCarregamento && aba === 'prompt' && (
+        <PainelGeradorPrompt
+          key={`${modo}-${uso?.perguntas.usadas ?? 0}-${categorias.filter((item) => item.ativa && !item.excluida_em).map((item) => item.id).join('-')}`}
+          modo={modo} categorias={categorias} uso={uso}
         />
       )}
 

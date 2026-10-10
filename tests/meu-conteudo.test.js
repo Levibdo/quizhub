@@ -39,10 +39,11 @@ function texto(node) {
   return (node.children || []).map(texto).join('')
 }
 
-async function setup(t, { autenticado = true, categorias = [], perguntas = null, interceptar } = {}) {
+async function setup(t, { autenticado = true, categorias = [], perguntas = null, interceptar, clipboard } = {}) {
   const fetchOriginal = globalThis.fetch
   const windowOriginal = globalThis.window
   const storageOriginal = globalThis.localStorage
+  const navigatorOriginal = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
   const chamadas = []
   let lista = [...categorias]
   let listaPerguntas = [...(perguntas ?? [])]
@@ -60,6 +61,7 @@ async function setup(t, { autenticado = true, categorias = [], perguntas = null,
     addEventListener() {}, removeEventListener() {},
   }
   globalThis.localStorage = { getItem: () => null, setItem() {} }
+  if (clipboard) Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard } })
   globalThis.fetch = async (url, opcoes = {}) => {
     chamadas.push({ url, opcoes })
     if (interceptar) {
@@ -146,6 +148,8 @@ async function setup(t, { autenticado = true, categorias = [], perguntas = null,
     globalThis.fetch = fetchOriginal
     globalThis.window = windowOriginal
     globalThis.localStorage = storageOriginal
+    if (navigatorOriginal) Object.defineProperty(globalThis, 'navigator', navigatorOriginal)
+    else delete globalThis.navigator
   })
   return ui
 }
@@ -332,6 +336,12 @@ async function abrirImportacao(ui) {
   await act(async () => ui.button('Meu Conteúdo').props.onClick())
   await ui.esperar()
   await act(async () => ui.button('Importar').props.onClick())
+}
+
+async function abrirGeradorPrompt(ui) {
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Gerar prompt').props.onClick())
 }
 
 function arquivoSintetico(nome = 'perguntas.csv', conteudo = 'categoria_id,enunciado') {
@@ -625,4 +635,68 @@ test('reativação em categoria inativa trata 409 sem remover a pergunta', async
   assert.match(ui.texto(), /categoria precisa estar ativa/)
   assert.match(ui.texto(), /Quem chegou primeiro/)
   assert.ok(ui.button('Ativar'))
+})
+
+test('gerador usa somente categoria ativa, quota do modo e invalida resultado ao editar parâmetros', async (t) => {
+  const categoriaInativa = { ...categoriaSecundaria, ativa: false }
+  const ui = await setup(t, { categorias: [categoriaClassica, categoriaInativa] })
+  await abrirGeradorPrompt(ui)
+  const seletor = ui.field('prompt-category')
+  assert.equal(seletor.findAllByType('option').some((item) => texto(item) === 'Ciência'), false)
+  await act(async () => seletor.props.onChange({ target: { value: categoriaClassica.id } }))
+  await act(async () => ui.field('prompt-quantity').props.onChange({ target: { value: '101' } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Configurar prompt' }).props.onSubmit({ preventDefault() {} }))
+  assert.match(ui.texto(), /quantidade máxima disponível é 100/)
+  await act(async () => ui.field('prompt-quantity').props.onChange({ target: { value: '5' } }))
+  await act(async () => ui.field('prompt-theme').props.onChange({ target: { value: 'História antiga' } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Configurar prompt' }).props.onSubmit({ preventDefault() {} }))
+  assert.match(ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value, /História antiga/)
+  assert.match(ui.texto(), /O nome e o UUID da categoria serão copiados/)
+  await act(async () => ui.field('prompt-theme').props.onChange({ target: { value: 'Outro tema' } }))
+  assert.equal(ui.renderer.root.findAllByProps({ 'aria-label': 'Prompt gerado' }).length, 0)
+})
+
+test('gerador copia sob ação explícita e preserva prompt quando clipboard falha', async (t) => {
+  let copiado = ''
+  let falhar = false
+  const ui = await setup(t, {
+    categorias: [categoriaClassica],
+    clipboard: { async writeText(valor) { if (falhar) throw new Error('negado'); copiado = valor } },
+  })
+  await abrirGeradorPrompt(ui)
+  await act(async () => ui.field('prompt-category').props.onChange({ target: { value: categoriaClassica.id } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Configurar prompt' }).props.onSubmit({ preventDefault() {} }))
+  const prompt = ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value
+  assert.equal(copiado, '')
+  await act(async () => ui.button('Copiar prompt').props.onClick())
+  assert.equal(copiado, prompt)
+  assert.match(ui.texto(), /Prompt copiado/)
+  falhar = true
+  await act(async () => ui.button('Copiar prompt').props.onClick())
+  assert.match(ui.texto(), /copie manualmente/)
+  assert.equal(ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value, prompt)
+})
+
+test('gerador informa Clipboard API ausente sem apagar o texto', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica] })
+  await abrirGeradorPrompt(ui)
+  await act(async () => ui.field('prompt-category').props.onChange({ target: { value: categoriaClassica.id } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Configurar prompt' }).props.onSubmit({ preventDefault() {} }))
+  const prompt = ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value
+  await act(async () => ui.button('Copiar prompt').props.onClick())
+  assert.match(ui.texto(), /copie manualmente/)
+  assert.equal(ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value, prompt)
+})
+
+test('troca de modo limpa prompt e oferece apenas categorias correspondentes', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica, categoriaNemPato] })
+  await abrirGeradorPrompt(ui)
+  await act(async () => ui.field('prompt-category').props.onChange({ target: { value: categoriaClassica.id } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Configurar prompt' }).props.onSubmit({ preventDefault() {} }))
+  assert.match(ui.renderer.root.findByProps({ 'aria-label': 'Prompt gerado' }).props.value, /Quiz Clássico/)
+  await act(async () => ui.button('Nem a Pato').props.onClick())
+  await ui.esperar()
+  assert.equal(ui.renderer.root.findAllByProps({ 'aria-label': 'Prompt gerado' }).length, 0)
+  assert.equal(ui.field('prompt-category').findAllByType('option').some((item) => texto(item) === 'Estimativas'), true)
+  assert.equal(ui.field('prompt-category').findAllByType('option').some((item) => texto(item) === 'História'), false)
 })
