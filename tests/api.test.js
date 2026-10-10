@@ -67,6 +67,79 @@ test('requisitar preserva detalhes 422 e deixa o navegador definir boundary de F
   )
 })
 
+test('perguntas próprias usam endpoints, filtros e métodos dos dois modos', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (opcoes.method === 'DELETE') return new Response(null, { status: 204 })
+    return Response.json([])
+  }
+  await api.listarPerguntasMeuConteudo('QUIZ_CLASSICO', { categoria_id: 'categoria', ativa: false, offset: 20, limit: 20 })
+  await api.obterPerguntaMeuConteudo('QUIZ_CLASSICO', 12)
+  await api.criarPerguntaMeuConteudo('QUIZ_CLASSICO', { enunciado: 'Pergunta' })
+  await api.editarPerguntaMeuConteudo('QUIZ_CLASSICO', 12, { ativa: false })
+  assert.equal(await api.excluirPerguntaMeuConteudo('QUIZ_CLASSICO', 12), null)
+  assert.match(chamadas[0].url, /perguntas\/classico\?categoria_id=categoria&ativa=false&offset=20&limit=20$/)
+  assert.ok(chamadas.every((item) => item.opcoes.credentials === 'include'))
+  assert.deepEqual(chamadas.map((item) => item.opcoes.method), ['GET', 'GET', 'POST', 'PATCH', 'DELETE'])
+})
+
+test('BIGINT Nem a Pato é enviado e lido sem perda de precisão', async () => {
+  const maximo = '9223372036854775807'
+  let corpoEnviado
+  globalThis.fetch = async (_url, opcoes) => {
+    corpoEnviado = opcoes.body
+    return new Response(`{"id":1,"categoria_id":"categoria","enunciado":"Distância?","resposta_numerica":${maximo},"unidade":null,"explicacao":"Fonte estável","fonte":null,"ativa":true,"criada_em":"2026-01-01T00:00:00Z","atualizada_em":"2026-01-01T00:00:00Z","excluida_em":null}`, {
+      status: 201, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const criada = await api.criarPerguntaMeuConteudo('NEM_A_PATO', {
+    categoria_id: 'categoria', enunciado: 'Distância?', resposta_numerica: maximo,
+    unidade: null, explicacao: 'Fonte estável', fonte: null,
+  })
+  assert.match(corpoEnviado, new RegExp(`"resposta_numerica":${maximo}`))
+  assert.ok(!corpoEnviado.includes(`"${maximo}"`))
+  assert.equal(criada.resposta_numerica, maximo)
+})
+
+test('BIGINT preserva múltiplas respostas, edição e consulta sem alterar outros textos', async () => {
+  const maximo = '9223372036854775807'
+  const textoComNumero = `O valor citado é ${maximo}`
+  const corpos = []
+  globalThis.fetch = async (url, opcoes) => {
+    if (opcoes.body) corpos.push(opcoes.body)
+    const item = (id, numero) => `{"id":${id},"categoria_id":"categoria","enunciado":${JSON.stringify(textoComNumero)},"resposta_numerica":${numero},"unidade":null,"explicacao":${JSON.stringify(`Explicação ${textoComNumero}`)},"fonte":null,"ativa":true,"criada_em":"2026-01-01T00:00:00Z","atualizada_em":"2026-01-01T00:00:00Z","excluida_em":null}`
+    const corpo = url.includes('?') ? `[${item(1, 0)},${item(2, maximo)}]` : item(2, maximo)
+    return new Response(corpo, { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const lista = await api.listarPerguntasMeuConteudo('NEM_A_PATO')
+  const individual = await api.obterPerguntaMeuConteudo('NEM_A_PATO', 2)
+  const editada = await api.editarPerguntaMeuConteudo('NEM_A_PATO', 2, {
+    resposta_numerica: maximo, explicacao: textoComNumero,
+  })
+  assert.deepEqual(lista.map((item) => item.resposta_numerica), ['0', maximo])
+  assert.equal(lista[1].enunciado, textoComNumero)
+  assert.equal(lista[1].explicacao, `Explicação ${textoComNumero}`)
+  assert.equal(individual.resposta_numerica, maximo)
+  assert.equal(editada.resposta_numerica, maximo)
+  assert.match(corpos[0], new RegExp(`"resposta_numerica":${maximo}`))
+  assert.ok(corpos[0].includes(JSON.stringify(textoComNumero)))
+})
+
+test('serializador Nem a Pato normaliza zero e rejeita valores fora do contrato', () => {
+  const chamada = (valor) => api.criarPerguntaMeuConteudo('NEM_A_PATO', { resposta_numerica: valor })
+  for (const invalido of ['-1', '1.5', 'texto', '9223372036854775808']) assert.throws(() => chamada(invalido))
+  let corpo
+  globalThis.fetch = async (_url, opcoes) => {
+    corpo = opcoes.body
+    return new Response('{"resposta_numerica":0}', { status: 200 })
+  }
+  return chamada('000').then((resposta) => {
+    assert.equal(corpo, '{"resposta_numerica":0}')
+    assert.equal(resposta.resposta_numerica, '0')
+  })
+})
+
 test('preserva status e detail textual', async () => {
   for (const status of [401, 409, 500]) {
     globalThis.fetch = async () => new Response(JSON.stringify({ detail: 'Falha' }), { status })

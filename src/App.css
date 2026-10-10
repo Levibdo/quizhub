@@ -2283,9 +2283,44 @@ select:disabled {
 .content-dialog h3 { margin: .5rem 0; }
 .content-danger { background: var(--color-error); }
 
+.questions-panel { margin-top: var(--space-5); }
+.question-filters {
+  display: grid;
+  grid-template-columns: auto minmax(10rem, 1fr) auto minmax(8rem, .6fr);
+  align-items: center;
+  gap: .65rem;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.question-filters label, .question-field label { font-weight: 700; }
+.question-form {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-accent);
+  background: var(--color-surface);
+  text-align: left;
+}
+.question-form h3 { margin: 0; }
+.question-form__alternatives, .question-form__split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.question-field { display: grid; gap: .4rem; }
+.question-field input, .question-field select, .question-field textarea { width: 100%; }
+.question-field span[role="alert"] { color: var(--color-warning); font-size: .8rem; }
+.question-form__actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.question-list { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.question-list__item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-border); background: var(--color-surface); text-align: left; }
+.question-list__item > div:first-child { min-width: 0; }
+.question-list__item h3 { margin: .5rem 0 .25rem; overflow-wrap: anywhere; }
+.question-list__item p { margin: 0; color: var(--color-text-muted); }
+.question-load-more { margin-top: var(--space-4); }
+
 @media (max-width: 42rem) {
-  .content-header, .content-section-heading, .content-category-card { align-items: stretch; flex-direction: column; }
+  .content-header, .content-section-heading, .content-category-card, .question-list__item { align-items: stretch; flex-direction: column; }
   .content-summary { grid-template-columns: 1fr; }
   .content-category-card__actions { justify-content: stretch; }
   .content-category-card__actions button { flex: 1 1 8rem; }
+  .question-filters, .question-form__alternatives, .question-form__split { grid-template-columns: 1fr; }
 }

@@ -6,6 +6,7 @@ import {
   listarCategoriasMeuConteudo,
   obterResumoMeuConteudo,
 } from '../services/api'
+import PainelPerguntas from './meu-conteudo/PainelPerguntas'
 
 const MODOS = [
   { id: 'QUIZ_CLASSICO', nome: 'Quiz Clássico' },
@@ -100,6 +101,7 @@ function ModalExclusao({ categoria, enviando, erro, aoConfirmar, aoCancelar }) {
 
 export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   const [modo, setModo] = useState('QUIZ_CLASSICO')
+  const [aba, setAba] = useState('categorias')
   const [resumo, setResumo] = useState(null)
   const [categorias, setCategorias] = useState([])
   const [carregando, setCarregando] = useState(true)
@@ -151,6 +153,15 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   }, [carregar, modo])
 
   const uso = resumo?.modos.find((item) => item.modo === modo)
+
+  async function atualizarResumo() {
+    try {
+      setResumo(await obterResumoMeuConteudo())
+    } catch (error) {
+      if (error.status === 401) aoExpirarSessao()
+      else setErro(mensagemErro(error, 'Não foi possível atualizar as quotas.'))
+    }
+  }
 
   function trocarModo(novoModo) {
     if (novoModo === modo || enviando) return
@@ -258,8 +269,8 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
       )}
 
       <nav className="content-tabs" aria-label="Seções de Meu Conteúdo">
-        <button type="button" aria-current="page">Categorias</button>
-        <span aria-disabled="true">Perguntas <small>em breve</small></span>
+        <button type="button" aria-current={aba === 'categorias' ? 'page' : undefined} onClick={() => setAba('categorias')}>Categorias</button>
+        <button type="button" aria-current={aba === 'perguntas' ? 'page' : undefined} onClick={() => setAba('perguntas')}>Perguntas</button>
         <span aria-disabled="true">Importar <small>em breve</small></span>
       </nav>
 
@@ -268,7 +279,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
       {erroCarregamento && <div className="content-state content-state--error" role="alert"><p>{erroCarregamento}</p><button type="button" onClick={() => carregar(modo)}>Tentar novamente</button></div>}
       {carregando && <div className="content-state" role="status">Carregando seu conteúdo...</div>}
 
-      {!carregando && !erroCarregamento && (
+      {!carregando && !erroCarregamento && aba === 'categorias' && (
         <section className="content-categories" aria-labelledby="content-categories-title">
           <div className="content-section-heading">
             <div><span className="content-eyebrow">{MODOS.find((item) => item.id === modo)?.nome}</span><h2 id="content-categories-title">Categorias</h2></div>
@@ -303,6 +314,13 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
             </ul>
           )}
         </section>
+      )}
+
+      {!carregando && !erroCarregamento && aba === 'perguntas' && (
+        <PainelPerguntas
+          key={modo} modo={modo} categorias={categorias} uso={uso}
+          aoAtualizarResumo={atualizarResumo} aoExpirarSessao={aoExpirarSessao}
+        />
       )}
 
       {exclusao && <ModalExclusao categoria={exclusao} enviando={enviando} erro={erroExclusao} aoConfirmar={confirmarExclusao} aoCancelar={fecharExclusao} />}

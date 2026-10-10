@@ -39,17 +39,18 @@ function texto(node) {
   return (node.children || []).map(texto).join('')
 }
 
-async function setup(t, { autenticado = true, categorias = [], interceptar } = {}) {
+async function setup(t, { autenticado = true, categorias = [], perguntas = null, interceptar } = {}) {
   const fetchOriginal = globalThis.fetch
   const windowOriginal = globalThis.window
   const storageOriginal = globalThis.localStorage
   const chamadas = []
   let lista = [...categorias]
+  let listaPerguntas = [...(perguntas ?? [])]
   let resumo = () => ({
     modos: ['QUIZ_CLASSICO', 'NEM_A_PATO'].map((modo) => ({
       modo,
       categorias: { usadas: lista.filter((item) => item.modo === modo).length, limite: 10 },
-      perguntas: { usadas: modo === 'QUIZ_CLASSICO' ? 3 : 4, limite: 200 },
+      perguntas: { usadas: perguntas === null ? (modo === 'QUIZ_CLASSICO' ? 3 : 4) : listaPerguntas.filter((item) => item.modo === modo).length, limite: 200 },
     })),
   })
   globalThis.window = {
@@ -71,6 +72,37 @@ async function setup(t, { autenticado = true, categorias = [], interceptar } = {
         : Response.json({ detail: 'não autenticado' }, { status: 401 })
     }
     if (url.endsWith('/meu-conteudo/resumo')) return Response.json(resumo())
+    if (url.includes('/meu-conteudo/perguntas/')) {
+      const modo = url.includes('/classico') ? 'QUIZ_CLASSICO' : 'NEM_A_PATO'
+      const base = url.match(/\/perguntas\/(classico|nem-a-pato)$/)
+      const consulta = new URL(url)
+      if (opcoes.method === 'GET') {
+        let resultado = listaPerguntas.filter((item) => item.modo === modo)
+        const categoria = consulta.searchParams.get('categoria_id')
+        const ativa = consulta.searchParams.get('ativa')
+        if (categoria) resultado = resultado.filter((item) => item.categoria_id === categoria)
+        if (ativa !== null) resultado = resultado.filter((item) => item.ativa === (ativa === 'true'))
+        const offset = Number(consulta.searchParams.get('offset') ?? 0)
+        const limit = Number(consulta.searchParams.get('limit') ?? 20)
+        return Response.json(resultado.slice(offset, offset + limit))
+      }
+      if (opcoes.method === 'POST' && base) {
+        const dados = JSON.parse(opcoes.body)
+        const nova = { id: listaPerguntas.length + 1, modo, ativa: true, excluida_em: null, ...dados }
+        listaPerguntas.push(nova)
+        return Response.json(nova, { status: 201 })
+      }
+      const id = Number(url.split('/').at(-1))
+      if (opcoes.method === 'PATCH') {
+        const dados = JSON.parse(opcoes.body)
+        listaPerguntas = listaPerguntas.map((item) => item.id === id ? { ...item, ...dados } : item)
+        return Response.json(listaPerguntas.find((item) => item.id === id))
+      }
+      if (opcoes.method === 'DELETE') {
+        listaPerguntas = listaPerguntas.filter((item) => item.id !== id)
+        return new Response(null, { status: 204 })
+      }
+    }
     if (url.includes('/meu-conteudo/categorias?')) {
       const modo = new URL(url).searchParams.get('modo')
       return Response.json(lista.filter((item) => item.modo === modo))
@@ -106,6 +138,7 @@ async function setup(t, { autenticado = true, categorias = [], interceptar } = {
     texto: () => texto(renderer.root),
     button: (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label),
     input: (id) => renderer.root.findByProps({ id }),
+    field: (id) => renderer.root.findAll((node) => ['input', 'select', 'textarea'].includes(node.type) && node.props.id === id)[0],
     esperar,
   }
   t.after(async () => {
@@ -131,7 +164,7 @@ test('Meu Conteúdo aparece somente autenticado e carrega resumo, lista e modos'
   assert.match(ui.texto(), /Categorias1 \/ 10/)
   assert.match(ui.texto(), /Perguntas3 \/ 200/)
   assert.match(ui.texto(), /História/)
-  assert.match(ui.texto(), /Perguntas em breve/)
+  assert.ok(ui.button('Perguntas'))
   await act(async () => ui.button('Nem a Pato').props.onClick())
   await ui.esperar()
   assert.match(ui.texto(), /Nenhuma categoria própria/)
@@ -270,4 +303,154 @@ test('resposta antiga de categorias não substitui o modo novo', async (t) => {
   await act(async () => resolverClassico(Response.json([categoriaClassica])))
   assert.match(ui.texto(), /Nenhuma categoria própria/)
   assert.doesNotMatch(ui.texto(), /Eventos históricos/)
+})
+
+const categoriaSecundaria = {
+  ...categoriaClassica, id: '22222222-2222-4222-8222-222222222222', slug: 'ciencia', nome: 'Ciência',
+}
+const categoriaNemPato = {
+  ...categoriaClassica, id: '33333333-3333-4333-8333-333333333333', slug: 'estimativas', nome: 'Estimativas', modo: 'NEM_A_PATO',
+}
+const perguntaClassica = {
+  id: 1, modo: 'QUIZ_CLASSICO', categoria_id: categoriaClassica.id, enunciado: 'Quem chegou primeiro?',
+  alternativa_a: 'A', alternativa_b: 'B', alternativa_c: 'C', alternativa_d: 'D',
+  alternativa_correta: 'A', explicacao: 'Explicação', ativa: true, excluida_em: null,
+}
+const perguntaNemPato = {
+  id: 2, modo: 'NEM_A_PATO', categoria_id: categoriaNemPato.id, enunciado: 'Quantos quilômetros?',
+  resposta_numerica: '40075', unidade: 'km', explicacao: 'Circunferência equatorial', fonte: 'Institucional', ativa: true, excluida_em: null,
+}
+
+async function abrirPerguntas(ui) {
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Perguntas').props.onClick())
+  await ui.esperar()
+}
+
+test('perguntas listam por modo, filtram categoria e estado e paginam sem inventar total', async (t) => {
+  const perguntas = Array.from({ length: 22 }, (_, indice) => ({
+    ...perguntaClassica, id: indice + 1, enunciado: `Pergunta clássica ${indice + 1}`,
+    categoria_id: indice === 21 ? categoriaSecundaria.id : categoriaClassica.id,
+    ativa: indice !== 20,
+  })).concat(perguntaNemPato)
+  const ui = await setup(t, { categorias: [categoriaClassica, categoriaSecundaria, categoriaNemPato], perguntas })
+  await abrirPerguntas(ui)
+  assert.match(ui.texto(), /Pergunta clássica 1/)
+  assert.ok(ui.button('Carregar mais'))
+  await act(async () => ui.button('Carregar mais').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Pergunta clássica 22/)
+  await act(async () => ui.renderer.root.findByProps({ id: 'question-filter-category' }).props.onChange({ target: { value: categoriaSecundaria.id } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Pergunta clássica 22/)
+  assert.doesNotMatch(ui.texto(), /Pergunta clássica 1(?:\D|$)/)
+  await act(async () => ui.renderer.root.findByProps({ id: 'question-filter-active' }).props.onChange({ target: { value: 'false' } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Nenhuma pergunta encontrada/)
+  await act(async () => ui.button('Nem a Pato').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Quantos quilômetros/)
+  assert.doesNotMatch(ui.texto(), /Pergunta clássica/)
+})
+
+test('cadastro clássico valida quatro alternativas e cria pergunta sem duplo envio', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica], perguntas: [] })
+  await abrirPerguntas(ui)
+  await act(async () => ui.button('Nova pergunta').props.onClick())
+  const form = ui.renderer.root.findByProps({ 'aria-label': 'Nova pergunta clássica' })
+  await act(async () => form.props.onSubmit({ preventDefault() {} }))
+  assert.match(ui.texto(), /Campo obrigatório/)
+  const preencher = async (id, value) => act(async () => ui.field(id).props.onChange({ target: { value } }))
+  await preencher('question-statement', 'Qual é a resposta?')
+  for (const letra of ['a', 'b', 'c', 'd']) await preencher(`question-alternative-${letra}`, `Alternativa ${letra.toUpperCase()}`)
+  await preencher('question-correct', 'D')
+  await preencher('question-explanation', 'Porque D é correta.')
+  await act(async () => { form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} }) })
+  await ui.esperar()
+  assert.equal(ui.chamadas.filter((item) => item.opcoes.method === 'POST' && item.url.includes('/perguntas/classico')).length, 1)
+  assert.match(ui.texto(), /Pergunta criada/)
+  assert.match(ui.texto(), /Qual é a resposta/)
+})
+
+test('Nem a Pato aceita zero e BIGINT máximo, mas rejeita fração e texto', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaNemPato], perguntas: [] })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Nem a Pato').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Perguntas').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Nova pergunta').props.onClick())
+  const form = ui.renderer.root.findByProps({ 'aria-label': 'Nova pergunta Nem a Pato' })
+  const preencher = async (id, value) => act(async () => ui.field(id).props.onChange({ target: { value } }))
+  await preencher('question-statement', 'Qual é o número?')
+  await preencher('question-explanation', 'Resposta verificável.')
+  for (const invalido of ['1.5', 'texto', '9223372036854775808']) {
+    await preencher('question-number', invalido)
+    await act(async () => form.props.onSubmit({ preventDefault() {} }))
+    assert.match(ui.texto(), /Informe um inteiro entre/)
+  }
+  await preencher('question-number', '0')
+  await act(async () => form.props.onSubmit({ preventDefault() {} }))
+  await ui.esperar()
+  const primeira = ui.chamadas.find((item) => item.opcoes.method === 'POST' && item.url.includes('/nem-a-pato'))
+  assert.match(primeira.opcoes.body, /"resposta_numerica":0/)
+
+  await act(async () => ui.button('Nova pergunta').props.onClick())
+  const formMax = ui.renderer.root.findByProps({ 'aria-label': 'Nova pergunta Nem a Pato' })
+  await preencher('question-statement', 'Qual é o máximo?')
+  await preencher('question-explanation', 'Limite do contrato.')
+  await preencher('question-number', '9223372036854775807')
+  await act(async () => formMax.props.onSubmit({ preventDefault() {} }))
+  await ui.esperar()
+  const posts = ui.chamadas.filter((item) => item.opcoes.method === 'POST' && item.url.includes('/nem-a-pato'))
+  assert.match(posts[1].opcoes.body, /"resposta_numerica":9223372036854775807/)
+})
+
+test('pergunta edita categoria, alterna estado e exclusão exige confirmação', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica, categoriaSecundaria], perguntas: [perguntaClassica] })
+  await abrirPerguntas(ui)
+  await act(async () => ui.button('Editar').props.onClick())
+  await act(async () => ui.field('question-category').props.onChange({ target: { value: categoriaSecundaria.id } }))
+  await act(async () => ui.renderer.root.findByProps({ 'aria-label': 'Editar pergunta clássica' }).props.onSubmit({ preventDefault() {} }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Ciência/)
+  await act(async () => ui.button('Desativar').props.onClick())
+  await ui.esperar()
+  assert.ok(ui.button('Ativar'))
+  await act(async () => ui.button('Excluir').props.onClick())
+  assert.ok(ui.renderer.root.findByProps({ role: 'dialog' }))
+  await act(async () => ui.button('Cancelar').props.onClick())
+  assert.match(ui.texto(), /Quem chegou primeiro/)
+  await act(async () => ui.button('Excluir').props.onClick())
+  await act(async () => ui.button('Excluir pergunta').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Pergunta excluída/)
+  assert.match(ui.texto(), /Nenhuma pergunta encontrada/)
+})
+
+test('quota 200 bloqueia cadastro', async (t) => {
+  const perguntas = Array.from({ length: 200 }, (_, indice) => ({ ...perguntaClassica, id: indice + 1, enunciado: `Questão ${indice + 1}` }))
+  const ui = await setup(t, { categorias: [categoriaClassica], perguntas })
+  await abrirPerguntas(ui)
+  assert.equal(ui.button('Nova pergunta').props.disabled, true)
+})
+
+test('reativação em categoria inativa trata 409 sem remover a pergunta', async (t) => {
+  const categoriaInativa = { ...categoriaClassica, ativa: false }
+  const perguntaInativa = { ...perguntaClassica, ativa: false }
+  const ui = await setup(t, {
+    categorias: [categoriaInativa], perguntas: [perguntaInativa],
+    interceptar: async ({ url, opcoes }) => {
+      if (url.includes('/perguntas/classico/1') && opcoes.method === 'PATCH' && JSON.parse(opcoes.body).ativa === true) {
+        return Response.json({ detail: 'categoria precisa estar ativa e não excluída' }, { status: 409 })
+      }
+    },
+  })
+  await abrirPerguntas(ui)
+  await act(async () => ui.button('Ativar').props.onClick())
+  assert.match(ui.texto(), /categoria precisa estar ativa/)
+  assert.match(ui.texto(), /Quem chegou primeiro/)
+  assert.ok(ui.button('Ativar'))
 })

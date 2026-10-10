@@ -6,15 +6,16 @@ const API_URL = (
 ).replace(/\/$/, '')
 
 export async function requisitar(caminho, opcoes) {
-  const corpoEhFormData = typeof FormData !== 'undefined' && opcoes?.body instanceof FormData
+  const { preservarBigInt = false, ...opcoesFetch } = opcoes ?? {}
+  const corpoEhFormData = typeof FormData !== 'undefined' && opcoesFetch.body instanceof FormData
   let resposta
   try {
     resposta = await fetch(`${API_URL}${caminho}`, {
-      ...opcoes,
+      ...opcoesFetch,
       credentials: 'include',
       headers: {
         ...(corpoEhFormData ? {} : { 'Content-Type': 'application/json' }),
-        ...opcoes?.headers,
+        ...opcoesFetch.headers,
       },
     })
   } catch {
@@ -47,7 +48,15 @@ export async function requisitar(caminho, opcoes) {
     throw erro
   }
 
-  return resposta.status === 204 ? null : resposta.json()
+  if (resposta.status === 204) return null
+  if (preservarBigInt) {
+    const texto = await resposta.text()
+    return JSON.parse(texto.replace(
+      /("resposta_numerica"\s*:\s*)(\d+)/g,
+      (_trecho, prefixo, numero) => `${prefixo}"${numero}"`,
+    ))
+  }
+  return resposta.json()
 }
 
 export function obterResumoMeuConteudo() {
@@ -73,6 +82,61 @@ export function editarCategoriaMeuConteudo(categoriaId, dados) {
 
 export function excluirCategoriaMeuConteudo(categoriaId) {
   return requisitar(`/api/v1/meu-conteudo/categorias/${categoriaId}`, { method: 'DELETE' })
+}
+
+function caminhoPerguntasMeuConteudo(modo) {
+  return modo === 'QUIZ_CLASSICO' ? 'classico' : 'nem-a-pato'
+}
+
+const RESPOSTA_NUMERICA_MAXIMA = '9223372036854775807'
+
+function serializarPerguntaNemPato(dados) {
+  if (!Object.hasOwn(dados, 'resposta_numerica')) return JSON.stringify(dados)
+  const informado = String(dados.resposta_numerica)
+  if (!/^\d+$/.test(informado)) throw new TypeError('resposta_numerica deve ser um inteiro não negativo')
+  const numero = informado.replace(/^0+(?=\d)/, '')
+  if (numero.length > RESPOSTA_NUMERICA_MAXIMA.length ||
+      (numero.length === RESPOSTA_NUMERICA_MAXIMA.length && numero > RESPOSTA_NUMERICA_MAXIMA)) {
+    throw new RangeError(`resposta_numerica deve ser no máximo ${RESPOSTA_NUMERICA_MAXIMA}`)
+  }
+  return `{${Object.entries(dados).map(([campo, valor]) => (
+    `${JSON.stringify(campo)}:${campo === 'resposta_numerica' ? numero : JSON.stringify(valor)}`
+  )).join(',')}}`
+}
+
+export function listarPerguntasMeuConteudo(modo, filtros = {}) {
+  const parametros = new URLSearchParams()
+  if (filtros.categoria_id) parametros.set('categoria_id', filtros.categoria_id)
+  if (filtros.ativa !== '' && filtros.ativa !== undefined) parametros.set('ativa', String(filtros.ativa))
+  parametros.set('offset', String(filtros.offset ?? 0))
+  parametros.set('limit', String(filtros.limit ?? 20))
+  return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}?${parametros}`, {
+    method: 'GET', preservarBigInt: modo === 'NEM_A_PATO',
+  })
+}
+
+export function obterPerguntaMeuConteudo(modo, perguntaId) {
+  return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}/${perguntaId}`, {
+    method: 'GET', preservarBigInt: modo === 'NEM_A_PATO',
+  })
+}
+
+export function criarPerguntaMeuConteudo(modo, dados) {
+  return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}`, {
+    method: 'POST', body: modo === 'NEM_A_PATO' ? serializarPerguntaNemPato(dados) : JSON.stringify(dados),
+    preservarBigInt: modo === 'NEM_A_PATO',
+  })
+}
+
+export function editarPerguntaMeuConteudo(modo, perguntaId, dados) {
+  return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}/${perguntaId}`, {
+    method: 'PATCH', body: modo === 'NEM_A_PATO' ? serializarPerguntaNemPato(dados) : JSON.stringify(dados),
+    preservarBigInt: modo === 'NEM_A_PATO',
+  })
+}
+
+export function excluirPerguntaMeuConteudo(modo, perguntaId) {
+  return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}/${perguntaId}`, { method: 'DELETE' })
 }
 
 export function cadastrarUsuario(nome, email, senha) {
