@@ -2,7 +2,7 @@ import ModeCard from './ModeCard'
 
 function TelaInicial({
   usuario, bloqueado, jogar, convidado, entrar, cadastrar, sair,
-  verRanking, nemAPato,
+  verRanking, nemAPato, meuConteudo,
 }) {
   return (
     <section className="home-screen" aria-labelledby="home-title">
@@ -54,6 +54,7 @@ function TelaInicial({
         {usuario ? (
           <>
             <button className="button-secondary" disabled={bloqueado} onClick={sair}>Sair</button>
+            <button className="button-secondary" disabled={bloqueado} onClick={meuConteudo}>Meu Conteúdo</button>
             <button className="button-ghost" disabled={bloqueado} onClick={convidado}>Sair e jogar como convidado</button>
           </>
         ) : (

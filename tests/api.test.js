@@ -34,6 +34,39 @@ test('logout 204 não interpreta JSON', async () => {
   assert.equal(await api.logout(), null)
 })
 
+test('Meu Conteúdo usa contratos reais, cookies e aceita 204', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (opcoes.method === 'DELETE') return new Response(null, { status: 204 })
+    return Response.json({ modos: [] })
+  }
+  await api.obterResumoMeuConteudo()
+  await api.listarCategoriasMeuConteudo('NEM_A_PATO')
+  await api.criarCategoriaMeuConteudo({ nome: 'Cinema', descricao: null, modo: 'NEM_A_PATO' })
+  await api.editarCategoriaMeuConteudo('categoria', { ativa: false })
+  assert.equal(await api.excluirCategoriaMeuConteudo('categoria'), null)
+  assert.ok(chamadas.every((item) => item.opcoes.credentials === 'include'))
+  assert.ok(chamadas[1].url.endsWith('/api/v1/meu-conteudo/categorias?modo=NEM_A_PATO'))
+  assert.deepEqual(JSON.parse(chamadas[2].opcoes.body), {
+    nome: 'Cinema', descricao: null, modo: 'NEM_A_PATO',
+  })
+  assert.equal(chamadas[3].opcoes.method, 'PATCH')
+})
+
+test('requisitar preserva detalhes 422 e deixa o navegador definir boundary de FormData', async () => {
+  const formulario = new FormData()
+  formulario.append('modo', 'QUIZ_CLASSICO')
+  globalThis.fetch = async (_url, opcoes) => {
+    assert.equal(opcoes.headers['Content-Type'], undefined)
+    return Response.json({ detail: [{ loc: ['body', 'nome'], msg: 'inválido' }] }, { status: 422 })
+  }
+  await assert.rejects(
+    api.requisitar('/teste', { method: 'POST', body: formulario }),
+    (erro) => erro.status === 422 && Array.isArray(erro.detail) && /nome válido/.test(erro.message),
+  )
+})
+
 test('preserva status e detail textual', async () => {
   for (const status of [401, 409, 500]) {
     globalThis.fetch = async () => new Response(JSON.stringify({ detail: 'Falha' }), { status })

@@ -6,12 +6,16 @@ const API_URL = (
 ).replace(/\/$/, '')
 
 export async function requisitar(caminho, opcoes) {
+  const corpoEhFormData = typeof FormData !== 'undefined' && opcoes?.body instanceof FormData
   let resposta
   try {
     resposta = await fetch(`${API_URL}${caminho}`, {
       ...opcoes,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...opcoes?.headers },
+      headers: {
+        ...(corpoEhFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...opcoes?.headers,
+      },
     })
   } catch {
     throw new Error('Não foi possível conectar ao servidor.')
@@ -19,6 +23,7 @@ export async function requisitar(caminho, opcoes) {
 
   if (!resposta.ok) {
     let mensagem = 'O servidor não conseguiu concluir a operação.'
+    let erroDetalhes
     try {
       const corpo = await resposta.json()
       if (typeof corpo.detail === 'string') mensagem = corpo.detail
@@ -32,15 +37,42 @@ export async function requisitar(caminho, opcoes) {
           mensagens[item.loc?.at(-1)] || 'Verifique os campos informados.',
         ))].join(' ')
       }
+      erroDetalhes = corpo.detail
     } catch {
       // Mantém a mensagem genérica quando a resposta não é JSON.
     }
     const erro = new Error(mensagem)
     erro.status = resposta.status
+    erro.detail = erroDetalhes
     throw erro
   }
 
   return resposta.status === 204 ? null : resposta.json()
+}
+
+export function obterResumoMeuConteudo() {
+  return requisitar('/api/v1/meu-conteudo/resumo', { method: 'GET' })
+}
+
+export function listarCategoriasMeuConteudo(modo) {
+  const parametros = new URLSearchParams({ modo })
+  return requisitar(`/api/v1/meu-conteudo/categorias?${parametros}`, { method: 'GET' })
+}
+
+export function criarCategoriaMeuConteudo(dados) {
+  return requisitar('/api/v1/meu-conteudo/categorias', {
+    method: 'POST', body: JSON.stringify(dados),
+  })
+}
+
+export function editarCategoriaMeuConteudo(categoriaId, dados) {
+  return requisitar(`/api/v1/meu-conteudo/categorias/${categoriaId}`, {
+    method: 'PATCH', body: JSON.stringify(dados),
+  })
+}
+
+export function excluirCategoriaMeuConteudo(categoriaId) {
+  return requisitar(`/api/v1/meu-conteudo/categorias/${categoriaId}`, { method: 'DELETE' })
 }
 
 export function cadastrarUsuario(nome, email, senha) {

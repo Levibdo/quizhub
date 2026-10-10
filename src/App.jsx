@@ -10,6 +10,7 @@ import TelaRanking from './components/TelaRanking'
 import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
 import TelaNemAPato from './components/TelaNemAPato'
+import TelaMeuConteudo from './components/TelaMeuConteudo'
 import AppShell from './components/layout/AppShell'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
@@ -120,6 +121,23 @@ function App() {
     setTela('categorias')
     carregarCategorias()
   }
+
+  function abrirMeuConteudo() {
+    if (!usuario) {
+      setErroAuth('Entre para acessar seu conteúdo.')
+      setTela('login')
+      return
+    }
+    navegar('meu-conteudo')
+  }
+
+  const expirarSessaoMeuConteudo = useCallback(() => {
+    ++versaoSessao.current
+    setUsuario(null)
+    setStatusSessao('anonimo')
+    setErroAuth('Sua sessão expirou. Entre novamente para acessar seu conteúdo.')
+    setTela('login')
+  }, [])
 
   async function autenticar(tipo, ...dados) {
     if (authRef.current) return
@@ -324,7 +342,11 @@ function App() {
           sair={() => sair()}
           verRanking={abrirRanking}
           nemAPato={abrirNemAPato}
+          meuConteudo={abrirMeuConteudo}
         />
+      )}
+      {tela === 'meu-conteudo' && usuario && (
+        <TelaMeuConteudo voltar={() => navegar('inicio')} aoExpirarSessao={expirarSessaoMeuConteudo} />
       )}
       {tela === 'nem-pato' && (
         <TelaNemAPato
