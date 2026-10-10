@@ -139,6 +139,24 @@ export function excluirPerguntaMeuConteudo(modo, perguntaId) {
   return requisitar(`/api/v1/meu-conteudo/perguntas/${caminhoPerguntasMeuConteudo(modo)}/${perguntaId}`, { method: 'DELETE' })
 }
 
+export function validarImportacaoMeuConteudo(modo, arquivo) {
+  const formulario = new FormData()
+  formulario.append('modo', modo)
+  formulario.append('arquivo', arquivo)
+  return requisitar('/api/v1/meu-conteudo/importacoes/validar', {
+    method: 'POST', body: formulario,
+  })
+}
+
+export function confirmarImportacaoMeuConteudo(tokenPreview, arquivo) {
+  const formulario = new FormData()
+  formulario.append('token_preview', tokenPreview)
+  formulario.append('arquivo', arquivo)
+  return requisitar('/api/v1/meu-conteudo/importacoes/confirmar', {
+    method: 'POST', body: formulario,
+  })
+}
+
 export function cadastrarUsuario(nome, email, senha) {
   return requisitar('/api/v1/auth/cadastro', {
     method: 'POST', body: JSON.stringify({ nome, email, senha }),

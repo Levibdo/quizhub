@@ -7,6 +7,7 @@ import {
   obterResumoMeuConteudo,
 } from '../services/api'
 import PainelPerguntas from './meu-conteudo/PainelPerguntas'
+import PainelImportacao from './meu-conteudo/PainelImportacao'
 
 const MODOS = [
   { id: 'QUIZ_CLASSICO', nome: 'Quiz Clássico' },
@@ -102,6 +103,8 @@ function ModalExclusao({ categoria, enviando, erro, aoConfirmar, aoCancelar }) {
 export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   const [modo, setModo] = useState('QUIZ_CLASSICO')
   const [aba, setAba] = useState('categorias')
+  const [versaoPerguntas, setVersaoPerguntas] = useState(0)
+  const [importando, setImportando] = useState(false)
   const [resumo, setResumo] = useState(null)
   const [categorias, setCategorias] = useState([])
   const [carregando, setCarregando] = useState(true)
@@ -164,7 +167,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   }
 
   function trocarModo(novoModo) {
-    if (novoModo === modo || enviando) return
+    if (novoModo === modo || enviando || importando) return
     requisicaoRef.current += 1
     setModo(novoModo)
     setFormulario(null)
@@ -252,12 +255,12 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
           <h1 id="content-title">Meu Conteúdo</h1>
           <p>Gerencie suas categorias e perguntas para utilizar nos quizzes.</p>
         </div>
-        <button className="button-ghost" type="button" onClick={voltar}>Voltar ao início</button>
+        <button className="button-ghost" type="button" disabled={importando} onClick={voltar}>Voltar ao início</button>
       </header>
 
       <div className="content-mode-selector" aria-label="Selecionar modo">
         {MODOS.map((item) => (
-          <button key={item.id} type="button" aria-pressed={modo === item.id} disabled={enviando} onClick={() => trocarModo(item.id)}>{item.nome}</button>
+          <button key={item.id} type="button" aria-pressed={modo === item.id} disabled={enviando || importando} onClick={() => trocarModo(item.id)}>{item.nome}</button>
         ))}
       </div>
 
@@ -269,9 +272,9 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
       )}
 
       <nav className="content-tabs" aria-label="Seções de Meu Conteúdo">
-        <button type="button" aria-current={aba === 'categorias' ? 'page' : undefined} onClick={() => setAba('categorias')}>Categorias</button>
-        <button type="button" aria-current={aba === 'perguntas' ? 'page' : undefined} onClick={() => setAba('perguntas')}>Perguntas</button>
-        <span aria-disabled="true">Importar <small>em breve</small></span>
+        <button type="button" disabled={importando} aria-current={aba === 'categorias' ? 'page' : undefined} onClick={() => setAba('categorias')}>Categorias</button>
+        <button type="button" disabled={importando} aria-current={aba === 'perguntas' ? 'page' : undefined} onClick={() => setAba('perguntas')}>Perguntas</button>
+        <button type="button" disabled={importando} aria-current={aba === 'importar' ? 'page' : undefined} onClick={() => setAba('importar')}>Importar</button>
       </nav>
 
       {sucesso && <p className="content-message" role="status">{sucesso}</p>}
@@ -318,8 +321,18 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
 
       {!carregando && !erroCarregamento && aba === 'perguntas' && (
         <PainelPerguntas
-          key={modo} modo={modo} categorias={categorias} uso={uso}
+          key={`${modo}-${versaoPerguntas}`}
+          modo={modo} categorias={categorias} uso={uso}
           aoAtualizarResumo={atualizarResumo} aoExpirarSessao={aoExpirarSessao}
+        />
+      )}
+      {!carregando && !erroCarregamento && aba === 'importar' && (
+        <PainelImportacao
+          key={modo}
+          modo={modo}
+          aoExpirarSessao={aoExpirarSessao}
+          aoEstadoOperacao={setImportando}
+          aoConcluir={async () => { setVersaoPerguntas((atual) => atual + 1); await carregar(modo) }}
         />
       )}
 

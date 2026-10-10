@@ -328,6 +328,174 @@ async function abrirPerguntas(ui) {
   await ui.esperar()
 }
 
+async function abrirImportacao(ui) {
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Importar').props.onClick())
+}
+
+function arquivoSintetico(nome = 'perguntas.csv', conteudo = 'categoria_id,enunciado') {
+  return new File([conteudo], nome, { type: 'text/plain' })
+}
+
+function previewImportacao({ modo = 'QUIZ_CLASSICO', erros = [], podeConfirmar = true } = {}) {
+  return {
+    modo, formato: 'csv', arquivo: { nome: 'perguntas.csv', tamanho: 42, sha256: 'a'.repeat(64) },
+    quantidade_recebida: 1, quantidade_valida: erros.length ? 0 : 1, quantidade_invalida: erros.length,
+    quota: { atual: 3, novas: erros.length ? 0 : 1, apos_confirmacao: erros.length ? 3 : 4, limite: 200 },
+    pode_confirmar: podeConfirmar && !erros.length, erros,
+    preview: erros.length ? [] : [{ categoria_id: categoriaClassica.id, enunciado: 'Pergunta importada', alternativa_a: 'A', alternativa_b: 'B', alternativa_c: 'C', alternativa_d: 'D', alternativa_correta: 'A', explicacao: 'Explicação' }],
+    token_preview: podeConfirmar && !erros.length ? 'token-preview' : null,
+    expira_em: podeConfirmar && !erros.length ? '2099-01-01T00:00:00Z' : null,
+  }
+}
+
+test('Importar aceita formatos suportados, rejeita extensão e tamanho localmente', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica] })
+  await abrirImportacao(ui)
+  assert.match(ui.texto(), /Como preparar o arquivo/)
+  for (const nome of ['lote.xlsx', 'lote.csv', 'lote.json']) {
+    await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico(nome)] } }))
+    assert.match(ui.texto(), new RegExp(nome.replace('.', '\\.')))
+    assert.ok(!ui.button('Validar arquivo').props.disabled)
+  }
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico('lote.txt')] } }))
+  assert.match(ui.texto(), /Use um arquivo XLSX, CSV ou JSON/)
+  const grande = arquivoSintetico('grande.csv')
+  Object.defineProperty(grande, 'size', { value: 5 * 1024 * 1024 + 1 })
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [grande] } }))
+  assert.match(ui.texto(), /no máximo 5 MiB/)
+})
+
+test('validação mostra prévia e quota sem persistir; confirmação reenvia o mesmo File', async (t) => {
+  const arquivo = arquivoSintetico()
+  let arquivoValidado
+  let arquivoConfirmado
+  const ui = await setup(t, {
+    categorias: [categoriaClassica],
+    interceptar: async ({ url, opcoes }) => {
+      if (url.endsWith('/importacoes/validar')) {
+        arquivoValidado = opcoes.body.get('arquivo')
+        return Response.json(previewImportacao())
+      }
+      if (url.endsWith('/importacoes/confirmar')) {
+        arquivoConfirmado = opcoes.body.get('arquivo')
+        assert.equal(opcoes.body.get('token_preview'), 'token-preview')
+        return Response.json({ modo: 'QUIZ_CLASSICO', formato: 'csv', criadas: 1 })
+      }
+    },
+  })
+  await abrirImportacao(ui)
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivo] } }))
+  await act(async () => ui.button('Validar arquivo').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Recebidos1Válidos1Inválidos0Quota atual3Após confirmar4Limite200/)
+  assert.match(ui.texto(), /Pergunta importada/)
+  assert.doesNotMatch(ui.texto(), /token-preview/)
+  assert.ok(ui.button('Confirmar importação'))
+  assert.equal(ui.chamadas.filter((item) => item.url.includes('/importacoes/confirmar')).length, 0)
+  await act(async () => ui.button('Confirmar importação').props.onClick())
+  assert.ok(ui.renderer.root.findByProps({ role: 'dialog' }))
+  await act(async () => ui.button('Cancelar').props.onClick())
+  assert.equal(ui.chamadas.filter((item) => item.url.includes('/importacoes/confirmar')).length, 0)
+  await act(async () => ui.button('Confirmar importação').props.onClick())
+  const dialogo = ui.renderer.root.findByProps({ role: 'dialog' })
+  await act(async () => dialogo.findAllByType('button').find((item) => texto(item) === 'Confirmar importação').props.onClick())
+  await ui.esperar()
+  assert.equal(arquivoValidado.name, arquivo.name)
+  assert.equal(arquivoConfirmado.name, arquivo.name)
+  assert.equal(await arquivoValidado.text(), await arquivoConfirmado.text())
+  assert.match(ui.texto(), /1 perguntas importadas com sucesso/)
+})
+
+test('lote inválido exibe erro por registro e não permite importação parcial', async (t) => {
+  const ui = await setup(t, {
+    interceptar: async ({ url }) => url.endsWith('/importacoes/validar') ? Response.json(previewImportacao({
+      erros: [{ escopo: 'registro', referencia: { tipo: 'linha', valor: 2 }, campo: 'enunciado', codigo: 'campo_obrigatorio', mensagem: 'não pode ser vazio' }],
+      podeConfirmar: false,
+    })) : undefined,
+  })
+  await abrirImportacao(ui)
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico()] } }))
+  await act(async () => { ui.button('Validar arquivo').props.onClick() })
+  await ui.esperar()
+  assert.match(ui.texto(), /linha 2 · enunciado: não pode ser vazio/)
+  assert.match(ui.texto(), /importação parcial não está disponível/)
+  assert.equal(ui.button('Confirmar importação').props.disabled, true)
+})
+
+test('troca de arquivo e modo invalida prévia e resposta antiga não a restaura', async (t) => {
+  let resolver
+  const ui = await setup(t, {
+    interceptar: async ({ url }) => {
+      if (url.endsWith('/importacoes/validar')) return new Promise((resolve) => { resolver = resolve })
+    },
+  })
+  await abrirImportacao(ui)
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico()] } }))
+  let validacao
+  act(() => { validacao = ui.button('Validar arquivo').props.onClick() })
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico('novo.json')] } }))
+  resolver(Response.json(previewImportacao()))
+  await act(async () => validacao)
+  assert.doesNotMatch(ui.texto(), /Resultado da validação/)
+  await act(async () => ui.button('Nem a Pato').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /resposta_numerica/)
+  assert.doesNotMatch(ui.texto(), /novo.json/)
+})
+
+test('token expirado bloqueia confirmação e conflito libera navegação preservando arquivo', async (t) => {
+  let expirada = true
+  const ui = await setup(t, {
+    interceptar: async ({ url }) => {
+      if (url.endsWith('/importacoes/validar')) {
+        const resposta = previewImportacao()
+        resposta.expira_em = expirada ? '2020-01-01T00:00:00Z' : '2099-01-01T00:00:00Z'
+        expirada = false
+        return Response.json(resposta)
+      }
+      if (url.endsWith('/importacoes/confirmar')) return Response.json({ detail: 'a quota disponível mudou' }, { status: 409 })
+    },
+  })
+  await abrirImportacao(ui)
+  const arquivo = arquivoSintetico()
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivo] } }))
+  await act(async () => ui.button('Validar arquivo').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /A prévia expirou/)
+  assert.equal(ui.button('Confirmar importação').props.disabled, true)
+  await act(async () => ui.button('Validar arquivo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Confirmar importação').props.onClick())
+  const dialogo = ui.renderer.root.findByProps({ role: 'dialog' })
+  await act(async () => dialogo.findAllByType('button').find((item) => texto(item) === 'Confirmar importação').props.onClick())
+  assert.match(ui.texto(), /quota disponível mudou.*Valide o arquivo novamente/)
+  assert.doesNotMatch(ui.texto(), /Resultado da validação/)
+  assert.match(ui.texto(), /perguntas.csv/)
+  assert.equal(ui.button('Categorias').props.disabled, false)
+})
+
+test('sair durante validação pendente desmonta painel e resposta antiga é ignorada', async (t) => {
+  let resolver
+  const ui = await setup(t, {
+    interceptar: async ({ url }) => {
+      if (url.endsWith('/importacoes/validar')) return new Promise((resolve) => { resolver = resolve })
+    },
+  })
+  await abrirImportacao(ui)
+  await act(async () => ui.input('content-import-file').props.onChange({ target: { files: [arquivoSintetico()] } }))
+  let validacao
+  act(() => { validacao = ui.button('Validar arquivo').props.onClick() })
+  const marca = ui.renderer.root.findByProps({ className: 'site-brand' })
+  await act(async () => marca.props.onClick({ preventDefault() {} }))
+  resolver(Response.json(previewImportacao()))
+  await act(async () => validacao)
+  assert.match(ui.texto(), /Quiz Clássico/)
+  assert.match(ui.texto(), /Meu Conteúdo/)
+  assert.doesNotMatch(ui.texto(), /Resultado da validação|token-preview/)
+})
+
 test('perguntas listam por modo, filtram categoria e estado e paginam sem inventar total', async (t) => {
   const perguntas = Array.from({ length: 22 }, (_, indice) => ({
     ...perguntaClassica, id: indice + 1, enunciado: `Pergunta clássica ${indice + 1}`,

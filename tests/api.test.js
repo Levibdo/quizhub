@@ -67,6 +67,22 @@ test('requisitar preserva detalhes 422 e deixa o navegador definir boundary de F
   )
 })
 
+test('importação privada valida e confirma reenviando o mesmo arquivo sem Content-Type manual', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    return Response.json(url.endsWith('/validar') ? { pode_confirmar: true } : { criadas: 1 })
+  }
+  const arquivo = new File(['[]'], 'perguntas.json', { type: 'application/json' })
+  await api.validarImportacaoMeuConteudo('NEM_A_PATO', arquivo)
+  await api.confirmarImportacaoMeuConteudo('token-secreto', arquivo)
+  assert.equal(chamadas[0].opcoes.body.get('modo'), 'NEM_A_PATO')
+  assert.equal(chamadas[0].opcoes.body.get('arquivo'), arquivo)
+  assert.equal(chamadas[1].opcoes.body.get('token_preview'), 'token-secreto')
+  assert.equal(chamadas[1].opcoes.body.get('arquivo'), arquivo)
+  assert.ok(chamadas.every(({ opcoes }) => opcoes.credentials === 'include' && opcoes.headers['Content-Type'] === undefined))
+})
+
 test('perguntas próprias usam endpoints, filtros e métodos dos dois modos', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {
