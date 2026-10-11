@@ -9,6 +9,7 @@ import {
 import PainelPerguntas from './meu-conteudo/PainelPerguntas'
 import PainelImportacao from './meu-conteudo/PainelImportacao'
 import PainelGeradorPrompt from './meu-conteudo/PainelGeradorPrompt'
+import useModalAcessivel from '../hooks/useModalAcessivel'
 
 const MODOS = [
   { id: 'QUIZ_CLASSICO', nome: 'Quiz Clássico' },
@@ -21,10 +22,16 @@ function mensagemErro(error, contexto) {
   return `${contexto} ${error.message}`
 }
 
-function FormularioCategoria({ modo, categoria, ocupadas, aoSalvar, aoCancelar, enviando }) {
+function FormularioCategoria({ modo, categoria, ocupadas, aoSalvar, aoCancelar, aoAlterarSujo, enviando }) {
   const [nome, setNome] = useState(categoria?.nome ?? '')
   const [descricao, setDescricao] = useState(categoria?.descricao ?? '')
   const [erro, setErro] = useState('')
+  const iniciaisRef = useRef({ nome: categoria?.nome ?? '', descricao: categoria?.descricao ?? '' })
+
+  useEffect(() => {
+    aoAlterarSujo(nome !== iniciaisRef.current.nome || descricao !== iniciaisRef.current.descricao)
+  }, [nome, descricao, aoAlterarSujo])
+  useEffect(() => () => aoAlterarSujo(false), [aoAlterarSujo])
 
   function enviar(evento) {
     evento.preventDefault()
@@ -71,21 +78,13 @@ function FormularioCategoria({ modo, categoria, ocupadas, aoSalvar, aoCancelar, 
   )
 }
 
-function ModalExclusao({ categoria, enviando, erro, aoConfirmar, aoCancelar }) {
+function ModalExclusao({ categoria, enviando, erro, aoConfirmar, aoCancelar, retornoFocoRef }) {
   const cancelarRef = useRef(null)
-
-  useEffect(() => {
-    cancelarRef.current?.focus()
-    function fechar(evento) {
-      if (evento.key === 'Escape' && !enviando) aoCancelar()
-    }
-    window.addEventListener?.('keydown', fechar)
-    return () => window.removeEventListener?.('keydown', fechar)
-  }, [aoCancelar, enviando])
+  const { modalRef, aoPressionarTecla } = useModalAcessivel({ bloqueado: enviando, aoFechar: aoCancelar, focoInicialRef: cancelarRef, retornoFocoRef })
 
   return (
     <div className="content-dialog-backdrop" role="presentation">
-      <section className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="content-delete-title" aria-describedby="content-delete-description">
+      <section ref={modalRef} onKeyDown={aoPressionarTecla} tabIndex={-1} className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="content-delete-title" aria-describedby="content-delete-description">
         <span className="content-eyebrow">Confirmação</span>
         <h3 id="content-delete-title">Excluir “{categoria.nome}”?</h3>
         <p id="content-delete-description">A exclusão é permanente nesta interface. Perguntas existentes nessa categoria precisam ser excluídas primeiro.</p>
@@ -101,7 +100,13 @@ function ModalExclusao({ categoria, enviando, erro, aoConfirmar, aoCancelar }) {
   )
 }
 
-export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
+function ModalDescarte({ aoConfirmar, aoCancelar, retornoFocoRef }) {
+  const cancelarRef = useRef(null)
+  const { modalRef, aoPressionarTecla } = useModalAcessivel({ aoFechar: aoCancelar, focoInicialRef: cancelarRef, retornoFocoRef })
+  return <div className="content-dialog-backdrop" role="presentation"><section ref={modalRef} onKeyDown={aoPressionarTecla} tabIndex={-1} className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="content-discard-title" aria-describedby="content-discard-description"><span className="content-eyebrow">Alterações não salvas</span><h3 id="content-discard-title">Descartar alterações?</h3><p id="content-discard-description">As informações preenchidas neste formulário serão perdidas.</p><div className="content-dialog__actions"><button className="content-danger" type="button" onClick={aoConfirmar}>Descartar alterações</button><button ref={cancelarRef} className="button-secondary" type="button" onClick={aoCancelar}>Continuar editando</button></div></section></div>
+}
+
+export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcaoMarca }) {
   const [modo, setModo] = useState('QUIZ_CLASSICO')
   const [aba, setAba] = useState('categorias')
   const [versaoPerguntas, setVersaoPerguntas] = useState(0)
@@ -119,6 +124,24 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   const enviandoRef = useRef(false)
   const requisicaoRef = useRef(0)
   const retornoFocoRef = useRef(null)
+  const retornoDescarteRef = useRef(null)
+  const [formularioSujo, setFormularioSujo] = useState(false)
+  const [descarte, setDescarte] = useState(null)
+
+  const alterarFormularioSujo = useCallback((sujo) => setFormularioSujo(sujo), [])
+  const fecharDescarte = useCallback(() => setDescarte(null), [])
+  const executarOuConfirmar = useCallback((acao, evento) => {
+    if (enviandoRef.current) return
+    if (!formularioSujo) { acao(); return }
+    retornoDescarteRef.current = evento?.currentTarget ?? null
+    setDescarte({ acao })
+  }, [formularioSujo])
+
+  useEffect(() => {
+    if (!registrarAcaoMarca) return undefined
+    registrarAcaoMarca((evento) => executarOuConfirmar(voltar, evento))
+    return () => registrarAcaoMarca(null)
+  }, [executarOuConfirmar, registrarAcaoMarca, voltar])
 
   function restaurarFoco() {
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => retornoFocoRef.current?.focus())
@@ -172,7 +195,17 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
     requisicaoRef.current += 1
     setModo(novoModo)
     setFormulario(null)
+    setFormularioSujo(false)
     setSucesso('')
+  }
+
+  function trocarModoProtegido(novoModo, evento) {
+    executarOuConfirmar(() => trocarModo(novoModo), evento)
+  }
+
+  function trocarAba(novaAba, evento) {
+    if (novaAba === aba) return
+    executarOuConfirmar(() => { setFormulario(null); setFormularioSujo(false); setAba(novaAba) }, evento)
   }
 
   async function salvarCategoria(dados) {
@@ -184,6 +217,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
       if (formulario?.id) await editarCategoriaMeuConteudo(formulario.id, dados)
       else await criarCategoriaMeuConteudo({ ...dados, modo })
       setSucesso(formulario?.id ? 'Categoria atualizada.' : 'Categoria criada.')
+      setFormularioSujo(false)
       setFormulario(null)
       await carregar(modo)
     } catch (error) {
@@ -222,8 +256,6 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
   const fecharExclusao = useCallback(() => {
     setExclusao(null)
     setErroExclusao('')
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => retornoFocoRef.current?.focus())
-    else retornoFocoRef.current?.focus?.()
   }, [])
 
   async function confirmarExclusao() {
@@ -256,12 +288,12 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
           <h1 id="content-title">Meu Conteúdo</h1>
           <p>Gerencie suas categorias e perguntas para utilizar nos quizzes.</p>
         </div>
-        <button className="button-ghost" type="button" disabled={importando} onClick={voltar}>Voltar ao início</button>
+        <button className="button-ghost" type="button" disabled={importando || enviando} onClick={(evento) => executarOuConfirmar(voltar, evento)}>Voltar ao início</button>
       </header>
 
       <div className="content-mode-selector" aria-label="Selecionar modo">
         {MODOS.map((item) => (
-          <button key={item.id} type="button" aria-pressed={modo === item.id} disabled={enviando || importando} onClick={() => trocarModo(item.id)}>{item.nome}</button>
+          <button key={item.id} type="button" aria-pressed={modo === item.id} disabled={enviando || importando} onClick={(evento) => trocarModoProtegido(item.id, evento)}>{item.nome}</button>
         ))}
       </div>
 
@@ -273,10 +305,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
       )}
 
       <nav className="content-tabs" aria-label="Seções de Meu Conteúdo">
-        <button type="button" disabled={importando} aria-current={aba === 'categorias' ? 'page' : undefined} onClick={() => setAba('categorias')}>Categorias</button>
-        <button type="button" disabled={importando} aria-current={aba === 'perguntas' ? 'page' : undefined} onClick={() => setAba('perguntas')}>Perguntas</button>
-        <button type="button" disabled={importando} aria-current={aba === 'importar' ? 'page' : undefined} onClick={() => setAba('importar')}>Importar</button>
-        <button type="button" disabled={importando} aria-current={aba === 'prompt' ? 'page' : undefined} onClick={() => setAba('prompt')}>Gerar prompt</button>
+        {[["categorias", "Categorias"], ["perguntas", "Perguntas"], ["importar", "Importar"], ["prompt", "Gerar prompt"]].map(([id, nome]) => <button key={id} type="button" disabled={importando || enviando} aria-current={aba === id ? 'page' : undefined} onClick={(evento) => trocarAba(id, evento)}>{nome}</button>)}
       </nav>
 
       {sucesso && <p className="content-message" role="status">{sucesso}</p>}
@@ -288,14 +317,15 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
         <section className="content-categories" aria-labelledby="content-categories-title">
           <div className="content-section-heading">
             <div><span className="content-eyebrow">{MODOS.find((item) => item.id === modo)?.nome}</span><h2 id="content-categories-title">Categorias</h2></div>
-            {!formulario && <button type="button" disabled={enviando || uso?.categorias.usadas >= uso?.categorias.limite} onClick={() => { setFormulario({}); setSucesso('') }}>Nova categoria</button>}
+            {!formulario && <button type="button" disabled={enviando || uso?.categorias.usadas >= uso?.categorias.limite} onClick={(evento) => executarOuConfirmar(() => { setFormulario({}); setSucesso('') }, evento)}>Nova categoria</button>}
           </div>
 
           {formulario && (
             <FormularioCategoria
               key={formulario.id ?? `nova-${modo}`} modo={modo} categoria={formulario.id ? formulario : null}
               ocupadas={uso?.categorias.usadas ?? 0} enviando={enviando} aoSalvar={salvarCategoria}
-              aoCancelar={() => setFormulario(null)}
+              aoAlterarSujo={alterarFormularioSujo}
+              aoCancelar={(evento) => executarOuConfirmar(() => { setFormulario(null); setFormularioSujo(false) }, evento)}
             />
           )}
 
@@ -310,7 +340,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
                     <p>{categoria.descricao || 'Sem descrição.'}</p>
                   </div>
                   <div className="content-category-card__actions">
-                    <button className="button-secondary" type="button" disabled={enviando} onClick={() => { setFormulario(categoria); setSucesso('') }}>Editar</button>
+                    <button className="button-secondary" type="button" disabled={enviando} onClick={(evento) => executarOuConfirmar(() => { setFormulario(categoria); setSucesso('') }, evento)}>Editar</button>
                     <button className="button-secondary" type="button" disabled={enviando} onClick={() => alternarAtiva(categoria)}>{categoria.ativa ? 'Desativar' : 'Ativar'}</button>
                     <button className="button-ghost" type="button" disabled={enviando} onClick={(evento) => abrirExclusao(categoria, evento)}>Excluir</button>
                   </div>
@@ -326,6 +356,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
           key={`${modo}-${versaoPerguntas}`}
           modo={modo} categorias={categorias} uso={uso}
           aoAtualizarResumo={atualizarResumo} aoExpirarSessao={aoExpirarSessao}
+          aoAlterarSujo={alterarFormularioSujo} aoSolicitarDescarte={executarOuConfirmar}
         />
       )}
       {!carregando && !erroCarregamento && aba === 'importar' && (
@@ -344,7 +375,8 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao }) {
         />
       )}
 
-      {exclusao && <ModalExclusao categoria={exclusao} enviando={enviando} erro={erroExclusao} aoConfirmar={confirmarExclusao} aoCancelar={fecharExclusao} />}
+      {exclusao && <ModalExclusao categoria={exclusao} enviando={enviando} erro={erroExclusao} aoConfirmar={confirmarExclusao} aoCancelar={fecharExclusao} retornoFocoRef={retornoFocoRef} />}
+      {descarte && <ModalDescarte retornoFocoRef={retornoDescarteRef} aoCancelar={fecharDescarte} aoConfirmar={() => { const acao = descarte.acao; setDescarte(null); setFormularioSujo(false); acao() }} />}
     </section>
   )
 }

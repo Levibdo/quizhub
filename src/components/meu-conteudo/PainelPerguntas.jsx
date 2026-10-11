@@ -5,6 +5,7 @@ import {
   excluirPerguntaMeuConteudo,
   listarPerguntasMeuConteudo,
 } from '../../services/api'
+import useModalAcessivel from '../../hooks/useModalAcessivel'
 
 const LIMITE_PAGINA = 20
 const MAX_BIGINT = '9223372036854775807'
@@ -29,7 +30,7 @@ function Campo({ id, label, erro, children }) {
   return <div className="question-field"><label htmlFor={id}>{label}</label>{children}{erro && <span role="alert">{erro}</span>}</div>
 }
 
-function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancelar }) {
+function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancelar, aoAlterarSujo }) {
   const [dados, setDados] = useState(() => ({
     categoria_id: pergunta?.categoria_id ?? categorias[0]?.id ?? '',
     enunciado: pergunta?.enunciado ?? '', alternativa_a: pergunta?.alternativa_a ?? '',
@@ -38,6 +39,9 @@ function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancel
     explicacao: pergunta?.explicacao ?? '',
   }))
   const [erros, setErros] = useState({})
+  const iniciaisRef = useRef(JSON.stringify(dados))
+  useEffect(() => aoAlterarSujo(JSON.stringify(dados) !== iniciaisRef.current), [dados, aoAlterarSujo])
+  useEffect(() => () => aoAlterarSujo(false), [aoAlterarSujo])
   const definir = (campo, valor) => setDados((atual) => ({ ...atual, [campo]: valor }))
 
   function enviar(evento) {
@@ -65,13 +69,16 @@ function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancel
   )
 }
 
-function FormularioNemPato({ categorias, pergunta, enviando, aoSalvar, aoCancelar }) {
+function FormularioNemPato({ categorias, pergunta, enviando, aoSalvar, aoCancelar, aoAlterarSujo }) {
   const [dados, setDados] = useState(() => ({
     categoria_id: pergunta?.categoria_id ?? categorias[0]?.id ?? '', enunciado: pergunta?.enunciado ?? '',
     resposta_numerica: pergunta?.resposta_numerica ?? '', unidade: pergunta?.unidade ?? '',
     explicacao: pergunta?.explicacao ?? '', fonte: pergunta?.fonte ?? '',
   }))
   const [erros, setErros] = useState({})
+  const iniciaisRef = useRef(JSON.stringify(dados))
+  useEffect(() => aoAlterarSujo(JSON.stringify(dados) !== iniciaisRef.current), [dados, aoAlterarSujo])
+  useEffect(() => () => aoAlterarSujo(false), [aoAlterarSujo])
   const definir = (campo, valor) => setDados((atual) => ({ ...atual, [campo]: valor }))
 
   function enviar(evento) {
@@ -100,18 +107,13 @@ function FormularioNemPato({ categorias, pergunta, enviando, aoSalvar, aoCancela
   )
 }
 
-function ModalExcluirPergunta({ pergunta, enviando, aoCancelar, aoConfirmar }) {
+function ModalExcluirPergunta({ pergunta, enviando, aoCancelar, aoConfirmar, retornoFocoRef }) {
   const cancelarRef = useRef(null)
-  useEffect(() => {
-    cancelarRef.current?.focus()
-    const fechar = (evento) => { if (evento.key === 'Escape' && !enviando) aoCancelar() }
-    window.addEventListener?.('keydown', fechar)
-    return () => window.removeEventListener?.('keydown', fechar)
-  }, [aoCancelar, enviando])
-  return <div className="content-dialog-backdrop" role="presentation"><section className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="question-delete-title"><span className="content-eyebrow">Confirmação</span><h3 id="question-delete-title">Excluir esta pergunta?</h3><p>{pergunta.enunciado}</p><p>A pergunta não poderá ser restaurada nesta interface. Partidas anteriores permanecem preservadas.</p><div className="content-dialog__actions"><button className="content-danger" disabled={enviando} onClick={aoConfirmar}>{enviando ? 'Excluindo...' : 'Excluir pergunta'}</button><button ref={cancelarRef} className="button-secondary" disabled={enviando} onClick={aoCancelar}>Cancelar</button></div></section></div>
+  const { modalRef, aoPressionarTecla } = useModalAcessivel({ bloqueado: enviando, aoFechar: aoCancelar, focoInicialRef: cancelarRef, retornoFocoRef })
+  return <div className="content-dialog-backdrop" role="presentation"><section ref={modalRef} onKeyDown={aoPressionarTecla} tabIndex={-1} className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="question-delete-title"><span className="content-eyebrow">Confirmação</span><h3 id="question-delete-title">Excluir esta pergunta?</h3><p>{pergunta.enunciado}</p><p>A pergunta não poderá ser restaurada nesta interface. Partidas anteriores permanecem preservadas.</p><div className="content-dialog__actions"><button className="content-danger" disabled={enviando} onClick={aoConfirmar}>{enviando ? 'Excluindo...' : 'Excluir pergunta'}</button><button ref={cancelarRef} className="button-secondary" disabled={enviando} onClick={aoCancelar}>Cancelar</button></div></section></div>
 }
 
-export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResumo, aoExpirarSessao }) {
+export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResumo, aoExpirarSessao, aoAlterarSujo, aoSolicitarDescarte }) {
   const [perguntas, setPerguntas] = useState([])
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
   const [ativaFiltro, setAtivaFiltro] = useState('')
@@ -130,8 +132,6 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
 
   const fecharExclusao = useCallback(() => {
     setExclusao(null)
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => retornoFocoRef.current?.focus())
-    else retornoFocoRef.current?.focus?.()
   }, [])
 
   const carregar = useCallback(async ({ acumular = false } = {}) => {
@@ -172,7 +172,7 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
     if (enviandoRef.current) return
     enviandoRef.current = true; setEnviando(true); setErro('')
     try {
-      await acao(); setFormulario(null); setExclusao(null); setSucesso(mensagem)
+      await acao(); setFormulario(null); setExclusao(null); setSucesso(mensagem); aoAlterarSujo(false)
       await Promise.all([carregar(), aoAtualizarResumo()])
     } catch (error) {
       if (error.status === 401) aoExpirarSessao()
@@ -186,19 +186,19 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
       const anterior = formulario[campo] ?? null
       return String(valor ?? '') !== String(anterior ?? '')
     }))
-    if (!Object.keys(alteracoes).length) { setFormulario(null); return undefined }
+    if (!Object.keys(alteracoes).length) { setFormulario(null); aoAlterarSujo(false); return undefined }
     return executarMutacao(() => editarPerguntaMeuConteudo(modo, formulario.id, alteracoes), 'Pergunta atualizada.')
   }
 
   const Formulario = modo === 'QUIZ_CLASSICO' ? FormularioClassico : FormularioNemPato
   return <section className="questions-panel" aria-labelledby="questions-title">
-    <div className="content-section-heading"><div><span className="content-eyebrow">Perguntas próprias</span><h2 id="questions-title">Perguntas</h2></div><button disabled={enviando || uso?.perguntas.usadas >= uso?.perguntas.limite || !categoriasAtivas.length} onClick={() => { setFormulario({}); setSucesso(''); setErro('') }}>Nova pergunta</button></div>
+    <div className="content-section-heading"><div><span className="content-eyebrow">Perguntas próprias</span><h2 id="questions-title">Perguntas</h2></div><button disabled={enviando || uso?.perguntas.usadas >= uso?.perguntas.limite || !categoriasAtivas.length} onClick={(evento) => aoSolicitarDescarte(() => { setFormulario({}); setSucesso(''); setErro('') }, evento)}>Nova pergunta</button></div>
     {!categoriasAtivas.length && <p className="content-state" role="status">Crie e ative uma categoria deste modo antes de cadastrar perguntas.</p>}
     <div className="question-filters"><label htmlFor="question-filter-category">Categoria</label><select id="question-filter-category" value={categoriaFiltro} onChange={(e) => { requisicaoRef.current += 1; setCategoriaFiltro(e.target.value) }}><option value="">Todas</option>{categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><label htmlFor="question-filter-active">Estado</label><select id="question-filter-active" value={ativaFiltro} onChange={(e) => { requisicaoRef.current += 1; setAtivaFiltro(e.target.value) }}><option value="">Todos</option><option value="true">Ativas</option><option value="false">Inativas</option></select></div>
     {sucesso && <p className="content-message" role="status">{sucesso}</p>}{erro && <p className="mensagem-erro" role="alert">{erro}</p>}
-    {formulario && <Formulario key={formulario.id ?? `nova-${modo}`} categorias={categoriasFormulario} pergunta={formulario.id ? formulario : null} enviando={enviando} aoSalvar={salvar} aoCancelar={() => setFormulario(null)} />}
-    {carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Ajuste os filtros ou crie a primeira pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={() => { setFormulario(pergunta); setSucesso(''); setErro('') }}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setExclusao(pergunta) }}>Excluir</button></div></li>)}</ul>}
+    {formulario && <Formulario key={formulario.id ?? `nova-${modo}`} categorias={categoriasFormulario} pergunta={formulario.id ? formulario : null} enviando={enviando} aoSalvar={salvar} aoAlterarSujo={aoAlterarSujo} aoCancelar={(evento) => aoSolicitarDescarte(() => { setFormulario(null); aoAlterarSujo(false) }, evento)} />}
+    {carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Ajuste os filtros ou crie a primeira pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={(evento) => aoSolicitarDescarte(() => { setFormulario(pergunta); setSucesso(''); setErro('') }, evento)}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setExclusao(pergunta) }}>Excluir</button></div></li>)}</ul>}
     {temMais && !carregando && <button className="button-secondary question-load-more" disabled={carregandoMais} onClick={() => carregar({ acumular: true })}>{carregandoMais ? 'Carregando...' : 'Carregar mais'}</button>}
-    {exclusao && <ModalExcluirPergunta pergunta={exclusao} enviando={enviando} aoCancelar={fecharExclusao} aoConfirmar={() => executarMutacao(() => excluirPerguntaMeuConteudo(modo, exclusao.id), 'Pergunta excluída.')} />}
+    {exclusao && <ModalExcluirPergunta pergunta={exclusao} enviando={enviando} aoCancelar={fecharExclusao} retornoFocoRef={retornoFocoRef} aoConfirmar={() => executarMutacao(() => excluirPerguntaMeuConteudo(modo, exclusao.id), 'Pergunta excluída.')} />}
   </section>
 }

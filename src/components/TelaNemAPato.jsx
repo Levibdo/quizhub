@@ -14,6 +14,7 @@ import {
   removerSessaoNemAPato,
   salvarSessaoNemAPato,
 } from '../services/nemAPato'
+import useModalAcessivel from '../hooks/useModalAcessivel'
 
 const INTERVALO_LOBBY_MS = 1000
 
@@ -120,6 +121,11 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
   const recuperacaoInicial = useRef(false)
   const botaoCancelarDesafioRef = useRef(null)
   const botaoCancelarSaidaRef = useRef(null)
+  const retornoFocoModalRef = useRef(null)
+  const fecharDesafio = useCallback(() => setConfirmacaoDesafio(false), [])
+  const fecharSaida = useCallback(() => setModalSaida(null), [])
+  const { modalRef: modalDesafioRef, aoPressionarTecla: conterFocoDesafio } = useModalAcessivel({ aberto: confirmacaoDesafio, bloqueado: carregando, aoFechar: fecharDesafio, focoInicialRef: botaoCancelarDesafioRef, retornoFocoRef: retornoFocoModalRef })
+  const { modalRef: modalSaidaRef, aoPressionarTecla: conterFocoSaida } = useModalAcessivel({ aberto: Boolean(modalSaida), bloqueado: carregando, aoFechar: fecharSaida, focoInicialRef: botaoCancelarSaidaRef, retornoFocoRef: retornoFocoModalRef })
 
   const navegar = useCallback((destino) => {
     const caminho = destino.tipo === 'lobby'
@@ -223,26 +229,6 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     }
   }, [estadoSala?.partida?.rodada?.id, estadoSala?.partida?.rodada?.status, estadoSala?.partida?.rodada?.termina_em])
 
-  useEffect(() => {
-    if (!confirmacaoDesafio) return undefined
-    botaoCancelarDesafioRef.current?.focus()
-    const fecharComEscape = (event) => {
-      if (event.key === 'Escape' && !carregando) setConfirmacaoDesafio(false)
-    }
-    window.addEventListener('keydown', fecharComEscape)
-    return () => window.removeEventListener('keydown', fecharComEscape)
-  }, [confirmacaoDesafio, carregando])
-
-  useEffect(() => {
-    if (!modalSaida) return undefined
-    botaoCancelarSaidaRef.current?.focus()
-    const fecharComEscape = (event) => {
-      if (event.key === 'Escape' && !carregando) setModalSaida(null)
-    }
-    window.addEventListener('keydown', fecharComEscape)
-    return () => window.removeEventListener('keydown', fecharComEscape)
-  }, [modalSaida, carregando])
-
   async function iniciarParticipacao(acao) {
     if (operacaoRef.current) return
     operacaoRef.current = true
@@ -294,7 +280,8 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     else navegar({ tipo: 'inicio' })
   }
 
-  const solicitarSaida = useCallback((destino = 'modo') => {
+  const solicitarSaida = useCallback((destino = 'modo', evento) => {
+    retornoFocoModalRef.current = evento?.currentTarget ?? null
     const partida = estadoSala?.partida
     if (
       partida?.status === 'FINALIZADA'
@@ -322,7 +309,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
 
   useEffect(() => {
     if (!registrarAcaoMarca) return undefined
-    registrarAcaoMarca(() => solicitarSaida('home'))
+    registrarAcaoMarca((evento) => solicitarSaida('home', evento))
     return () => registrarAcaoMarca(null)
   }, [registrarAcaoMarca, solicitarSaida])
 
@@ -415,8 +402,11 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
   }
 
 
-  function abrirConfirmacaoDesafio() {
-    if (!operacaoRef.current) setConfirmacaoDesafio(true)
+  function abrirConfirmacaoDesafio(evento) {
+    if (!operacaoRef.current) {
+      retornoFocoModalRef.current = evento?.currentTarget ?? null
+      setConfirmacaoDesafio(true)
+    }
   }
 
   async function confirmarDesafio() {
@@ -549,7 +539,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
           <p>{sala?.status === 'EM_PARTIDA' ? 'Partida em andamento' : 'Lobby da sala'}</p>
         </header>
         {podeAbandonar && (
-          <button className="np-exit-room" type="button" disabled={carregando} onClick={() => solicitarSaida('modo')}>
+          <button className="np-exit-room" type="button" disabled={carregando} onClick={(evento) => solicitarSaida('modo', evento)}>
             SAIR DA SALA
           </button>
         )}
@@ -728,7 +718,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
                     )}
                     {confirmacaoDesafio && ultimoPalpite && (
                       <div className="np-dialog-backdrop" role="presentation">
-                        <section className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-challenge-title" aria-describedby="np-challenge-description">
+                        <section ref={modalDesafioRef} onKeyDown={conterFocoDesafio} tabIndex={-1} className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-challenge-title" aria-describedby="np-challenge-description">
                           <p className="np-eyebrow">Confirme o desafio</p>
                           <h4 id="np-challenge-title">NEM A PATO!</h4>
                           <p id="np-challenge-description">Você quer desafiar o palpite de <strong>{ultimoPalpite.jogador.nome}: {formatarPalpite(ultimoPalpite.valor, rodada.pergunta?.unidade)}</strong>?</p>
@@ -736,7 +726,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
                             <button type="button" className="np-challenge" disabled={carregando} onClick={confirmarDesafio}>
                               {carregando ? 'Confirmando desafio...' : 'CONFIRMAR DESAFIO'}
                             </button>
-                            <button ref={botaoCancelarDesafioRef} type="button" className="button-secondary" disabled={carregando} onClick={() => setConfirmacaoDesafio(false)}>
+                            <button ref={botaoCancelarDesafioRef} type="button" className="button-secondary" disabled={carregando} onClick={fecharDesafio}>
                               CANCELAR
                             </button>
                           </div>
@@ -837,7 +827,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
             )}
             {modalSaida && (
               <div className="np-dialog-backdrop" role="presentation">
-                <section className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-exit-title" aria-describedby="np-exit-description">
+                <section ref={modalSaidaRef} onKeyDown={conterFocoSaida} tabIndex={-1} className="np-dialog" role="dialog" aria-modal="true" aria-labelledby="np-exit-title" aria-describedby="np-exit-description">
                   <p className="np-eyebrow">QuizHub // Sala multiplayer</p>
                   <h4 id="np-exit-title">{modalSaida.tipo === 'bloqueio' ? 'RODADA EM ANDAMENTO' : 'SAIR DA SALA?'}</h4>
                   <p id="np-exit-description">
@@ -852,7 +842,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
                         {carregando ? 'Saindo da sala...' : modalSaida.destino === 'home' ? 'SAIR E VOLTAR AO INÍCIO' : 'SAIR DA SALA'}
                       </button>
                     )}
-                    <button ref={botaoCancelarSaidaRef} className="button-secondary" type="button" disabled={carregando} onClick={() => setModalSaida(null)}>
+                    <button ref={botaoCancelarSaidaRef} className="button-secondary" type="button" disabled={carregando} onClick={fecharSaida}>
                       {modalSaida.tipo === 'bloqueio' ? 'CONTINUAR NA PARTIDA' : 'CANCELAR'}
                     </button>
                   </div>

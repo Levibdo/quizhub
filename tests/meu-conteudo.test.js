@@ -181,6 +181,57 @@ test('convidado não recebe entrada para Meu Conteúdo', async (t) => {
   assert.ok(ui.button('Entrar'))
 })
 
+test('formulário sujo exige confirmação ao trocar aba e pela marca', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica] })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Nova categoria').props.onClick({ currentTarget: { focus() {} } }))
+  await act(async () => ui.field('content-category-name').props.onChange({ target: { value: 'Rascunho' } }))
+
+  await act(async () => ui.button('Perguntas').props.onClick({ currentTarget: { focus() {} } }))
+  assert.match(ui.texto(), /Descartar alterações/)
+  assert.ok(ui.renderer.root.findByProps({ 'aria-label': 'Nova categoria' }))
+  await act(async () => ui.button('Continuar editando').props.onClick())
+  assert.equal(ui.field('content-category-name').props.value, 'Rascunho')
+
+  const marca = ui.renderer.root.findByProps({ className: 'site-brand' })
+  await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
+  assert.match(ui.texto(), /Descartar alterações/)
+  await act(async () => ui.button('Descartar alterações').props.onClick())
+  assert.ok(ui.button('Jogar'))
+})
+
+test('formulário limpo permite trocar de aba sem confirmação', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica] })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Nova categoria').props.onClick({ currentTarget: { focus() {} } }))
+  await act(async () => ui.field('content-category-name').props.onChange({ target: { value: 'Alteração revertida' } }))
+  await act(async () => ui.field('content-category-name').props.onChange({ target: { value: '' } }))
+  await act(async () => ui.button('Perguntas').props.onClick({ currentTarget: { focus() {} } }))
+  assert.doesNotMatch(ui.texto(), /Descartar alterações/)
+  assert.match(ui.texto(), /Perguntas próprias/)
+})
+
+test('pergunta alterada protege troca de modo e confirmação descarta o rascunho', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica], perguntas: [] })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Perguntas').props.onClick({ currentTarget: { focus() {} } }))
+  await ui.esperar()
+  await act(async () => ui.button('Nova pergunta').props.onClick({ currentTarget: { focus() {} } }))
+  await act(async () => ui.field('question-statement').props.onChange({ target: { value: 'Rascunho da pergunta' } }))
+  await act(async () => ui.button('Nem a Pato').props.onClick({ currentTarget: { focus() {} } }))
+  assert.match(ui.texto(), /Descartar alterações/)
+  await act(async () => ui.button('Continuar editando').props.onClick())
+  assert.equal(ui.field('question-statement').props.value, 'Rascunho da pergunta')
+  await act(async () => ui.button('Nem a Pato').props.onClick({ currentTarget: { focus() {} } }))
+  await act(async () => ui.button('Descartar alterações').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Nem a Pato/)
+  assert.doesNotMatch(ui.texto(), /Rascunho da pergunta/)
+})
+
 test('cadastro valida localmente, preserva formulário no conflito e bloqueia duplo envio', async (t) => {
   let resolver
   let posts = 0

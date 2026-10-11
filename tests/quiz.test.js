@@ -8,7 +8,7 @@ import { create } from 'react-test-renderer'
 
 const require = createRequire(import.meta.url)
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
-globalThis.window = { location: { protocol: 'http:', hostname: 'localhost' } }
+globalThis.window = { location: { protocol: 'http:', hostname: 'localhost', pathname: '/' }, history: { pushState() {} } }
 
 // Compila o App real para os testes Node existentes, sem servidor ou navegador.
 const bundle = await rolldown({
@@ -147,6 +147,10 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
       assert.equal(ranking.length, 1)
       assert.equal(ranking[0].pontuacao, 1234)
       assert.equal(chamadas.filter((c) => c.url.endsWith('/proxima')).length, 0)
+      const marca = renderer.root.findByProps({ className: 'site-brand' })
+      await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
+      assert.ok(botao('Jogar'))
+      assert.ok(!botao('Continuar jogando'))
     } else {
       await act(async () => { const click = botao('Próxima pergunta →').props.onClick; click(); click() })
       assert.equal(botao('Preparando próxima...').props.disabled, true)
@@ -359,4 +363,54 @@ test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) =
   assert.ok(botao('Jogar novamente →'))
   await act(async () => botao('Geral').props.onClick())
   assert.ok(texto(renderer.root).includes('Ainda não existem resultados em Geral.'))
+})
+
+test('marca protege partida clássica ativa e confirmação abandona o progresso', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const windowOriginal = globalThis.window
+  const storageOriginal = globalThis.localStorage
+  globalThis.window = { location: { protocol: 'http:', hostname: 'localhost', pathname: '/' }, history: { pushState() {} }, addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout }
+  globalThis.localStorage = { getItem: () => null, setItem() {} }
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const partida = { partida_id: 'ativa', jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0, pergunta_atual: { id: 1, pergunta: 'Pergunta em curso?', alternativas: ['A', 'B', 'C', 'D'] } }
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/auth/me')) return Response.json({ nome: 'Levi' })
+    if (url.endsWith('/categorias/jogaveis')) return Response.json([{ id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' }])
+    return Response.json(partida)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.window = windowOriginal
+    globalThis.localStorage = storageOriginal
+    t.mock.timers.reset()
+  })
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
+  await act(async () => botao('Jogar').props.onClick())
+  await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
+  const marca = renderer.root.findByProps({ className: 'site-brand' })
+  const tempo = () => renderer.root.findByProps({ 'aria-label': 'Tempo restante' }).props['aria-valuenow']
+  await act(async () => t.mock.timers.tick(1000))
+  assert.equal(tempo(), 14)
+  await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
+  assert.ok(botao('Continuar jogando'))
+  assert.match(texto(renderer.root), /Pergunta em curso/)
+  await act(async () => t.mock.timers.tick(5000))
+  assert.equal(tempo(), 14)
+  await act(async () => botao('Continuar jogando').props.onClick())
+  assert.match(texto(renderer.root), /Pergunta em curso/)
+  await act(async () => t.mock.timers.tick(1000))
+  assert.equal(tempo(), 13)
+  await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
+  await act(async () => botao('Continuar jogando').props.onClick())
+  for (let segundo = 0; segundo < 12; segundo += 1) await act(async () => t.mock.timers.tick(1000))
+  assert.equal(tempo(), 1)
+  await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
+  await act(async () => t.mock.timers.tick(2000))
+  assert.equal(tempo(), 1)
+  await act(async () => botao('Abandonar partida').props.onClick())
+  assert.ok(botao('Jogar'))
+  assert.doesNotMatch(texto(renderer.root), /Pergunta em curso/)
 })

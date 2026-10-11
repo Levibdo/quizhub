@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { confirmarImportacaoMeuConteudo, validarImportacaoMeuConteudo } from '../../services/api'
+import useModalAcessivel from '../../hooks/useModalAcessivel'
 
 const FORMATOS = ['xlsx', 'csv', 'json']
 const MAX_ARQUIVO = 5 * 1024 * 1024
@@ -14,15 +15,10 @@ function tamanhoLegivel(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MiB`
 }
 
-function ModalConfirmacao({ quantidade, enviando, aoConfirmar, aoCancelar }) {
+function ModalConfirmacao({ quantidade, enviando, aoConfirmar, aoCancelar, retornoFocoRef }) {
   const cancelarRef = useRef(null)
-  useEffect(() => {
-    cancelarRef.current?.focus()
-    const fechar = (evento) => { if (evento.key === 'Escape' && !enviando) aoCancelar() }
-    window.addEventListener?.('keydown', fechar)
-    return () => window.removeEventListener?.('keydown', fechar)
-  }, [aoCancelar, enviando])
-  return <div className="content-dialog-backdrop" role="presentation"><section className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="import-confirm-title"><span className="content-eyebrow">Confirmação</span><h3 id="import-confirm-title">Importar {quantidade} perguntas?</h3><p>A importação será integral. Nenhum registro será criado se o servidor detectar conflito.</p><div className="content-dialog__actions"><button disabled={enviando} onClick={aoConfirmar}>{enviando ? 'Importando...' : 'Confirmar importação'}</button><button ref={cancelarRef} className="button-secondary" disabled={enviando} onClick={aoCancelar}>Cancelar</button></div></section></div>
+  const { modalRef, aoPressionarTecla } = useModalAcessivel({ bloqueado: enviando, aoFechar: aoCancelar, focoInicialRef: cancelarRef, retornoFocoRef })
+  return <div className="content-dialog-backdrop" role="presentation"><section ref={modalRef} onKeyDown={aoPressionarTecla} tabIndex={-1} className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="import-confirm-title"><span className="content-eyebrow">Confirmação</span><h3 id="import-confirm-title">Importar {quantidade} perguntas?</h3><p>A importação será integral. Nenhum registro será criado se o servidor detectar conflito.</p><div className="content-dialog__actions"><button disabled={enviando} onClick={aoConfirmar}>{enviando ? 'Importando...' : 'Confirmar importação'}</button><button ref={cancelarRef} className="button-secondary" disabled={enviando} onClick={aoCancelar}>Cancelar</button></div></section></div>
 }
 
 function Orientacoes({ modo }) {
@@ -53,8 +49,6 @@ export default function PainelImportacao({ modo, aoConcluir, aoExpirarSessao, ao
 
   const fecharModal = useCallback(() => {
     setModal(false)
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => retornoFocoRef.current?.focus())
-    else retornoFocoRef.current?.focus?.()
   }, [])
 
   const invalidarPrevia = useCallback(() => {
@@ -138,6 +132,6 @@ export default function PainelImportacao({ modo, aoConcluir, aoExpirarSessao, ao
     {erroLocal && <p className="mensagem-erro" role="alert">{erroLocal}</p>}{erro && <p className="mensagem-erro" role="alert">{erro}</p>}{sucesso && <p className="content-message" role="status">{sucesso}</p>}
     <button type="button" disabled={!arquivo || Boolean(erroLocal) || processando || confirmando} onClick={validar}>{processando ? 'Validando...' : 'Validar arquivo'}</button>
     {previa && <section className="import-result" aria-labelledby="import-preview-title"><h3 id="import-preview-title">Resultado da validação</h3><dl className="import-summary"><div><dt>Recebidos</dt><dd>{previa.quantidade_recebida}</dd></div><div><dt>Válidos</dt><dd>{previa.quantidade_valida}</dd></div><div><dt>Inválidos</dt><dd>{previa.quantidade_invalida}</dd></div><div><dt>Quota atual</dt><dd>{previa.quota.atual}</dd></div><div><dt>Após confirmar</dt><dd>{previa.quota.apos_confirmacao}</dd></div><div><dt>Limite</dt><dd>{previa.quota.limite}</dd></div></dl>{previa.erros.length > 0 && <div className="import-errors" role="alert"><h4>Erros encontrados</h4><ul>{previa.erros.map((item, indice) => <li key={`${item.referencia?.tipo}-${item.referencia?.valor}-${item.campo}-${indice}`}><strong>{item.referencia ? `${item.referencia.tipo} ${item.referencia.valor}` : 'Arquivo'}</strong>{item.campo ? ` · ${item.campo}` : ''}: {item.mensagem}</li>)}</ul></div>}{previa.preview.length > 0 && <><h4>Prévia dos registros</h4><ol className="import-preview">{previa.preview.map((item, indice) => <PreviaRegistro key={`${item.categoria_id}-${item.enunciado}-${indice}`} registro={item} modo={modo} indice={indice} />)}</ol></>}{expirada && <p className="mensagem-erro" role="alert">A prévia expirou. Valide o arquivo novamente.</p>}<button type="button" disabled={!podeConfirmar} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setModal(true) }}>Confirmar importação</button>{!previa.pode_confirmar && <p className="content-state">Corrija todos os registros e valide novamente. A importação parcial não está disponível.</p>}</section>}
-    {modal && <ModalConfirmacao quantidade={previa.quantidade_valida} enviando={confirmando} aoConfirmar={confirmar} aoCancelar={fecharModal} />}
+    {modal && <ModalConfirmacao quantidade={previa.quantidade_valida} enviando={confirmando} aoConfirmar={confirmar} aoCancelar={fecharModal} retornoFocoRef={retornoFocoRef} />}
   </section>
 }

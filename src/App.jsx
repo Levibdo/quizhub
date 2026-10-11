@@ -12,6 +12,7 @@ import TelaCadastro from './components/TelaCadastro'
 import TelaNemAPato from './components/TelaNemAPato'
 import TelaMeuConteudo from './components/TelaMeuConteudo'
 import AppShell from './components/layout/AppShell'
+import useModalAcessivel from './hooks/useModalAcessivel'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
 import { carregarRanking, salvarResultado } from './utils/ranking'
 
@@ -49,6 +50,12 @@ function App() {
   const authRef = useRef(false)
   const versaoSessao = useRef(0)
   const acaoMarcaNemPatoRef = useRef(null)
+  const acaoMarcaMeuConteudoRef = useRef(null)
+  const retornoSaidaQuizRef = useRef(null)
+  const cancelarSaidaQuizRef = useRef(null)
+  const [confirmarSaidaQuiz, setConfirmarSaidaQuiz] = useState(false)
+  const fecharSaidaQuiz = useCallback(() => setConfirmarSaidaQuiz(false), [])
+  const { modalRef: modalSaidaQuizRef, aoPressionarTecla: conterFocoSaidaQuiz } = useModalAcessivel({ aberto: confirmarSaidaQuiz, aoFechar: fecharSaidaQuiz, focoInicialRef: cancelarSaidaQuizRef, retornoFocoRef: retornoSaidaQuizRef })
 
   useEffect(() => {
     const versao = ++versaoSessao.current
@@ -86,10 +93,23 @@ function App() {
     acaoMarcaNemPatoRef.current = acao
   }, [])
 
+  const registrarAcaoMarcaMeuConteudo = useCallback((acao) => {
+    acaoMarcaMeuConteudoRef.current = acao
+  }, [])
+
   function clicarMarca(event) {
     event.preventDefault()
     if (tela === 'nem-pato' && acaoMarcaNemPatoRef.current) {
-      acaoMarcaNemPatoRef.current()
+      acaoMarcaNemPatoRef.current(event)
+      return
+    }
+    if (tela === 'meu-conteudo' && acaoMarcaMeuConteudoRef.current) {
+      acaoMarcaMeuConteudoRef.current(event)
+      return
+    }
+    if (tela === 'jogando' && partida) {
+      retornoSaidaQuizRef.current = event.currentTarget
+      setConfirmarSaidaQuiz(true)
       return
     }
     window.history.pushState({}, '', '/')
@@ -272,6 +292,7 @@ function App() {
   useEffect(() => {
     if (
       tela !== 'jogando' ||
+      confirmarSaidaQuiz ||
       resultadoResposta ||
       requisicaoEmAndamento ||
       timeoutEnviadoRef.current
@@ -286,7 +307,15 @@ function App() {
       setTempoRestante((valorAtual) => Math.max(0, valorAtual - 1))
     }, 1000)
     return () => clearTimeout(timer)
-  }, [tempoRestante, tela, resultadoResposta, requisicaoEmAndamento, responder])
+  }, [tempoRestante, tela, resultadoResposta, requisicaoEmAndamento, responder, confirmarSaidaQuiz])
+
+  function abandonarQuizClassico() {
+    setConfirmarSaidaQuiz(false)
+    setPartida(null)
+    setResultadoResposta(null)
+    setRespostaSelecionada(null)
+    navegar('inicio')
+  }
 
   async function proximaPergunta() {
     if (!resultadoResposta || avancandoRef.current) return
@@ -346,7 +375,7 @@ function App() {
         />
       )}
       {tela === 'meu-conteudo' && usuario && (
-        <TelaMeuConteudo voltar={() => navegar('inicio')} aoExpirarSessao={expirarSessaoMeuConteudo} />
+        <TelaMeuConteudo voltar={() => navegar('inicio')} aoExpirarSessao={expirarSessaoMeuConteudo} registrarAcaoMarca={registrarAcaoMarcaMeuConteudo} />
       )}
       {tela === 'nem-pato' && (
         <TelaNemAPato
@@ -424,6 +453,19 @@ function App() {
           voltarInicio={() => setTela('inicio')}
           trocarJogador={jogarAtual}
         />
+      )}
+      {confirmarSaidaQuiz && (
+        <div className="content-dialog-backdrop" role="presentation">
+          <section ref={modalSaidaQuizRef} onKeyDown={conterFocoSaidaQuiz} tabIndex={-1} className="content-dialog" role="dialog" aria-modal="true" aria-labelledby="classic-exit-title" aria-describedby="classic-exit-description">
+            <span className="content-eyebrow">Quiz Clássico</span>
+            <h3 id="classic-exit-title">Abandonar a partida?</h3>
+            <p id="classic-exit-description">Seu progresso nesta partida será perdido.</p>
+            <div className="content-dialog__actions">
+              <button className="content-danger" type="button" onClick={abandonarQuizClassico}>Abandonar partida</button>
+              <button ref={cancelarSaidaQuizRef} className="button-secondary" type="button" onClick={fecharSaidaQuiz}>Continuar jogando</button>
+            </div>
+          </section>
+        </div>
       )}
     </AppShell>
   )
