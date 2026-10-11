@@ -47,8 +47,9 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
   const storageOriginal = globalThis.localStorage
   const documentOriginal = globalThis.document
   const focos = []
+  const atributosTitulo = []
   globalThis.window = ambienteHistorico(caminhoInicial)
-  globalThis.document = { querySelector: () => ({ setAttribute() {}, focus() { focos.push(globalThis.window.location.pathname) } }), getElementById: () => null }
+  globalThis.document = { querySelector: () => ({ setAttribute(nome, valor) { atributosTitulo.push([nome, valor]) }, focus() { focos.push(globalThis.window.location.pathname) } }), getElementById: () => null }
   globalThis.localStorage = { getItem: () => null, setItem() {} }
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return autenticado
@@ -65,7 +66,7 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
   await act(async () => { renderer = create(createElement(App)) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   t.after(async () => { await act(async () => renderer.unmount()); globalThis.window = windowOriginal; globalThis.fetch = fetchOriginal; globalThis.localStorage = storageOriginal; globalThis.document = documentOriginal })
-  return { renderer, focos, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
+  return { renderer, focos, atributosTitulo, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
 }
 
 test('Voltar e Avançar reproduzem login e cadastro e focam o título', async (t) => {
@@ -79,6 +80,7 @@ test('Voltar e Avançar reproduzem login e cadastro e focam o título', async (t
   assert.match(ui.texto(), /Criar sua conta/)
   assert.ok(ui.focos.includes('/login'))
   assert.ok(ui.focos.includes('/cadastro'))
+  assert.ok(ui.atributosTitulo.some(([nome, valor]) => nome === 'tabindex' && valor === '-1'))
 })
 
 test('histórico respeita cancelamento e confirmação de formulário sujo', async (t) => {

@@ -122,6 +122,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
   const botaoCancelarDesafioRef = useRef(null)
   const botaoCancelarSaidaRef = useRef(null)
   const retornoFocoModalRef = useRef(null)
+  const codigoSalaRef = useRef(null)
   const fecharDesafio = useCallback(() => setConfirmacaoDesafio(false), [])
   const fecharSaida = useCallback(() => setModalSaida(null), [])
   const { modalRef: modalDesafioRef, aoPressionarTecla: conterFocoDesafio } = useModalAcessivel({ aberto: confirmacaoDesafio, bloqueado: carregando, aoFechar: fecharDesafio, focoInicialRef: botaoCancelarDesafioRef, retornoFocoRef: retornoFocoModalRef })
@@ -481,14 +482,24 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     }
   }
 
-  function copiarCodigo() {
-    const escrita = navigator.clipboard?.writeText(rota.codigo)
-    if (!escrita) {
-      setSucesso('Código da sala: ' + rota.codigo)
-      return
+  function selecionarCodigoManualmente() {
+    codigoSalaRef.current?.focus()
+    codigoSalaRef.current?.select()
+    setSucesso('Não foi possível copiar automaticamente. O código foi selecionado; use o comando de copiar do seu dispositivo.')
+  }
+
+  async function copiarCodigo() {
+    setSucesso('')
+    try {
+      const copiar = globalThis.navigator?.clipboard?.writeText
+      if (typeof copiar !== 'function') throw new Error('Clipboard indisponível')
+      const escrita = copiar.call(globalThis.navigator.clipboard, rota.codigo)
+      if (!escrita || typeof escrita.then !== 'function') throw new Error('Cópia não confirmada')
+      await escrita
+      setSucesso('Código copiado.')
+    } catch {
+      selecionarCodigoManualmente()
     }
-    escrita.then(() => setSucesso('Código copiado.'))
-      .catch(() => setSucesso('Código da sala: ' + rota.codigo))
   }
 
   if (rota.tipo === 'lobby') {
@@ -792,9 +803,9 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
               </section>
             )}
             {sala.status === 'AGUARDANDO' && <section className="np-room-code" aria-label="Código da sala">
-              <span>Código da sala</span>
-              <strong>{sala.codigo}</strong>
-              <p>Compartilhe este código com os outros jogadores.</p>
+              <label htmlFor="np-room-code-value">Código da sala</label>
+              <input ref={codigoSalaRef} id="np-room-code-value" type="text" readOnly value={sala.codigo} aria-describedby="np-room-code-help" onFocus={(evento) => evento.currentTarget.select()} />
+              <p id="np-room-code-help">Compartilhe este código com os outros jogadores. Você também pode selecionar o campo e copiar manualmente.</p>
               <button className="button-secondary" type="button" onClick={copiarCodigo}>Copiar código</button>
             </section>}
             {sala.status === 'AGUARDANDO' && <p className="np-room-count">{sala.participantes_ativos} / {sala.limite_jogadores} jogadores</p>}

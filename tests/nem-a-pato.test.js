@@ -185,7 +185,7 @@ test('criar sala persiste token no namespace e entra no lobby sem mostrar token'
     ui.findInput('Seu nome').props.onChange({ target: { value: '  Levi  ' } })
   })
   await act(async () => ui.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }))
-  assert.ok(ui.view().includes('K7M4QX'))
+  assert.equal(ui.renderer.root.findByProps({ id: 'np-room-code-value' }).props.value, 'K7M4QX')
   assert.ok(ui.view().includes('Levi'))
   assert.ok(ui.view().includes('Anfitrião'))
   assert.ok(ui.view().includes('Você'))
@@ -297,6 +297,48 @@ test('deep link recupera credencial após reload e polling atualiza jogadores', 
   assert.ok(ui.view().includes('Luana'))
   assert.equal(calls.filter((call) => call.url.endsWith('/eu')).length, 2)
   assert.equal(calls.some((call) => call.url.endsWith('/abandonar')), false)
+})
+
+test('código da sala copia somente após confirmação e oferece seleção manual sem Clipboard API', async (t) => {
+  const descriptorNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  let copiado = ''
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { clipboard: { writeText: async (valor) => { copiado = valor } } },
+  })
+  t.after(() => {
+    if (descriptorNavigator) Object.defineProperty(globalThis, 'navigator', descriptorNavigator)
+    else delete globalThis.navigator
+  })
+  const token = 'token-copia'
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/eu')) return response({
+      sala: sala('K7M4QX', [participante(1, 'Levi', true)]),
+      participante: participante(1, 'Levi', true),
+    })
+    throw new Error(`unexpected request ${url}`)
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  const campoCodigo = ui.renderer.root.findByProps({ id: 'np-room-code-value' })
+  assert.equal(campoCodigo.props.value, 'K7M4QX')
+  assert.equal(campoCodigo.props.readOnly, true)
+  assert.equal(campoCodigo.props['aria-describedby'], 'np-room-code-help')
+  await act(async () => ui.button('Copiar código').props.onClick())
+  assert.equal(copiado, 'K7M4QX')
+  assert.match(ui.view(), /Código copiado/)
+
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} })
+  await act(async () => ui.button('Copiar código').props.onClick())
+  assert.doesNotMatch(ui.view(), /Código copiado/)
+  assert.match(ui.view(), /use o comando de copiar do seu dispositivo/)
+  let selecionado = false
+  campoCodigo.props.onFocus({ currentTarget: { select() { selecionado = true } } })
+  assert.equal(selecionado, true)
 })
 
 test('credencial inválida é removida e oferece retorno ao fluxo do modo', async (t) => {

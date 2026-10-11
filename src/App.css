@@ -95,6 +95,10 @@ h1 {
   letter-spacing: -0.025em;
 }
 
+.screen-frame h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
 h2 {
   margin: var(--space-8) 0;
   font-size: clamp(1.5rem, 3.5vw, 2.15rem);
@@ -1360,7 +1364,7 @@ select:disabled {
   text-align: center;
 }
 
-.np-room-code > span {
+.np-room-code > label {
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -1368,11 +1372,17 @@ select:disabled {
   text-transform: uppercase;
 }
 
-.np-room-code strong {
+.np-room-code input {
+  width: min(100%, 18rem);
+  padding: 0;
+  border: 0;
   color: var(--color-focus);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: clamp(2.5rem, 13vw, 4rem);
+  font-weight: 700;
   letter-spacing: 0.16em;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
