@@ -27,6 +27,7 @@ function TelaInicial({
 
       <div className="home-modes">
         <ModeCard
+          indice={1}
           eyebrow="Modo disponível"
           title="Quiz Clássico"
           description="Conhecimento, precisão e velocidade em uma sequência de dez desafios."
@@ -40,10 +41,11 @@ function TelaInicial({
           disabled={bloqueado}
         />
         <ModeCard
+          indice={2}
           eyebrow="Lobby multiplayer"
           title="Nem a Pato!"
           description="Crie uma sala ou entre com o código para reunir seus amigos."
-          metadata={['3 a 6 jogadores', 'Entre pelo notebook ou celular', 'Aguardando modo de partida']}
+          metadata={['3 a 6 jogadores', 'Entre pelo notebook ou celular', 'Sala multiplayer em tempo real']}
           actionLabel="Abrir Nem a Pato"
           onAction={nemAPato}
           disabled={bloqueado}
@@ -66,9 +68,7 @@ function TelaInicial({
         <button className="button-ghost" disabled={bloqueado} onClick={verRanking}>Ver ranking</button>
       </nav>
 
-      <p className="system-status">
-        <span aria-hidden="true" /> QuizHub // Sistema online
-      </p>
+      <p className="system-status">QuizHub // Pronto para jogar</p>
     </section>
   )
 }

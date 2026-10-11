@@ -7,6 +7,7 @@ function TelaCategorias({
   carregandoCategorias,
   erroCategorias,
   tentarNovamente,
+  voltarInicio,
 }) {
   const disponivel = !carregandoCategorias && !erroCategorias
 
@@ -62,6 +63,7 @@ function TelaCategorias({
           Iniciando partida...
         </p>
       )}
+      <button className="button-ghost categories-back" type="button" disabled={carregando} onClick={voltarInicio}>Voltar ao início</button>
     </section>
   )
 }

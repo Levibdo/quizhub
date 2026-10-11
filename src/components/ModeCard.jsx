@@ -6,12 +6,13 @@ function ModeCard({
   actionLabel,
   onAction,
   disabled = false,
+  indice,
 }) {
   return (
     <article className="mode-card">
       <div className="mode-card__header">
         <span className="mode-card__eyebrow">{eyebrow}</span>
-        <span className="mode-card__index" aria-hidden="true">01</span>
+        <span className="mode-card__index" aria-hidden="true">{String(indice).padStart(2, '0')}</span>
       </div>
 
       <h2>{title}</h2>

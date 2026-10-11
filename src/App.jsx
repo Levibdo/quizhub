@@ -18,11 +18,20 @@ import { carregarRanking, salvarResultado } from './utils/ranking'
 
 const TEMPO_POR_PERGUNTA = 15
 const TOTAL_PERGUNTAS = 10
+const ROTAS_TELA = {
+  inicio: '/', login: '/login', cadastro: '/cadastro', jogador: '/jogador',
+  categorias: '/categorias', ranking: '/ranking', 'meu-conteudo': '/meu-conteudo',
+  jogando: '/quiz', resultado: '/resultado',
+}
+
+function telaDaLocalizacao() {
+  if (window.location.pathname?.startsWith('/nem-a-pato')) return 'nem-pato'
+  const encontrada = Object.entries(ROTAS_TELA).find(([, caminho]) => caminho === window.location.pathname)?.[0] ?? 'inicio'
+  return ['categorias', 'jogando', 'resultado'].includes(encontrada) ? 'inicio' : encontrada
+}
 
 function App() {
-  const [tela, setTela] = useState(() => (
-    window.location.pathname?.startsWith('/nem-a-pato') ? 'nem-pato' : 'inicio'
-  ))
+  const [tela, setTela] = useState(telaDaLocalizacao)
   const [categoriaSelecionada, setCategoriaSelecionada] = useState(null)
   const [categorias, setCategorias] = useState([])
   const [carregandoCategorias, setCarregandoCategorias] = useState(false)
@@ -49,13 +58,34 @@ function App() {
   const [erroAuth, setErroAuth] = useState('')
   const authRef = useRef(false)
   const versaoSessao = useRef(0)
+  const conteudoPrivadoInicialRef = useRef(tela === 'meu-conteudo')
   const acaoMarcaNemPatoRef = useRef(null)
   const acaoMarcaMeuConteudoRef = useRef(null)
+  const ignorarProximoPopRef = useRef(false)
+  const posicaoHistoricoRef = useRef(Number.isInteger(window.history.state?.quizhubPosicao) ? window.history.state.quizhubPosicao : 0)
+  const versaoNavegacaoRef = useRef(0)
   const retornoSaidaQuizRef = useRef(null)
   const cancelarSaidaQuizRef = useRef(null)
-  const [confirmarSaidaQuiz, setConfirmarSaidaQuiz] = useState(false)
-  const fecharSaidaQuiz = useCallback(() => setConfirmarSaidaQuiz(false), [])
-  const { modalRef: modalSaidaQuizRef, aoPressionarTecla: conterFocoSaidaQuiz } = useModalAcessivel({ aberto: confirmarSaidaQuiz, aoFechar: fecharSaidaQuiz, focoInicialRef: cancelarSaidaQuizRef, retornoFocoRef: retornoSaidaQuizRef })
+  const [confirmarSaidaQuiz, setConfirmarSaidaQuiz] = useState(null)
+  const fecharSaidaQuiz = useCallback(() => {
+    setConfirmarSaidaQuiz((atual) => { atual?.aoCancelar?.(); return null })
+  }, [])
+  const { modalRef: modalSaidaQuizRef, aoPressionarTecla: conterFocoSaidaQuiz } = useModalAcessivel({ aberto: Boolean(confirmarSaidaQuiz), aoFechar: fecharSaidaQuiz, focoInicialRef: cancelarSaidaQuizRef, retornoFocoRef: retornoSaidaQuizRef })
+
+  const navegar = useCallback((destino, { substituir = false, registrar = true } = {}) => {
+    versaoNavegacaoRef.current += 1
+    setErro('')
+    setErroAuth('')
+    if (registrar && destino !== 'nem-pato') {
+      const caminho = ROTAS_TELA[destino] ?? '/'
+      if (window.location.pathname !== caminho) {
+        const posicao = substituir ? posicaoHistoricoRef.current : posicaoHistoricoRef.current + 1
+        window.history[substituir ? 'replaceState' : 'pushState']({ quizhubTela: destino, quizhubPosicao: posicao }, '', caminho)
+        posicaoHistoricoRef.current = posicao
+      }
+    }
+    setTela(destino)
+  }, [])
 
   useEffect(() => {
     const versao = ++versaoSessao.current
@@ -67,25 +97,39 @@ function App() {
     }).catch((error) => {
       if (!ativo || versao !== versaoSessao.current) return
       setStatusSessao(error.status === 401 ? 'anonimo' : 'erro')
+      if (error.status === 401 && conteudoPrivadoInicialRef.current) {
+        conteudoPrivadoInicialRef.current = false
+        navegar('login', { substituir: true })
+        setErroAuth('Entre para acessar seu conteúdo.')
+      }
     })
     return () => { ativo = false }
-  }, [tentativaSessao])
+  }, [navegar, tentativaSessao])
 
-  function navegar(destino) {
-    setErro('')
-    setErroAuth('')
-    setTela(destino)
-  }
+  useEffect(() => {
+    if (!window.history.state?.quizhubTela && tela !== 'nem-pato') {
+      window.history.replaceState?.({ quizhubTela: tela, quizhubPosicao: posicaoHistoricoRef.current }, '', ROTAS_TELA[tela] ?? '/')
+    }
+  }, [tela])
+
+  useEffect(() => {
+    if (tela === 'jogando' || tela === 'nem-pato') return
+    const titulo = globalThis.document?.querySelector?.('main h1')
+    if (!titulo) return
+    titulo.setAttribute?.('tabindex', '-1')
+    titulo.focus?.({ preventScroll: true })
+  }, [tela])
 
   function abrirNemAPato() {
     if (!window.location.pathname?.startsWith('/nem-a-pato')) {
-      window.history.pushState({}, '', '/nem-a-pato')
+      const posicao = posicaoHistoricoRef.current + 1
+      window.history.pushState({ quizhubTela: 'nem-pato', quizhubPosicao: posicao }, '', '/nem-a-pato')
+      posicaoHistoricoRef.current = posicao
     }
     navegar('nem-pato')
   }
 
   function voltarDaTelaNemAPato() {
-    window.history.pushState({}, '', '/')
     navegar('inicio')
   }
 
@@ -104,15 +148,14 @@ function App() {
       return
     }
     if (tela === 'meu-conteudo' && acaoMarcaMeuConteudoRef.current) {
-      acaoMarcaMeuConteudoRef.current(event)
+      acaoMarcaMeuConteudoRef.current(() => navegar('inicio'), event)
       return
     }
     if (tela === 'jogando' && partida) {
       retornoSaidaQuizRef.current = event.currentTarget
-      setConfirmarSaidaQuiz(true)
+      setConfirmarSaidaQuiz({ aoConfirmar: abandonarQuizClassico })
       return
     }
-    window.history.pushState({}, '', '/')
     navegar('inicio')
   }
 
@@ -136,16 +179,55 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    function aoVoltarAvancar(evento) {
+      if (ignorarProximoPopRef.current) { ignorarProximoPopRef.current = false; return }
+      if (window.location.pathname?.startsWith('/nem-a-pato')) {
+        if (Number.isInteger(evento.state?.quizhubPosicao)) posicaoHistoricoRef.current = evento.state.quizhubPosicao
+        setTela('nem-pato')
+        return
+      }
+      let destino = evento.state?.quizhubTela ?? telaDaLocalizacao()
+      const rotaSemEstado = (destino === 'jogando' && (!partida?.pergunta_atual || partida.status !== 'EM_ANDAMENTO'))
+        || (destino === 'resultado' && !partida)
+      if (rotaSemEstado) destino = 'inicio'
+      const conteudoPrivadoBloqueado = destino === 'meu-conteudo' && statusSessao === 'anonimo'
+      if (conteudoPrivadoBloqueado) destino = 'login'
+      const posicaoDestino = Number.isInteger(evento.state?.quizhubPosicao) ? evento.state.quizhubPosicao : null
+      const deslocamento = posicaoDestino === null ? null : posicaoDestino - posicaoHistoricoRef.current
+      const aplicar = () => {
+        if (posicaoDestino !== null) posicaoHistoricoRef.current = posicaoDestino
+        if (rotaSemEstado && window.location.pathname !== ROTAS_TELA.inicio) navegar(destino, { substituir: true })
+        else if (destino === 'login' && window.location.pathname !== ROTAS_TELA.login) navegar(destino, { substituir: true })
+        else navegar(destino, { registrar: false })
+        if (conteudoPrivadoBloqueado) setErroAuth('Entre para acessar seu conteúdo.')
+        if (destino === 'categorias') carregarCategorias()
+      }
+      const cancelar = () => {
+        ignorarProximoPopRef.current = true
+        if (deslocamento && window.history.go) window.history.go(-deslocamento)
+        else window.history.forward?.()
+      }
+      if (tela === 'jogando' && partida && destino !== 'jogando') {
+        setConfirmarSaidaQuiz({ aoConfirmar: () => { setPartida(null); setResultadoResposta(null); aplicar() }, aoCancelar: cancelar })
+      } else if (tela === 'meu-conteudo' && acaoMarcaMeuConteudoRef.current) {
+        acaoMarcaMeuConteudoRef.current(aplicar, null, cancelar)
+      } else aplicar()
+    }
+    window.addEventListener?.('popstate', aoVoltarAvancar)
+    return () => window.removeEventListener?.('popstate', aoVoltarAvancar)
+  }, [carregarCategorias, navegar, partida, statusSessao, tela])
+
   function abrirCategorias() {
     setErro('')
-    setTela('categorias')
+    navegar('categorias')
     carregarCategorias()
   }
 
   function abrirMeuConteudo() {
     if (!usuario) {
+      navegar('login')
       setErroAuth('Entre para acessar seu conteúdo.')
-      setTela('login')
       return
     }
     navegar('meu-conteudo')
@@ -155,9 +237,9 @@ function App() {
     ++versaoSessao.current
     setUsuario(null)
     setStatusSessao('anonimo')
+    navegar('login')
     setErroAuth('Sua sessão expirou. Entre novamente para acessar seu conteúdo.')
-    setTela('login')
-  }, [])
+  }, [navegar])
 
   async function autenticar(tipo, ...dados) {
     if (authRef.current) return
@@ -165,15 +247,18 @@ function App() {
     ++versaoSessao.current
     setAuthCarregando(true)
     setErroAuth('')
+    const versaoNavegacao = versaoNavegacaoRef.current
     try {
       const atual = await (tipo === 'login' ? login(...dados) : cadastrarUsuario(...dados))
       setUsuario(atual)
       setStatusSessao('autenticado')
       setJogador('')
-      abrirCategorias()
+      if (versaoNavegacao === versaoNavegacaoRef.current) abrirCategorias()
     } catch (error) {
-      setErroAuth(error.status === 409 ? 'Este e-mail já está cadastrado.'
-        : error.status === 401 ? 'E-mail ou senha inválidos.' : error.message)
+      if (versaoNavegacao === versaoNavegacaoRef.current) {
+        setErroAuth(error.status === 409 ? 'Este e-mail já está cadastrado.'
+          : error.status === 401 ? 'E-mail ou senha inválidos.' : error.message)
+      }
     } finally {
       authRef.current = false
       setAuthCarregando(false)
@@ -223,12 +308,12 @@ function App() {
       setRanking(carregarRanking())
       resultadoSalvoRef.current = true
     }
-    setTela('resultado')
-  }, [])
+    navegar('resultado')
+  }, [navegar])
 
   function abrirRanking() {
     setRanking(carregarRanking())
-    setTela('ranking')
+    navegar('ranking')
     if (categorias.length === 0 && !carregandoCategorias) carregarCategorias()
   }
 
@@ -238,8 +323,10 @@ function App() {
     enviandoRef.current = true
     setRequisicaoEmAndamento(true)
     setErro('')
+    const versaoNavegacao = versaoNavegacaoRef.current
     try {
       const novaPartida = await criarPartida(usuario ? undefined : jogador, categoria)
+      if (versaoNavegacao !== versaoNavegacaoRef.current) return
       setCategoriaSelecionada(novaPartida.categoria)
       setPartida(novaPartida)
       setPerguntaAtual(0)
@@ -249,7 +336,7 @@ function App() {
       timeoutEnviadoRef.current = false
       resultadoSalvoRef.current = false
       respostaConfirmadaRef.current = false
-      setTela('jogando')
+      navegar('jogando')
     } catch (error) {
       setErro(error.message)
       if (error.status === 401 || (usuario && error.status === 422 &&
@@ -257,7 +344,7 @@ function App() {
         setUsuario(null)
         setStatusSessao('anonimo')
         setErro('Sua sessão não está disponível. Entre novamente para iniciar a partida.')
-        setTela('login')
+        navegar('login')
       }
     } finally {
       enviandoRef.current = false
@@ -310,11 +397,17 @@ function App() {
   }, [tempoRestante, tela, resultadoResposta, requisicaoEmAndamento, responder, confirmarSaidaQuiz])
 
   function abandonarQuizClassico() {
-    setConfirmarSaidaQuiz(false)
+    setConfirmarSaidaQuiz(null)
     setPartida(null)
     setResultadoResposta(null)
     setRespostaSelecionada(null)
     navegar('inicio')
+  }
+
+  function confirmarAbandonoQuiz() {
+    const acao = confirmarSaidaQuiz?.aoConfirmar
+    setConfirmarSaidaQuiz(null)
+    acao?.()
   }
 
   async function proximaPergunta() {
@@ -407,6 +500,7 @@ function App() {
           carregandoCategorias={carregandoCategorias}
           erroCategorias={erroCategorias}
           tentarNovamente={carregarCategorias}
+          voltarInicio={() => navegar('inicio')}
         />
       )}
       {tela === 'jogando' && pergunta && (
@@ -440,7 +534,7 @@ function App() {
           ) === categoriaSelecionada)}
           iniciarQuiz={abrirCategorias}
           verRanking={abrirRanking}
-          voltarInicio={() => { setErro(''); setTela('inicio') }}
+          voltarInicio={() => navegar('inicio')}
         />
       )}
       {tela === 'ranking' && (
@@ -450,7 +544,7 @@ function App() {
           carregandoCategorias={carregandoCategorias}
           erroCategorias={erroCategorias}
           tentarNovamente={carregarCategorias}
-          voltarInicio={() => setTela('inicio')}
+          voltarInicio={() => navegar('inicio')}
           trocarJogador={jogarAtual}
         />
       )}
@@ -461,7 +555,7 @@ function App() {
             <h3 id="classic-exit-title">Abandonar a partida?</h3>
             <p id="classic-exit-description">Seu progresso nesta partida será perdido.</p>
             <div className="content-dialog__actions">
-              <button className="content-danger" type="button" onClick={abandonarQuizClassico}>Abandonar partida</button>
+              <button className="content-danger" type="button" onClick={confirmarAbandonoQuiz}>Abandonar partida</button>
               <button ref={cancelarSaidaQuizRef} className="button-secondary" type="button" onClick={fecharSaidaQuiz}>Continuar jogando</button>
             </div>
           </section>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { cloneElement, useCallback, useEffect, useRef, useState } from 'react'
 import {
   criarPerguntaMeuConteudo,
   editarPerguntaMeuConteudo,
@@ -27,7 +27,14 @@ function erroObrigatorio(campos) {
 }
 
 function Campo({ id, label, erro, children }) {
-  return <div className="question-field"><label htmlFor={id}>{label}</label>{children}{erro && <span role="alert">{erro}</span>}</div>
+  const erroId = `${id}-error`
+  return <div className="question-field"><label htmlFor={id}>{label}</label>{cloneElement(children, { 'aria-invalid': Boolean(erro), 'aria-describedby': erro ? erroId : children.props['aria-describedby'] })}{erro && <span id={erroId} role="alert">{erro}</span>}</div>
+}
+
+function focarPrimeiroErro(erros) {
+  const campo = Object.keys(erros)[0]
+  const ids = { categoria_id: 'question-category', enunciado: 'question-statement', alternativa_a: 'question-alternative-a', alternativa_b: 'question-alternative-b', alternativa_c: 'question-alternative-c', alternativa_d: 'question-alternative-d', alternativa_correta: 'question-correct', explicacao: 'question-explanation', resposta_numerica: 'question-number' }
+  globalThis.requestAnimationFrame?.(() => globalThis.document?.getElementById?.(ids[campo])?.focus?.())
 }
 
 function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancelar, aoAlterarSujo }) {
@@ -49,7 +56,7 @@ function FormularioClassico({ categorias, pergunta, enviando, aoSalvar, aoCancel
     const obrigatorios = erroObrigatorio(dados)
     if (!['A', 'B', 'C', 'D'].includes(dados.alternativa_correta)) obrigatorios.alternativa_correta = 'Selecione A, B, C ou D.'
     setErros(obrigatorios)
-    if (Object.keys(obrigatorios).length) return
+    if (Object.keys(obrigatorios).length) { focarPrimeiroErro(obrigatorios); return }
     const normalizados = Object.fromEntries(Object.entries(dados).map(([chave, valor]) => [chave, typeof valor === 'string' ? valor.trim() : valor]))
     aoSalvar(normalizados)
   }
@@ -87,7 +94,7 @@ function FormularioNemPato({ categorias, pergunta, enviando, aoSalvar, aoCancela
     const numero = normalizarInteiro(String(dados.resposta_numerica).trim())
     if (String(dados.resposta_numerica).trim() && numero === null) obrigatorios.resposta_numerica = `Informe um inteiro entre 0 e ${MAX_BIGINT}.`
     setErros(obrigatorios)
-    if (Object.keys(obrigatorios).length) return
+    if (Object.keys(obrigatorios).length) { focarPrimeiroErro(obrigatorios); return }
     aoSalvar({
       categoria_id: dados.categoria_id, enunciado: dados.enunciado.trim(), resposta_numerica: numero,
       unidade: dados.unidade.trim() || null, explicacao: dados.explicacao.trim(), fonte: dados.fonte.trim() || null,

@@ -131,7 +131,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     const caminho = destino.tipo === 'lobby'
       ? `/nem-a-pato/sala/${encodeURIComponent(destino.codigo)}`
       : '/nem-a-pato'
-    window.history.pushState({}, '', caminho)
+    window.history.pushState({ ...window.history.state }, '', caminho)
     setRota(destino)
     setErro('')
     setSucesso('')
@@ -612,7 +612,7 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
                   </button>
                 )}
                 {partida.status === 'FINALIZADA' && !eu?.eh_anfitriao && (
-                  <p role="status">Esperando o host decidir se haverá revanche...</p>
+                  <p role="status">Esperando o anfitrião decidir se haverá revanche...</p>
                 )}
                 <button className="np-start-button" type="button" onClick={voltarAoInicio}>
                   VOLTAR AO INÍCIO

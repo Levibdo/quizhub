@@ -129,17 +129,17 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
   const [descarte, setDescarte] = useState(null)
 
   const alterarFormularioSujo = useCallback((sujo) => setFormularioSujo(sujo), [])
-  const fecharDescarte = useCallback(() => setDescarte(null), [])
-  const executarOuConfirmar = useCallback((acao, evento) => {
+  const fecharDescarte = useCallback(() => setDescarte((atual) => { atual?.aoCancelar?.(); return null }), [])
+  const executarOuConfirmar = useCallback((acao, evento, aoCancelar) => {
     if (enviandoRef.current) return
     if (!formularioSujo) { acao(); return }
     retornoDescarteRef.current = evento?.currentTarget ?? null
-    setDescarte({ acao })
+    setDescarte({ acao, aoCancelar })
   }, [formularioSujo])
 
   useEffect(() => {
     if (!registrarAcaoMarca) return undefined
-    registrarAcaoMarca((evento) => executarOuConfirmar(voltar, evento))
+    registrarAcaoMarca((acao = voltar, evento, aoCancelar) => executarOuConfirmar(acao, evento, aoCancelar))
     return () => registrarAcaoMarca(null)
   }, [executarOuConfirmar, registrarAcaoMarca, voltar])
 

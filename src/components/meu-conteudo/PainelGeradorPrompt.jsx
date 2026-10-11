@@ -42,6 +42,9 @@ export default function PainelGeradorPrompt({ modo, categorias, uso }) {
     setEstadoCopia('')
     if (!validacao.valido) {
       setPrompt('')
+      const primeiro = ['categoria', 'quantidade', 'dificuldade', 'tema'].find((campo) => validacao.erros[campo])
+      const ids = { categoria: 'prompt-category', quantidade: 'prompt-quantity', dificuldade: 'prompt-difficulty', tema: 'prompt-theme' }
+      globalThis.requestAnimationFrame?.(() => globalThis.document?.getElementById?.(ids[primeiro])?.focus?.())
       return
     }
     setPrompt(construirPrompt(atual))
@@ -63,25 +66,27 @@ export default function PainelGeradorPrompt({ modo, categorias, uso }) {
     <p className="prompt-panel__intro">Monte instruções para gerar um arquivo JSON compatível com a importação privada. O QuizHub não envia dados para serviços de IA.</p>
     <form className="content-form prompt-form" aria-label="Configurar prompt" onSubmit={gerar} noValidate>
       <label htmlFor="prompt-category">Categoria ativa</label>
-      <select id="prompt-category" value={categoriaId} aria-invalid={Boolean(erros.categoria)} onChange={(event) => invalidar(() => setCategoriaId(event.target.value))}>
+      <select id="prompt-category" value={categoriaId} aria-invalid={Boolean(erros.categoria)} aria-describedby={erros.categoria ? 'prompt-category-error' : undefined} onChange={(event) => invalidar(() => setCategoriaId(event.target.value))}>
         <option value="">Selecione uma categoria</option>
         {categoriasAtivas.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
       </select>
-      {erros.categoria && <p className="prompt-field-error" role="alert">{erros.categoria}</p>}
+      {erros.categoria && <p id="prompt-category-error" className="prompt-field-error" role="alert">{erros.categoria}</p>}
       {categoriasAtivas.length === 0 && <p className="content-state">Crie e ative uma categoria neste modo antes de gerar um prompt.</p>}
 
       <label htmlFor="prompt-quantity">Quantidade <span>(máximo disponível: {limiteDisponivel})</span></label>
-      <input id="prompt-quantity" type="number" min="1" max={limiteDisponivel} step="1" inputMode="numeric" value={quantidade} aria-invalid={Boolean(erros.quantidade)} onChange={(event) => invalidar(() => setQuantidade(event.target.value))} />
-      {erros.quantidade && <p className="prompt-field-error" role="alert">{erros.quantidade}</p>}
+      <input id="prompt-quantity" type="number" min="1" max={limiteDisponivel} step="1" inputMode="numeric" value={quantidade} aria-invalid={Boolean(erros.quantidade)} aria-describedby={erros.quantidade ? 'prompt-quantity-error' : undefined} onChange={(event) => invalidar(() => setQuantidade(event.target.value))} />
+      {erros.quantidade && <p id="prompt-quantity-error" className="prompt-field-error" role="alert">{erros.quantidade}</p>}
 
       <label htmlFor="prompt-difficulty">Dificuldade</label>
-      <select id="prompt-difficulty" value={dificuldade} onChange={(event) => invalidar(() => setDificuldade(event.target.value))}>
+      <select id="prompt-difficulty" value={dificuldade} aria-invalid={Boolean(erros.dificuldade)} aria-describedby={erros.dificuldade ? 'prompt-difficulty-error' : undefined} onChange={(event) => invalidar(() => setDificuldade(event.target.value))}>
         {DIFICULDADES.map(([valor, rotulo]) => <option key={valor} value={valor}>{rotulo}</option>)}
       </select>
+      {erros.dificuldade && <p id="prompt-difficulty-error" className="prompt-field-error" role="alert">{erros.dificuldade}</p>}
 
       <label htmlFor="prompt-theme">Tema ou recorte <span>(opcional)</span></label>
-      <textarea id="prompt-theme" rows={3} maxLength={500} value={tema} aria-describedby="prompt-theme-help" onChange={(event) => invalidar(() => setTema(event.target.value))} />
+      <textarea id="prompt-theme" rows={3} maxLength={500} value={tema} aria-invalid={Boolean(erros.tema)} aria-describedby={erros.tema ? 'prompt-theme-help prompt-theme-error' : 'prompt-theme-help'} onChange={(event) => invalidar(() => setTema(event.target.value))} />
       <small id="prompt-theme-help">{tema.length}/500 caracteres. O texto será delimitado como dado, não como instrução.</small>
+      {erros.tema && <p id="prompt-theme-error" className="prompt-field-error" role="alert">{erros.tema}</p>}
       <button type="submit" disabled={categoriasAtivas.length === 0 || limiteDisponivel === 0}>Gerar prompt</button>
     </form>
 

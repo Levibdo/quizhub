@@ -86,6 +86,9 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     await act(async () => { renderer = create(createElement(App)) })
     const botao = (label) => renderer.root.findAllByType('button').find((b) => texto(b) === label)
     const visivel = () => texto(renderer.root)
+    assert.deepEqual(renderer.root.findAllByProps({ className: 'mode-card__index' }).map(texto), ['01', '02'])
+    assert.ok(visivel().includes('Sala multiplayer em tempo real'))
+    assert.ok(visivel().includes('QuizHub // Pronto para jogar'))
     await act(async () => botao('Jogar').props.onClick())
     await act(async () => renderer.root.findAllByType('button').find((b) => b.props.className === 'categoria-card').props.onClick())
     assert.ok(!visivel().includes(resultado.explicacao))
@@ -283,6 +286,10 @@ test('lista vazia de categorias exibe estado vazio sem permitir partida', async 
   assert.ok(texto(renderer.root).includes('Nenhuma categoria disponível.'))
   assert.equal(renderer.root.findAllByProps({ className: 'categoria-card' }).length, 0)
   assert.equal(chamadas.some((item) => item.url.endsWith('/partidas')), false)
+  const voltar = renderer.root.findAllByType('button').find((item) => texto(item) === 'Voltar ao início')
+  assert.ok(voltar)
+  await act(async () => voltar.props.onClick())
+  assert.ok(renderer.root.findAllByType('button').some((item) => texto(item) === 'Jogar'))
 })
 
 test('ranking usa categorias dinâmicas e separa Todos da categoria geral', async (t) => {
