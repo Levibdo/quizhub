@@ -1,4 +1,5 @@
 import ModeCard from './ModeCard'
+import CosmicSigil from './CosmicSigil'
 
 function TelaInicial({
   usuario, bloqueado, jogar, convidado, entrar, cadastrar, sair,
@@ -8,13 +9,15 @@ function TelaInicial({
     <section className="home-screen" aria-labelledby="home-title">
       <div className="home-hero">
         <div className="home-sigil" aria-hidden="true">
-          <span>QH</span>
+          <CosmicSigil />
+          <span className="home-sigil__monogram">QH</span>
         </div>
 
         <div className="home-copy">
           <span className="home-eyebrow">QuizHub // Desafio clássico</span>
           <h1 id="home-title">Você sabe a resposta?</h1>
           <p>Prove antes que o tempo acabe.</p>
+          <span className="home-copy__omen" aria-hidden="true">✦ · ───── · ✦</span>
         </div>
       </div>
 
