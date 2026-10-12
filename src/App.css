@@ -3068,6 +3068,32 @@ select:disabled {
   isolation: isolate;
 }
 
+.screen-frame:has(.auth-screen) {
+  width: 100%;
+  min-height: calc(100svh - var(--header-height));
+  margin: 0;
+  padding: clamp(1.25rem, 4vw, 3rem) var(--page-gutter);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  isolation: isolate;
+}
+
+.screen-frame:has(.auth-screen)::after {
+  position: fixed;
+  z-index: 0;
+  inset: var(--header-height) 0 0;
+  content: '';
+  pointer-events: none;
+  background-color: rgba(7, 5, 13, .76);
+  background-image: url('/images/cenario-quizhub.webp');
+  background-repeat: no-repeat;
+  background-position: 58% center;
+  background-size: cover;
+  background-blend-mode: multiply;
+}
+
 .screen-frame:has(.home-screen)::before,
 .screen-frame:has(.auth-screen)::before {
   display: none;
@@ -3254,26 +3280,14 @@ select:disabled {
 
 .auth-screen {
   position: relative;
+  z-index: 1;
   display: grid;
-  min-height: min(42rem, calc(100dvh - 10rem));
+  min-height: calc(100svh - var(--header-height) - clamp(2.5rem, 8vw, 6rem));
   place-items: center;
   overflow: hidden;
   padding: clamp(.25rem, 2vw, 1rem);
   isolation: isolate;
 }
-
-.auth-screen__sigil {
-  position: absolute;
-  z-index: -1;
-  top: 50%;
-  left: 50%;
-  width: clamp(22rem, 92vw, 42rem);
-  opacity: .2;
-  pointer-events: none;
-  transform: translate(-50%, -50%) rotate(-8deg);
-}
-
-.cosmic-sigil--compact .cosmic-sigil__orbit--outer { stroke-dasharray: 2 11 28 9; }
 
 .auth-panel {
   position: relative;
@@ -3376,11 +3390,6 @@ select:disabled {
   .home-copy__omen { text-align: left; }
   .home-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mode-card { min-height: 19rem; }
-  .auth-screen__sigil {
-    left: calc(50% + min(24vw, 25rem));
-    width: min(48vw, 43rem);
-    opacity: .25;
-  }
 }
 
 @media (max-width: 23rem) {
@@ -3393,6 +3402,19 @@ select:disabled {
 }
 
 @media (max-width: 48rem) {
+  .screen-frame:has(.auth-screen) {
+    min-height: calc(100svh - var(--header-height));
+    padding: 1rem var(--page-gutter) 1.5rem;
+  }
+
+  .screen-frame:has(.auth-screen)::after {
+    background-position: 66% center;
+  }
+
+  .auth-screen {
+    min-height: calc(100svh - var(--header-height) - 2.5rem);
+  }
+
   .screen-frame:has(.home-screen) {
     min-height: calc(100svh - var(--header-height));
     padding: 1rem var(--page-gutter) 1.5rem;
