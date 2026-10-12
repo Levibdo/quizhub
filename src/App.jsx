@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
+import './NemAPato.css'
+import './MeuConteudo.css'
 
 import TelaJogador from './components/TelaJogador'
 import TelaInicial from './components/TelaInicial'
@@ -439,7 +441,10 @@ function App() {
   const pergunta = partida?.pergunta_atual
 
   return (
-    <AppShell aoClicarMarca={clicarMarca}>
+    <AppShell
+      aoClicarMarca={clicarMarca}
+      usuario={statusSessao === 'autenticado' ? usuario : null}
+    >
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
       {statusSessao === 'carregando' && <p role="status">Verificando sessão...</p>}
       {statusSessao === 'erro' && (

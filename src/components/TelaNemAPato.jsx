@@ -545,6 +545,9 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     return (
       <section className="np-screen" aria-labelledby="np-title" aria-busy={carregando}>
         <header className="np-heading">
+          <div className="np-art-slot" aria-hidden="true">
+            <img src="/images/pato-macabro.webp" alt="" />
+          </div>
           <span className="np-eyebrow">QuizHub // Sala multiplayer</span>
           <h1 id="np-title">NEM A PATO!</h1>
           <p>{sala?.status === 'EM_PARTIDA' ? 'Partida em andamento' : 'Lobby da sala'}</p>
@@ -867,8 +870,12 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
   }
 
   return (
-    <section className="np-screen" aria-labelledby="np-title" aria-busy={carregando}>
+    <section className="np-screen np-screen--entry" aria-labelledby="np-title" aria-busy={carregando}>
+      <div className="np-entry-scene" aria-hidden="true" />
       <header className="np-heading">
+        <div className="np-art-slot" aria-hidden="true">
+          <img src="/images/pato-macabro.webp" alt="" />
+        </div>
         <span className="np-eyebrow">QuizHub // Modo multiplayer</span>
         <h1 id="np-title">NEM A PATO!</h1>
         <p>3–6 jogadores · 10 rodadas · 2 minutos por rodada</p>

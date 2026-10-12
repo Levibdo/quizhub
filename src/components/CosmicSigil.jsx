@@ -1,3 +1,14 @@
+export function CosmicEye() {
+  return (
+    <>
+      <path className="cosmic-sigil__eye" d="M52 121c17-27 40-41 68-41s51 14 68 41c-17 27-40 41-68 41s-51-14-68-41Z" />
+      <circle className="cosmic-sigil__iris" cx="120" cy="121" r="25" />
+      <path className="cosmic-sigil__pupil" d="M120 94c10 11 15 20 15 27s-5 16-15 27c-10-11-15-20-15-27s5-16 15-27Z" />
+      <circle className="cosmic-sigil__glint" cx="128" cy="110" r="4" />
+    </>
+  )
+}
+
 function CosmicSigil({ compacto = false }) {
   return (
     <svg
@@ -14,10 +25,7 @@ function CosmicSigil({ compacto = false }) {
       <circle className="cosmic-sigil__star" cx="158" cy="47" r="2.5" />
       <circle className="cosmic-sigil__star" cx="192" cy="167" r="3" />
       <circle className="cosmic-sigil__star" cx="42" cy="167" r="2.5" />
-      <path className="cosmic-sigil__eye" d="M52 121c17-27 40-41 68-41s51 14 68 41c-17 27-40 41-68 41s-51-14-68-41Z" />
-      <circle className="cosmic-sigil__iris" cx="120" cy="121" r="25" />
-      <path className="cosmic-sigil__pupil" d="M120 94c10 11 15 20 15 27s-5 16-15 27c-10-11-15-20-15-27s5-16 15-27Z" />
-      <circle className="cosmic-sigil__glint" cx="128" cy="110" r="4" />
+      <CosmicEye />
     </svg>
   )
 }

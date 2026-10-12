@@ -69,6 +69,26 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
   return { renderer, focos, atributosTitulo, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
 }
 
+test('cabeçalho mostra a sessão autenticada sem duplicar o indicador na home', async (t) => {
+  const ui = await montar(t)
+  const indicadores = ui.renderer.root.findAllByProps({ className: 'site-session' })
+  assert.equal(indicadores.length, 1)
+  assert.match(texto(indicadores[0]), /Sessão ativaLevi/)
+  assert.equal(ui.renderer.root.findAllByProps({ className: 'session-chip' }).length, 0)
+
+  await act(async () => ui.button('Sair').props.onClick())
+  assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
+})
+
+test('cabeçalho não mostra sessão para visitante ou jogador convidado', async (t) => {
+  const ui = await montar(t, { autenticado: false })
+  assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
+
+  await act(async () => ui.button('Jogar').props.onClick())
+  assert.equal(window.location.pathname, '/jogador')
+  assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
+})
+
 test('Voltar e Avançar reproduzem login e cadastro e focam o título', async (t) => {
   const ui = await montar(t, { autenticado: false })
   await act(async () => ui.button('Entrar').props.onClick())

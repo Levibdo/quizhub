@@ -21,13 +21,6 @@ function TelaInicial({
         </div>
       </div>
 
-      {usuario && (
-        <div className="session-chip">
-          <span>Sessão ativa</span>
-          <strong>{usuario.nome}</strong>
-        </div>
-      )}
-
       <div className="home-modes">
         <ModeCard
           indice={1}
