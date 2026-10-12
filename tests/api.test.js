@@ -7,6 +7,26 @@ const api = await import('../src/services/api.js')
 const nemAPatoApi = await import('../src/services/nemAPato.js')
 afterEach(() => { globalThis.fetch = fetchOriginal })
 
+test('resolve URL da API em produção e desenvolvimento sem fallback público para 8001', () => {
+  assert.equal(api.resolverApiUrl({
+    producao: true,
+    origem: 'https://quizhub.example',
+  }), 'https://quizhub.example')
+  assert.equal(api.resolverApiUrl({
+    configurada: 'https://api.quizhub.example/',
+    producao: true,
+    origem: 'https://quizhub.example',
+  }), 'https://api.quizhub.example')
+  assert.equal(api.resolverApiUrl({
+    producao: false,
+    desenvolvimento: 'http://127.0.0.1:8001',
+  }), 'http://127.0.0.1:8001')
+  assert.throws(
+    () => api.resolverApiUrl({ configurada: 'javascript:alert(1)', producao: true, origem: 'https://quizhub.example' }),
+    /URL HTTP\(S\) válida/,
+  )
+})
+
 test('auth e partidas enviam cookies; autenticado omite apelido', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {
@@ -20,7 +40,7 @@ test('auth e partidas enviam cookies; autenticado omite apelido', async () => {
   await api.criarPartida('Convidado', 'geral')
   await api.enviarResposta('partida', 1, 2)
   assert.ok(chamadas.every((c) => c.credentials === 'include'))
-  assert.equal(chamadas[0].url, 'http://localhost:8001/api/v1/auth/cadastro')
+  assert.equal(chamadas[0].url, 'http://127.0.0.1:8001/api/v1/auth/cadastro')
   assert.deepEqual(JSON.parse(chamadas[3].body), { categoria: 'geral' })
   assert.deepEqual(JSON.parse(chamadas[4].body), { jogador: 'Convidado', categoria: 'geral' })
 })
@@ -189,7 +209,7 @@ test('avançar pergunta usa o endpoint, partida e pergunta respondida corretos',
     }), { status: 200 })
   }
   const resultado = await api.avancarPergunta('partida-123', 11)
-  assert.equal(chamada.url, 'http://localhost:8001/api/v1/partidas/partida-123/proxima')
+  assert.equal(chamada.url, 'http://127.0.0.1:8001/api/v1/partidas/partida-123/proxima')
   assert.equal(chamada.opcoes.method, 'POST')
   assert.deepEqual(JSON.parse(chamada.opcoes.body), { pergunta_id: 11 })
   assert.equal(resultado.pergunta_atual.id, 22)
@@ -204,7 +224,7 @@ test('listar categorias consulta o endpoint público', async () => {
     ]), { status: 200 })
   }
   const categorias = await api.listarCategorias()
-  assert.equal(chamada.url, 'http://localhost:8001/api/v1/categorias')
+  assert.equal(chamada.url, 'http://127.0.0.1:8001/api/v1/categorias')
   assert.equal(chamada.opcoes.method, 'GET')
   assert.equal(categorias[0].id, 'geral')
 })
@@ -216,7 +236,7 @@ test('listar categorias jogáveis usa o catálogo com autenticação opcional', 
     return new Response(JSON.stringify([]), { status: 200 })
   }
   await api.listarCategoriasJogaveis()
-  assert.equal(chamada.url, 'http://localhost:8001/api/v1/categorias/jogaveis')
+  assert.equal(chamada.url, 'http://127.0.0.1:8001/api/v1/categorias/jogaveis')
   assert.equal(chamada.opcoes.method, 'GET')
 })
 
@@ -231,7 +251,7 @@ test('Nem a Pato envia token somente nos endpoints autenticados', async () => {
   await nemAPatoApi.obterSalaNemAPato('K7M4QX')
   await nemAPatoApi.recuperarSalaNemAPato('K7M4QX', 'token-opaco')
   await nemAPatoApi.abandonarSalaNemAPato('K7M4QX', 'token-opaco')
-  assert.equal(chamadas[0].url, 'http://localhost:8001/api/v1/nem-pato/salas')
+  assert.equal(chamadas[0].url, 'http://127.0.0.1:8001/api/v1/nem-pato/salas')
   assert.deepEqual(JSON.parse(chamadas[0].opcoes.body), { nome: 'Levi' })
   assert.equal(chamadas[2].opcoes.headers['X-Nem-Pato-Token'], undefined)
   assert.equal(chamadas[3].opcoes.headers['X-Nem-Pato-Token'], 'token-opaco')
@@ -246,7 +266,7 @@ test('iniciar partida usa endpoint próprio e credencial temporária', async () 
     return new Response(JSON.stringify({ partida: { numero: 1 } }), { status: 200 })
   }
   const resposta = await nemAPatoApi.iniciarPartidaNemAPato('K7M4QX', 'token-host')
-  assert.equal(chamada.url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/iniciar')
+  assert.equal(chamada.url, 'http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/iniciar')
   assert.equal(chamada.opcoes.method, 'POST')
   assert.equal(chamada.opcoes.headers['X-Nem-Pato-Token'], 'token-host')
   assert.equal(chamada.opcoes.body, undefined)
@@ -263,10 +283,10 @@ test('iniciar rodada e enviar palpite usam endpoints NP5, token e idempotência'
   await nemAPatoApi.enviarPalpiteNemAPato(
     'K7M4QX', 7, 'token-levi', 123, '11111111-1111-4111-8111-111111111111',
   )
-  assert.equal(chamadas[0].url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/iniciar')
+  assert.equal(chamadas[0].url, 'http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/iniciar')
   assert.equal(chamadas[0].opcoes.method, 'POST')
   assert.equal(chamadas[0].opcoes.headers['X-Nem-Pato-Token'], 'token-host')
-  assert.equal(chamadas[1].url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/palpites')
+  assert.equal(chamadas[1].url, 'http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/palpites')
   assert.equal(chamadas[1].opcoes.headers['X-Nem-Pato-Token'], 'token-levi')
   assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), {
     valor: 123,
@@ -308,7 +328,7 @@ test("desafio usa endpoint NP6, token e somente client_action_id", async () => {
   await nemAPatoApi.desafiarPalpiteNemAPato(
     "K7M4QX", 7, "token-luana", "22222222-2222-4222-8222-222222222222",
   )
-  assert.equal(chamada.url, "http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/desafiar")
+  assert.equal(chamada.url, "http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/7/desafiar")
   assert.equal(chamada.opcoes.method, "POST")
   assert.equal(chamada.opcoes.headers["X-Nem-Pato-Token"], "token-luana")
   assert.deepEqual(JSON.parse(chamada.opcoes.body), {
@@ -324,7 +344,7 @@ test("próxima rodada usa endpoint NP6B e token do host", async () => {
     return new Response(JSON.stringify({ partida: { rodada: { numero: 2 } } }), { status: 200 })
   }
   await nemAPatoApi.iniciarProximaRodadaNemAPato("K7M4QX", 51, "token-host")
-  assert.equal(chamada.url, "http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/51/proxima")
+  assert.equal(chamada.url, "http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/rodadas/51/proxima")
   assert.equal(chamada.opcoes.method, "POST")
   assert.equal(chamada.opcoes.headers["X-Nem-Pato-Token"], "token-host")
   assert.equal(chamada.opcoes.body, undefined)
@@ -337,7 +357,7 @@ test('jogar novamente usa endpoint NP9 e credencial do host', async () => {
     return new Response(JSON.stringify({ partida: { numero: 2 } }), { status: 200 })
   }
   const resposta = await nemAPatoApi.jogarNovamenteNemAPato('K7M4QX', 'token-host')
-  assert.equal(chamada.url, 'http://localhost:8001/api/v1/nem-pato/salas/K7M4QX/jogar-novamente')
+  assert.equal(chamada.url, 'http://127.0.0.1:8001/api/v1/nem-pato/salas/K7M4QX/jogar-novamente')
   assert.equal(chamada.opcoes.method, 'POST')
   assert.equal(chamada.opcoes.headers['X-Nem-Pato-Token'], 'token-host')
   assert.equal(chamada.opcoes.body, undefined)

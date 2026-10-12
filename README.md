@@ -82,8 +82,10 @@ FastAPI + SQLAlchemy
 PostgreSQL
 ```
 
-- O frontend usa `VITE_API_URL` ou, na ausência dela, o mesmo protocolo e
-  hostname da página com a porta `8001`.
+- O frontend usa `VITE_API_URL` quando ela contém uma URL HTTP(S) válida. Sem
+  essa variável, builds de produção usam a mesma origem da página (adequada a
+  proxy reverso), enquanto o servidor de desenvolvimento usa
+  `http://127.0.0.1:8001`.
 - A API expõe `/health`, `/docs` e rotas sob `/api/v1`.
 - O backend carrega `backend/.env` sem sobrescrever variáveis já definidas no
   ambiente do processo.
@@ -498,6 +500,33 @@ Um proxy reverso pode encaminhar `/api/`, `/health` e `/docs` para a API. Se a
 API ficar em outro domínio, ajuste `VITE_API_URL`, cookies, HTTPS e CORS como
 um conjunto. Tailscale Funnel, Caddy e Nginx são opções de infraestrutura, não
 dependências do código versionado.
+
+Quando frontend e API compartilham a mesma origem pública, o build de produção
+pode omitir `VITE_API_URL` e usará `window.location.origin`. Se a API estiver
+em outra origem, informe-a explicitamente durante o build:
+
+```bash
+VITE_API_URL=https://api.exemplo.invalid npm run build
+```
+
+Antes do deploy, confira o JavaScript gerado para garantir que nenhuma porta
+exclusiva de desenvolvimento foi incluída:
+
+```bash
+if rg -n ":8001" dist/assets/*.js; then
+  echo "ERRO: bundle de produção contém a porta de desenvolvimento"
+  exit 1
+fi
+```
+
+Quando uma API externa tiver sido configurada, confirme também sua origem com
+`rg -n "https://api\.exemplo\.invalid" dist/assets/*.js`. No modo same-origin,
+a origem é obtida de `window.location.origin` em tempo de execução e não precisa
+aparecer como domínio literal no arquivo gerado.
+
+Uma `VITE_API_URL` inválida, com protocolo diferente de HTTP(S), credenciais,
+consulta ou fragmento interrompe a inicialização em vez de selecionar outro
+servidor silenciosamente.
 
 ## Segurança e privacidade
 

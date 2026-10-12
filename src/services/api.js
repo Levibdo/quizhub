@@ -1,9 +1,33 @@
-const apiUrlConfigurada = import.meta.env?.VITE_API_URL?.trim()
+function normalizarUrlHttp(valor, origem) {
+  let url
+  try {
+    url = new URL(valor, origem)
+  } catch {
+    throw new TypeError('VITE_API_URL deve ser uma URL HTTP(S) válida')
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new TypeError('VITE_API_URL deve ser uma URL HTTP(S) válida, sem credenciais, consulta ou fragmento')
+  }
+  return url.href.replace(/\/$/, '')
+}
 
-const API_URL = (
-  apiUrlConfigurada ||
-  `${window.location.protocol}//${window.location.hostname}:8001`
-).replace(/\/$/, '')
+export function resolverApiUrl({ configurada, producao = false, origem, desenvolvimento } = {}) {
+  const valorConfigurado = configurada?.trim()
+  if (valorConfigurado) return normalizarUrlHttp(valorConfigurado)
+  if (producao) {
+    if (!origem) throw new TypeError('A origem do frontend é obrigatória no build de produção')
+    return normalizarUrlHttp(origem)
+  }
+  if (!desenvolvimento) throw new TypeError('A URL da API de desenvolvimento é obrigatória')
+  return normalizarUrlHttp(desenvolvimento)
+}
+
+const API_URL = resolverApiUrl({
+  configurada: import.meta.env?.VITE_API_URL,
+  producao: import.meta.env?.PROD === true,
+  origem: globalThis.window?.location?.origin,
+  desenvolvimento: import.meta.env?.PROD === true ? undefined : 'http://127.0.0.1:8001',
+})
 
 export async function requisitar(caminho, opcoes) {
   const { preservarBigInt = false, ...opcoesFetch } = opcoes ?? {}
