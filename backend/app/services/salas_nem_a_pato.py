@@ -174,6 +174,55 @@ class SalasNemAPatoService:
             return db.scalar(select(func.clock_timestamp()))
         return datetime.now(timezone.utc)
 
+    @staticmethod
+    def _prazo_expirou(agora: datetime, prazo: datetime) -> bool:
+        agora_comparavel = (
+            agora.replace(tzinfo=None)
+            if prazo.tzinfo is None and agora.tzinfo is not None
+            else agora
+        )
+        return agora_comparavel >= prazo
+
+    def _timeout_pode_estar_expirado(
+        self, db: Session, codigo: str
+    ) -> bool:
+        """Detect an apparently expired active round without locking game rows.
+
+        PostgreSQL supplies the clock in the same statement that reads the
+        deadline. This is only a fast-path hint: timeout finalization still
+        re-reads and validates all state under the established lock order.
+        """
+        agora = (
+            func.clock_timestamp()
+            if db.get_bind().dialect.name == "postgresql"
+            else func.current_timestamp()
+        )
+        estado = db.execute(
+            select(
+                RodadaNemPato.status,
+                RodadaNemPato.termina_em,
+                agora.label("agora"),
+            )
+            .join(
+                PartidaNemPato,
+                PartidaNemPato.id == RodadaNemPato.partida_id,
+            )
+            .join(SalaNemPato, SalaNemPato.id == PartidaNemPato.sala_id)
+            .where(
+                SalaNemPato.codigo == codigo,
+                SalaNemPato.status == SalaNemPatoStatus.EM_PARTIDA,
+                PartidaNemPato.status == PartidaNemPatoStatus.EM_ANDAMENTO,
+                RodadaNemPato.numero == PartidaNemPato.rodada_atual,
+            )
+        ).one_or_none()
+        if (
+            estado is None
+            or estado.status != RodadaNemPatoStatus.EM_ANDAMENTO
+            or estado.termina_em is None
+        ):
+            return False
+        return self._prazo_expirou(estado.agora, estado.termina_em)
+
     def _finalizar_timeout_se_expirado(
         self,
         db: Session,
@@ -190,12 +239,7 @@ class SalasNemAPatoService:
             return False
         agora = self._agora_autoritativo(db)
         prazo = rodada.termina_em
-        agora_comparavel = (
-            agora.replace(tzinfo=None)
-            if prazo.tzinfo is None and agora.tzinfo is not None
-            else agora
-        )
-        if agora_comparavel < prazo:
+        if not self._prazo_expirou(agora, prazo):
             return False
         ultimo_palpite = palpites[-1] if palpites else None
         if ultimo_palpite is None:
@@ -585,6 +629,194 @@ class SalasNemAPatoService:
             rodada=rodada_publica,
             resultado_final=resultado_final,
         )
+
+    def _recuperar_estado_atual(
+        self,
+        db: Session,
+        codigo: str,
+        *,
+        token: str | None = None,
+        participante_id: UUID | None = None,
+    ) -> SalaRecuperada:
+        """Read a fresh public snapshot after any preceding transaction.
+
+        Mutations may provide the already authenticated participant id. The
+        participant is still reloaded and revalidated together with the room;
+        no ORM entity from before the commit is reused.
+        """
+        for _tentativa in range(3):
+            db.expire_all()
+            if participante_id is None:
+                sala, participante = self._obter_participante_autenticado(
+                    db, codigo, token
+                )
+            else:
+                sala = db.scalar(
+                    select(SalaNemPato)
+                    .where(SalaNemPato.codigo == codigo)
+                    .options(selectinload(SalaNemPato.participantes))
+                    .execution_options(populate_existing=True)
+                )
+                if sala is None:
+                    raise HTTPException(status_code=404, detail="sala inexistente")
+                participante = next(
+                    (
+                        item for item in sala.participantes
+                        if item.id == participante_id
+                    ),
+                    None,
+                )
+                if participante is None:
+                    raise HTTPException(
+                        status_code=401, detail="credencial Nem a Pato inválida"
+                    )
+                if participante.status != ParticipanteNemPatoStatus.ATIVO:
+                    raise HTTPException(
+                        status_code=403, detail="participante não está ativo"
+                    )
+
+            versao_lida = sala.estado_versao
+            estado = self._montar_estado_recuperado(
+                db, sala, participante
+            )
+
+            versao_atual = db.scalar(
+                select(SalaNemPato.estado_versao).where(SalaNemPato.id == sala.id)
+            )
+            if versao_atual == versao_lida:
+                return estado
+            # READ COMMITTED pode observar uma mutacao entre as consultas da
+            # sala e da partida. Descarte a composicao inteira e reconstrua-a
+            # na nova versao, sem adquirir FOR UPDATE no polling.
+        return self._recuperar_com_lock_compartilhado(
+            db,
+            codigo,
+            token=token,
+            participante_id=participante_id,
+        )
+
+    def _montar_estado_recuperado(
+        self,
+        db: Session,
+        sala: SalaNemPato,
+        participante: ParticipanteNemPato,
+    ) -> SalaRecuperada:
+        partida = None
+        if sala.status in (
+            SalaNemPatoStatus.EM_PARTIDA,
+            SalaNemPatoStatus.ENCERRADA,
+        ):
+            partida_db = db.scalar(
+                select(PartidaNemPato)
+                .where(PartidaNemPato.sala_id == sala.id)
+                .order_by(PartidaNemPato.numero.desc())
+                .options(selectinload(PartidaNemPato.jogadores))
+                .execution_options(populate_existing=True)
+            )
+            if partida_db is not None:
+                partida = self._partida_publica(
+                    db,
+                    partida_db,
+                    participante.id,
+                    jogadores=list(partida_db.jogadores),
+                )
+        return SalaRecuperada(
+            sala=sala_publica(sala),
+            participante=participante_publico(participante),
+            partida=partida,
+        )
+
+    def _recuperar_com_lock_compartilhado(
+        self,
+        db: Session,
+        codigo: str,
+        *,
+        token: str | None,
+        participante_id: UUID | None,
+    ) -> SalaRecuperada:
+        """Build one stable snapshot after optimistic retries are exhausted.
+
+        Every state mutation locks the room first with ``FOR UPDATE``. Holding
+        ``FOR SHARE`` on that same row therefore prevents dependent state from
+        changing until the public response has been fully materialized.
+        """
+        db.expire_all()
+        sala = db.scalar(
+            select(SalaNemPato)
+            .where(SalaNemPato.codigo == codigo)
+            .options(selectinload(SalaNemPato.participantes))
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        if sala is None:
+            raise HTTPException(status_code=404, detail="sala inexistente")
+
+        if participante_id is not None:
+            participante = next(
+                (
+                    item for item in sala.participantes
+                    if item.id == participante_id
+                ),
+                None,
+            )
+            if participante is None:
+                raise HTTPException(
+                    status_code=401, detail="credencial Nem a Pato inválida"
+                )
+        else:
+            if not token:
+                raise HTTPException(
+                    status_code=401, detail="credencial Nem a Pato ausente"
+                )
+            token_digest = hash_credencial(token)
+            participante = db.scalar(
+                select(ParticipanteNemPato).where(
+                    ParticipanteNemPato.token_hash == token_digest
+                )
+            )
+            if participante is None or not hmac.compare_digest(
+                participante.token_hash, token_digest
+            ):
+                raise HTTPException(
+                    status_code=401, detail="credencial Nem a Pato inválida"
+                )
+            if participante.sala_id != sala.id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="credencial não pertence a esta sala",
+                )
+
+        if participante.status != ParticipanteNemPatoStatus.ATIVO:
+            raise HTTPException(
+                status_code=403, detail="participante não está ativo"
+            )
+        return self._montar_estado_recuperado(db, sala, participante)
+
+    def _recuperar_apos_mutacao(
+        self,
+        db: Session,
+        codigo: str,
+        token: str,
+        participante_id: UUID,
+        *,
+        verificar_timeout: bool,
+        versao_persistida: int | None = None,
+    ) -> SalaRecuperada:
+        """Reload committed state, synchronizing timeout only when required."""
+        if verificar_timeout and self._timeout_pode_estar_expirado(db, codigo):
+            self._sincronizar_timeout(db, codigo, token)
+        estado = self._recuperar_estado_atual(
+            db, codigo, participante_id=participante_id
+        )
+        if (
+            not verificar_timeout
+            and versao_persistida is not None
+            and estado.sala.versao != versao_persistida
+        ):
+            # Outra transacao avancou a sala depois do commit. Reexecute o
+            # caminho publico completo para sincronizar eventual novo timeout.
+            return self.recuperar(db, codigo, token)
+        return estado
 
     def iniciar(
         self, db: Session, codigo: str, token: str | None
@@ -1027,6 +1259,7 @@ class SalasNemAPatoService:
             participante = self._participante_autenticado_bloqueado(
                 participantes, token_digest
             )
+            participante_id = participante.id
             if not participante.eh_anfitriao:
                 raise HTTPException(
                     status_code=403,
@@ -1093,7 +1326,13 @@ class SalasNemAPatoService:
             sala.estado_versao += 1
             db.flush()
             db.commit()
-            return self.recuperar(db, codigo, token)
+            return self._recuperar_apos_mutacao(
+                db,
+                codigo,
+                token,
+                participante_id,
+                verificar_timeout=True,
+            )
         except HTTPException:
             db.rollback()
             raise
@@ -1128,6 +1367,7 @@ class SalasNemAPatoService:
             participante = self._participante_autenticado_bloqueado(
                 participantes, token_digest
             )
+            participante_id = participante.id
             if sala.status != SalaNemPatoStatus.EM_PARTIDA:
                 raise HTTPException(
                     status_code=409, detail="sala não está em partida"
@@ -1209,14 +1449,28 @@ class SalasNemAPatoService:
                         detail="client_action_id já usado em outra ação",
                     )
                 db.rollback()
-                return self.recuperar(db, codigo, token)
+                return self._recuperar_apos_mutacao(
+                    db,
+                    codigo,
+                    token,
+                    participante_id,
+                    verificar_timeout=True,
+                )
 
             if self._finalizar_timeout_se_expirado(
                 db, sala, rodada, jogadores, palpites, partida
             ):
+                versao_persistida = sala.estado_versao
                 db.flush()
                 db.commit()
-                return self.recuperar(db, codigo, token)
+                return self._recuperar_apos_mutacao(
+                    db,
+                    codigo,
+                    token,
+                    participante_id,
+                    verificar_timeout=False,
+                    versao_persistida=versao_persistida,
+                )
 
             if rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO:
                 raise HTTPException(
@@ -1252,7 +1506,13 @@ class SalasNemAPatoService:
             sala.estado_versao += 1
             db.flush()
             db.commit()
-            return self.recuperar(db, codigo, token)
+            return self._recuperar_apos_mutacao(
+                db,
+                codigo,
+                token,
+                participante_id,
+                verificar_timeout=True,
+            )
         except HTTPException:
             db.rollback()
             raise
@@ -1289,6 +1549,7 @@ class SalasNemAPatoService:
             participante = self._participante_autenticado_bloqueado(
                 participantes, token_digest
             )
+            participante_id = participante.id
             if sala.status != SalaNemPatoStatus.EM_PARTIDA:
                 raise HTTPException(status_code=409, detail="sala não está em partida")
 
@@ -1345,8 +1606,16 @@ class SalasNemAPatoService:
                     desafio_existente.client_action_id == client_action_id
                     and desafio_existente.desafiante_jogador_partida_id == jogador.id
                 ):
+                    versao_persistida = sala.estado_versao
                     db.rollback()
-                    return self.recuperar(db, codigo, token)
+                    return self._recuperar_apos_mutacao(
+                        db,
+                        codigo,
+                        token,
+                        participante_id,
+                        verificar_timeout=False,
+                        versao_persistida=versao_persistida,
+                    )
                 raise HTTPException(status_code=409, detail="rodada já foi resolvida")
 
             acao_existente = db.scalar(
@@ -1362,9 +1631,17 @@ class SalasNemAPatoService:
             if self._finalizar_timeout_se_expirado(
                 db, sala, rodada, jogadores, palpites, partida
             ):
+                versao_persistida = sala.estado_versao
                 db.flush()
                 db.commit()
-                return self.recuperar(db, codigo, token)
+                return self._recuperar_apos_mutacao(
+                    db,
+                    codigo,
+                    token,
+                    participante_id,
+                    verificar_timeout=False,
+                    versao_persistida=versao_persistida,
+                )
 
             if rodada.status != RodadaNemPatoStatus.EM_ANDAMENTO:
                 raise HTTPException(status_code=409, detail="esta rodada não aceita desafio")
@@ -1402,9 +1679,17 @@ class SalasNemAPatoService:
                 sala, partida, rodada, agora
             )
             sala.estado_versao += 1
+            versao_persistida = sala.estado_versao
             db.flush()
             db.commit()
-            return self.recuperar(db, codigo, token)
+            return self._recuperar_apos_mutacao(
+                db,
+                codigo,
+                token,
+                participante_id,
+                verificar_timeout=False,
+                versao_persistida=versao_persistida,
+            )
         except HTTPException:
             db.rollback()
             raise
@@ -1440,6 +1725,7 @@ class SalasNemAPatoService:
             participante = self._participante_autenticado_bloqueado(
                 participantes, token_digest
             )
+            participante_id = participante.id
             if sala.status != SalaNemPatoStatus.EM_PARTIDA:
                 raise HTTPException(status_code=409, detail="sala não está em partida")
 
@@ -1537,7 +1823,13 @@ class SalasNemAPatoService:
             sala.estado_versao += 1
             db.flush()
             db.commit()
-            return self.recuperar(db, codigo, token)
+            return self._recuperar_apos_mutacao(
+                db,
+                codigo,
+                token,
+                participante_id,
+                verificar_timeout=True,
+            )
         except HTTPException:
             db.rollback()
             raise
@@ -1648,28 +1940,10 @@ class SalasNemAPatoService:
     ) -> SalaRecuperada:
         if not token:
             raise HTTPException(status_code=401, detail="credencial Nem a Pato ausente")
-        self._sincronizar_timeout(db, codigo, token)
-        sala, participante = self._obter_participante_autenticado(db, codigo, token)
-        partida = None
-        if sala.status in (
-            SalaNemPatoStatus.EM_PARTIDA,
-            SalaNemPatoStatus.ENCERRADA,
-        ):
-            partida_db = db.scalar(
-                select(PartidaNemPato)
-                .where(PartidaNemPato.sala_id == sala.id)
-                .order_by(PartidaNemPato.numero.desc())
-                .options(selectinload(PartidaNemPato.jogadores))
-            )
-            if partida_db is not None:
-                partida = self._partida_publica(
-                    db, partida_db, participante.id
-                )
-        return SalaRecuperada(
-            sala=sala_publica(sala),
-            participante=participante_publico(participante),
-            partida=partida,
-        )
+        codigo = self._codigo_normalizado(codigo)
+        if self._timeout_pode_estar_expirado(db, codigo):
+            self._sincronizar_timeout(db, codigo, token)
+        return self._recuperar_estado_atual(db, codigo, token=token)
 
     def abandonar(
         self, db: Session, codigo: str, token: str

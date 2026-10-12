@@ -19,7 +19,11 @@ from app.models import (
     Categoria, JogadorPartidaNemPato, PartidaNemPato, PerguntaNemPato,
     RodadaNemPato, SalaNemPato,
 )
-from app.nem_a_pato import RodadaNemPatoStatus
+from app.nem_a_pato import (
+    PartidaNemPatoStatus,
+    RodadaNemPatoStatus,
+    SalaNemPatoStatus,
+)
 from app.services.salas_nem_a_pato import SalasNemAPatoService
 
 ENV_NAME = "NEM_A_PATO_TEST_DATABASE_URL"
@@ -178,15 +182,243 @@ class TestNP9PostgresConcurrency(unittest.TestCase):
 
     def test_polling_concorrente_converge_para_nova_partida(self):
         codigo, tokens, _ = self.preparar_finalizada()
-        resultados = self.corrida(
-            codigo,
-            lambda session, service: service.jogar_novamente(session, codigo, tokens["host"]),
-            lambda session, service: service.recuperar(session, codigo, tokens["p1"]),
+        lider_bloqueou = threading.Event()
+        liberar_lider = threading.Event()
+
+        class ServicoComRevanchePausada(SalasNemAPatoService):
+            def _sala_bloqueada(inner, db, room_code):
+                sala = super(ServicoComRevanchePausada, inner)._sala_bloqueada(
+                    db, room_code
+                )
+                if threading.current_thread().name == "np9-revanche":
+                    lider_bloqueou.set()
+                    if not liberar_lider.wait(10):
+                        raise TimeoutError("test did not release revenge transaction")
+                return sala
+
+        service = ServicoComRevanchePausada()
+
+        def criar_revanche():
+            threading.current_thread().name = "np9-revanche"
+            with self.sessions() as session:
+                return service.jogar_novamente(session, codigo, tokens["host"])
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            revanche = executor.submit(criar_revanche)
+            try:
+                self.assertTrue(lider_bloqueou.wait(10))
+                with self.sessions() as session:
+                    concorrente = service.recuperar(session, codigo, tokens["p1"])
+            finally:
+                liberar_lider.set()
+            nova = revanche.result(10)
+
+        # A leitura concorrente pode linearizar antes ou depois do commit, mas
+        # deve sempre representar uma versao completa do estado.
+        self.assertIn(concorrente.partida.numero, (1, 2))
+        if concorrente.partida.numero == 1:
+            self.assertEqual(
+                concorrente.sala.status, SalaNemPatoStatus.ENCERRADA.value
+            )
+            self.assertEqual(
+                concorrente.partida.status, PartidaNemPatoStatus.FINALIZADA.value
+            )
+        else:
+            self.assertEqual(
+                concorrente.sala.status, SalaNemPatoStatus.EM_PARTIDA.value
+            )
+            self.assertEqual(
+                concorrente.partida.status, PartidaNemPatoStatus.EM_ANDAMENTO.value
+            )
+
+        with self.sessions() as session:
+            convergente = service.recuperar(session, codigo, tokens["p1"])
+        self.assertEqual(convergente.sala.codigo, nova.sala.codigo)
+        self.assertEqual(convergente.partida.id, nova.partida.id)
+        self.assertEqual(convergente.partida.numero, 2)
+        self.assertEqual([j.patos for j in convergente.partida.jogadores], [0, 0, 0])
+        _, partidas = self.estado(codigo)
+        self.assertEqual(len(partidas), 2)
+
+    def test_polling_nao_mistura_sala_antiga_com_revanche_confirmada(self):
+        codigo, tokens, _ = self.preparar_finalizada()
+        sala_lida = threading.Event()
+        liberar_leitura = threading.Event()
+
+        class ServicoComLeituraPausada(SalasNemAPatoService):
+            pausou = False
+            leituras_sala = 0
+
+            def _obter_participante_autenticado(inner, db, room_code, token):
+                resultado = super(
+                    ServicoComLeituraPausada, inner
+                )._obter_participante_autenticado(db, room_code, token)
+                inner.leituras_sala += 1
+                if (
+                    threading.current_thread().name == "np9-leitor-hibrido"
+                    and not inner.pausou
+                ):
+                    inner.pausou = True
+                    sala_lida.set()
+                    if not liberar_leitura.wait(10):
+                        raise TimeoutError("test did not release state reconstruction")
+                return resultado
+
+        service = ServicoComLeituraPausada()
+
+        def recuperar_pausado():
+            threading.current_thread().name = "np9-leitor-hibrido"
+            with self.sessions() as session:
+                return service.recuperar(session, codigo, tokens["p1"])
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            leitura = executor.submit(recuperar_pausado)
+            try:
+                self.assertTrue(sala_lida.wait(10))
+                with self.sessions() as session:
+                    revanche = service.jogar_novamente(
+                        session, codigo, tokens["host"]
+                    )
+            finally:
+                liberar_leitura.set()
+            estado = leitura.result(10)
+
+        self.assertEqual(estado.sala.codigo, revanche.sala.codigo)
+        self.assertGreaterEqual(service.leituras_sala, 2)
+        self.assertEqual(estado.sala.status, SalaNemPatoStatus.EM_PARTIDA.value)
+        self.assertEqual(estado.partida.id, revanche.partida.id)
+        self.assertEqual(estado.partida.numero, 2)
+        self.assertEqual(
+            estado.partida.status, PartidaNemPatoStatus.EM_ANDAMENTO.value
         )
-        self.assertEqual([item[0] for item in resultados], ["accepted", "accepted"])
-        self.assertEqual(resultados[0][1].partida.id, resultados[1][1].partida.id)
-        self.assertEqual(resultados[1][1].partida.numero, 2)
-        self.assertEqual([j.patos for j in resultados[1][1].partida.jogadores], [0, 0, 0])
+        self.assertEqual(estado.sala.versao, revanche.sala.versao)
+        self.assertEqual([j.patos for j in estado.partida.jogadores], [0, 0, 0])
+
+    def test_fallback_compartilhado_bloqueia_quarta_mutacao(self):
+        codigo, tokens, inicial = self.preparar_finalizada()
+        leituras = [threading.Event() for _ in range(3)]
+        liberar_leituras = [threading.Event() for _ in range(3)]
+        fallback_montado = threading.Event()
+        liberar_fallback = threading.Event()
+        quarta_iniciou = threading.Event()
+        pid_quarta = {}
+
+        class ServicoComTresConflitos(SalasNemAPatoService):
+            tentativa = 0
+            em_fallback = False
+
+            def _obter_participante_autenticado(inner, db, room_code, token):
+                resultado = super(
+                    ServicoComTresConflitos, inner
+                )._obter_participante_autenticado(db, room_code, token)
+                if (
+                    threading.current_thread().name == "np9-leitor-fallback"
+                    and inner.tentativa < 3
+                ):
+                    indice = inner.tentativa
+                    inner.tentativa += 1
+                    leituras[indice].set()
+                    if not liberar_leituras[indice].wait(10):
+                        raise TimeoutError("test did not release optimistic read")
+                return resultado
+
+            def _recuperar_com_lock_compartilhado(inner, *args, **kwargs):
+                inner.em_fallback = True
+                try:
+                    return super(
+                        ServicoComTresConflitos, inner
+                    )._recuperar_com_lock_compartilhado(*args, **kwargs)
+                finally:
+                    inner.em_fallback = False
+
+            def _montar_estado_recuperado(inner, *args, **kwargs):
+                estado = super(
+                    ServicoComTresConflitos, inner
+                )._montar_estado_recuperado(*args, **kwargs)
+                if inner.em_fallback:
+                    fallback_montado.set()
+                    if not liberar_fallback.wait(10):
+                        raise TimeoutError("test did not release shared fallback")
+                return estado
+
+        service = ServicoComTresConflitos()
+
+        def recuperar_com_conflitos():
+            threading.current_thread().name = "np9-leitor-fallback"
+            with self.sessions() as session:
+                return service.recuperar(session, codigo, tokens["p1"])
+
+        def incrementar_versao():
+            with self.sessions() as session:
+                sala = session.scalar(
+                    select(SalaNemPato)
+                    .where(SalaNemPato.codigo == codigo)
+                    .with_for_update()
+                )
+                sala.estado_versao += 1
+                session.commit()
+                return sala.estado_versao
+
+        def quarta_mutacao():
+            threading.current_thread().name = "np9-quarta-mutacao"
+            with self.sessions() as session:
+                pid_quarta["pid"] = session.scalar(text("SELECT pg_backend_pid()"))
+                quarta_iniciou.set()
+                sala = session.scalar(
+                    select(SalaNemPato)
+                    .where(SalaNemPato.codigo == codigo)
+                    .with_for_update()
+                )
+                sala.estado_versao += 1
+                session.commit()
+                return sala.estado_versao
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            leitura = executor.submit(recuperar_com_conflitos)
+            for indice in range(3):
+                self.assertTrue(leituras[indice].wait(10))
+                incrementar_versao()
+                liberar_leituras[indice].set()
+
+            self.assertTrue(fallback_montado.wait(10))
+            quarta = executor.submit(quarta_mutacao)
+            self.assertTrue(quarta_iniciou.wait(10))
+            limite = time.monotonic() + 10
+            esperando = False
+            while time.monotonic() < limite:
+                with self.engine.connect() as observador:
+                    esperando = observador.scalar(
+                        text(
+                            "SELECT wait_event_type = 'Lock' "
+                            "FROM pg_stat_activity WHERE pid = :pid"
+                        ),
+                        {"pid": pid_quarta["pid"]},
+                    )
+                if esperando:
+                    break
+                time.sleep(0.01)
+            self.assertTrue(esperando)
+            liberar_fallback.set()
+            estado_fallback = leitura.result(10)
+            versao_final = quarta.result(10)
+
+        self.assertEqual(service.tentativa, 3)
+        self.assertEqual(
+            estado_fallback.sala.versao,
+            inicial.sala.versao + 3,
+        )
+        self.assertEqual(versao_final, inicial.sala.versao + 4)
+        self.assertEqual(
+            estado_fallback.sala.status,
+            SalaNemPatoStatus.ENCERRADA.value,
+        )
+        self.assertEqual(
+            estado_fallback.partida.status,
+            PartidaNemPatoStatus.FINALIZADA.value,
+        )
+        with self.sessions() as session:
+            convergente = service.recuperar(session, codigo, tokens["p1"])
+        self.assertEqual(convergente.sala.versao, versao_final)
 
 
 if __name__ == "__main__":
