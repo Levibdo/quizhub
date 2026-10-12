@@ -1,554 +1,584 @@
 # QuizHub
 
-O QuizHub é uma aplicação web de quiz desenvolvida inicialmente como projeto acadêmico. O jogo oferece partidas de múltipla escolha organizadas por categoria, tempo por pergunta, pontuação e ranking.
+O QuizHub é uma aplicação web de perguntas e jogos, com frontend React/Vite,
+API FastAPI e persistência PostgreSQL. O projeto oferece o **Quiz Clássico**,
+o multiplayer **Nem a Pato** e uma área autenticada de **Meu Conteúdo** para
+gerenciar catálogos privados.
+
+> Este documento descreve o que está implementado no repositório. Topologias,
+> nomes de serviços, portas externas e caminhos de uma implantação específica
+> não são requisitos universais do QuizHub.
 
 ## Funcionalidades
 
-- Identificação do jogador por nome ou apelido.
-- Escolha entre as categorias Geral, Tecnologia, Matemática e Entretenimento.
-- Catálogo oficial atual com 139 perguntas: 35 em Geral, Matemática e Tecnologia, e 34 em Entretenimento.
-- Partidas com 10 perguntas selecionadas aleatoriamente e sem repetição.
-- Limite de 15 segundos por pergunta.
-- Feedback visual por aproximadamente 2 segundos após cada resposta.
-- Destaque da alternativa escolhida e da alternativa correta depois da resposta.
-- Pontuação baseada no acerto e no tempo restante.
-- Resultado final com pontuação, acertos e erros.
-- Ranking local armazenado no navegador com `localStorage`.
-- Backend autoritativo para seleção das perguntas, validação das respostas, pontuação, timeout, progressão e finalização da partida.
-- Importação de perguntas em formato XLSX.
-- Proteção contra duplicação no importador pela combinação `categoria_id` + `enunciado`.
+### Quiz Clássico
 
-## Sistema de pontuação
+- Partidas de múltipla escolha com 10 perguntas sem repetição.
+- Prazo de 15 segundos por pergunta, controlado pelo backend.
+- Seleção das perguntas, correção, timeout, pontuação e progressão
+  autoritativos no servidor.
+- Pontuação por acerto: `100 + (segundos restantes × 10)`, até 250 pontos por
+  pergunta.
+- Revelação da resposta correta e da explicação somente depois da resposta ou
+  do timeout.
+- Categorias oficiais e, para usuários autenticados, categorias próprias
+  elegíveis.
+- Resultado com pontuação, acertos e erros.
+- Ranking exibido no frontend e armazenado no `localStorage` do navegador.
+  Ele não é um ranking global persistido no PostgreSQL; o endpoint atual
+  `GET /api/v1/ranking` retorna uma lista vazia.
 
-O backend calcula a pontuação de cada resposta correta pela fórmula:
+### Nem a Pato
 
-```text
-100 + (tempo restante em segundos × 10)
-```
+- Salas por código para 3 a 6 participantes ativos.
+- Partidas com 10 rodadas e perguntas de resposta numérica.
+- Palpites inteiros, não negativos e estritamente crescentes.
+- Turnos circulares, desafio ao último palpite, penalização por “patos” e
+  placar compartilhado.
+- Timer autoritativo de 120 segundos por rodada, com tratamento de timeout com
+  e sem palpites.
+- Finalização, classificação, empates, cancelamento por jogadores
+  insuficientes e revanche na mesma sala.
+- Polling HTTP para sincronização; não há WebSocket no fluxo atual.
+- Recuperação após atualização da página por credencial específica do
+  participante, armazenada localmente pelo navegador.
+- Idempotência de palpites e desafios por `client_action_id` e proteção
+  transacional para operações concorrentes.
+- Catálogo oficial e, quando a sala pertence a um usuário autenticado,
+  conteúdo privado autorizado desse usuário.
 
-- Resposta errada ou timeout: 0 pontos.
-- Pontuação máxima por pergunta: 250 pontos.
+### Autenticação e Meu Conteúdo
 
-O prazo e a pontuação são determinados pelo servidor, e não pelo contador visual do navegador.
+- Cadastro, login, consulta da sessão e logout.
+- Senhas armazenadas com o mecanismo recomendado do `pwdlib` (Argon2 na
+  instalação atual).
+- Sessão JWT de 8 horas em cookie `HttpOnly`, `SameSite=Lax`; a opção
+  `Secure` é configurável por ambiente.
+- Categorias privadas separadas entre Quiz Clássico e Nem a Pato.
+- CRUD de categorias e perguntas próprias, com exclusão lógica.
+- Limites implementados de 10 categorias e 200 perguntas por usuário e por
+  modo.
+- Importação privada de XLSX, CSV e JSON em duas etapas: prévia e confirmação.
+- Prévia limitada a 5 MiB e 100 registros; o token de confirmação expira em
+  15 minutos e o backend revalida arquivo, propriedade e quota.
+- Gerador de prompts para uma IA externa. O QuizHub apenas monta e copia as
+  instruções; não chama nem valida factualmente um serviço de IA. O prompt
+  solicita um arquivo JSON compatível com o importador e prevê saída textual
+  como alternativa quando a ferramenta externa não puder anexar arquivos.
 
 ## Arquitetura
 
 ```text
-React/Vite
-    ↓ HTTP
-FastAPI
-    ↓
+Navegador
+   │
+   │ HTTP/HTTPS + JSON (e multipart nas importações)
+   ▼
+React 19 + Vite 8
+   │
+   ▼
+FastAPI + SQLAlchemy
+   │
+   ▼
 PostgreSQL
 ```
 
-- **React/Vite:** apresenta as telas, envia as ações do jogador e exibe o estado retornado pela API.
-- **FastAPI:** controla as partidas, seleciona as perguntas, valida respostas e timeouts, calcula a pontuação e decide quando a partida termina.
-- **PostgreSQL:** persiste o catálogo e os dados operacionais das partidas.
+- O frontend usa `VITE_API_URL` ou, na ausência dela, o mesmo protocolo e
+  hostname da página com a porta `8001`.
+- A API expõe `/health`, `/docs` e rotas sob `/api/v1`.
+- O backend carrega `backend/.env` sem sobrescrever variáveis já definidas no
+  ambiente do processo.
+- O Nem a Pato mantém salas, participantes, partidas, rodadas, palpites e
+  desafios no PostgreSQL. O frontend sincroniza o estado por polling.
+- As partidas materializam snapshots das perguntas para preservar o conteúdo
+  histórico mesmo após mudanças no catálogo.
 
-O frontend recebe somente o enunciado e as alternativas antes da resposta. A alternativa correta é revelada pela API apenas depois que o jogador responde ou o prazo termina.
+## Tecnologias principais
 
-## Tecnologias
+| Camada | Tecnologia |
+| --- | --- |
+| Frontend | React 19, JavaScript, Vite 8 |
+| API | Python, FastAPI, Uvicorn |
+| Persistência | PostgreSQL, SQLAlchemy 2, psycopg 3 |
+| Migrações | Alembic |
+| Autenticação | PyJWT, `pwdlib[argon2]`, cookie HttpOnly |
+| Arquivos | openpyxl, CSV e JSON da biblioteca padrão |
+| Testes | `node:test` no frontend; `unittest` no backend |
 
-- React
-- Vite
-- JavaScript
-- FastAPI
-- Python
-- PostgreSQL
-- SQLAlchemy
-- Alembic
-- psycopg
-- openpyxl
+As versões Python exatas estão fixadas em `backend/requirements.txt`; as
+versões JavaScript ficam em `package.json` e `package-lock.json`.
 
 ## Estrutura do projeto
 
 ```text
 quizhub/
 ├── backend/
-│   ├── alembic/
-│   │   └── versions/
+│   ├── alembic/                 # migrations 0001 a 0011
 │   ├── app/
-│   │   ├── api/
-│   │   ├── data/
-│   │   ├── db/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   └── services/
-│   ├── dados/
-│   │   ├── perguntas_carga_inicial.xlsx
-│   │   └── perguntas_expansao_105.xlsx
-│   ├── tests/
+│   │   ├── api/v1/              # endpoints HTTP
+│   │   ├── cli/                 # comandos administrativos
+│   │   ├── db/                  # sessão e seed de demonstração
+│   │   ├── models/              # modelos SQLAlchemy
+│   │   ├── schemas/             # contratos Pydantic
+│   │   └── services/            # regras de negócio
+│   ├── dados/                   # catálogos versionados
+│   ├── tests/                   # testes unitários e de integração
+│   ├── .env.example
 │   ├── alembic.ini
 │   └── requirements.txt
 ├── public/
 ├── src/
 │   ├── components/
-│   ├── data/
+│   ├── hooks/
 │   ├── services/
 │   └── utils/
+├── tests/                       # testes do frontend
 ├── package.json
+├── package-lock.json
 ├── vite.config.js
 └── README.md
 ```
 
-O diretório `backend/dados/` armazena os catálogos versionados. Para o schema atual, o catálogo recomendado é `perguntas_oficiais_com_explicacoes.xlsx`, com 105 perguntas (35 em cada uma das categorias Geral, Matemática e Tecnologia). `perguntas_entretenimento.json` contém atualmente 34 perguntas, totalizando 139. A planilha `perguntas_oficiais.xlsx`, sem explicações, não é o catálogo recomendado porque `explicacao` é obrigatória no schema atual.
+## Pré-requisitos
 
-## Banco de dados
+- Git.
+- Python compatível com as dependências fixadas em
+  `backend/requirements.txt`.
+- Node.js compatível com a versão instalada do Vite 8 e npm.
+- PostgreSQL acessível e um banco vazio criado para o ambiente.
 
-O PostgreSQL persiste:
+O repositório não fixa uma versão de Python ou Node em arquivos como
+`.python-version`, `.nvmrc` ou no campo `engines`. Se uma dependência recusar a
+versão local, siga o requisito informado pelo próprio gerenciador.
 
-- jogadores;
-- categorias;
-- perguntas;
-- partidas;
-- perguntas selecionadas para cada partida;
-- respostas dos jogadores.
+## Configuração do ambiente
 
-A conexão é configurada pela variável de ambiente `DATABASE_URL`. Use suas próprias credenciais; por exemplo:
+O arquivo de referência é `backend/.env.example`:
 
-```text
-postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_estagio_db
+| Variável | Uso |
+| --- | --- |
+| `DATABASE_URL` | Conexão SQLAlchemy com PostgreSQL. |
+| `JWT_SECRET` | Segredo forte usado nos tokens de sessão e nas prévias de importação. |
+| `JWT_COOKIE_SECURE` | Use `true` quando a aplicação for servida por HTTPS. |
+| `CORS_ORIGINS` | Lista opcional, separada por vírgulas, de origens adicionais. |
+| `VITE_API_URL` | URL base da API, definida no ambiente do frontend. |
+
+Exemplo de formato, com valores fictícios:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://USUARIO:SENHA@localhost:5432/NOME_DO_BANCO
+JWT_SECRET=SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_FORTE
+JWT_COOKIE_SECURE=false
+CORS_ORIGINS=
 ```
 
-## Como executar
+Não versione `.env`, senhas ou tokens. `JWT_SECRET` é necessário para login e
+para a importação privada. Em produção HTTPS, configure
+`JWT_COOKIE_SECURE=true`.
 
-### 1. Pré-requisitos
+## Instalação e execução local
 
-- Python
-- Node.js e npm
-- PostgreSQL em execução
-
-### 2. Backend
-
-No Windows PowerShell, a partir da raiz do projeto:
-
-```powershell
-cd backend
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-$env:DATABASE_URL = "postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_estagio_db"
-python -m alembic upgrade head
-python -m app.cli perguntas validar dados/perguntas_oficiais_com_explicacoes.xlsx
-python -m app.cli perguntas importar dados/perguntas_oficiais_com_explicacoes.xlsx
-python -m app.cli perguntas validar dados/perguntas_entretenimento.json
-python -m app.cli perguntas importar dados/perguntas_entretenimento.json
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-No Linux ou macOS, ative o ambiente virtual com `source .venv/bin/activate` e defina a conexão com:
+### Linux
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/quiz_estagio_db"
+git clone https://github.com/Levibdo/quizhub.git
+cd quizhub/backend
+
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+cp .env.example .env
+# Edite .env localmente, crie o banco PostgreSQL e só então aplique as migrations.
+python -m alembic upgrade head
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-As migrations cadastram as quatro categorias-base necessárias aos catálogos. Categorias adicionais continuam dinâmicas e podem ser criadas pelo CLI. Não é necessário executar o seed para importar os catálogos oficiais.
+Em outro terminal:
 
-O comando `python -m app.db.seed` permanece disponível, de forma idempotente, apenas para desenvolvimento e demonstração: ele cadastra categorias-base ausentes e 15 perguntas de exemplo. Não o execute antes dos catálogos oficiais em uma instalação destinada a receber esses arquivos, pois as perguntas de exemplo serão detectadas como duplicadas durante a importação.
+```bash
+cd quizhub
+npm ci
+npm run dev
+```
 
-As categorias exibidas no frontend são carregadas do PostgreSQL pela API. Para
-administrá-las localmente, execute os comandos abaixo dentro de `backend`, com
-`DATABASE_URL` configurada:
+### macOS
+
+Depois de instalar Git, Python, Node.js/npm e PostgreSQL pelo método de sua
+preferência, os comandos são os mesmos do Linux:
+
+```bash
+git clone https://github.com/Levibdo/quizhub.git
+cd quizhub/backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+cp .env.example .env
+python -m alembic upgrade head
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+Em outro terminal, na raiz do repositório:
+
+```bash
+npm ci
+npm run dev
+```
+
+### Windows (PowerShell)
 
 ```powershell
+git clone https://github.com/Levibdo/quizhub.git
+cd quizhub\backend
+
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+Copy-Item .env.example .env
+# Edite .env localmente, crie o banco PostgreSQL e só então aplique as migrations.
+python -m alembic upgrade head
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+Em outro PowerShell:
+
+```powershell
+cd quizhub
+npm ci
+npm run dev
+```
+
+Se a política do PowerShell impedir a ativação do ambiente virtual, use o
+executável do ambiente diretamente, sem alterar a política global:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+### Endereços locais
+
+- Frontend Vite: normalmente `http://localhost:5173`.
+- API: `http://127.0.0.1:8001`.
+- Saúde: `http://127.0.0.1:8001/health`.
+- OpenAPI/Swagger: `http://127.0.0.1:8001/docs`.
+
+Para usar outra URL da API:
+
+```bash
+# Linux/macOS
+VITE_API_URL=http://127.0.0.1:8001 npm run dev
+```
+
+```powershell
+# Windows PowerShell
+$env:VITE_API_URL = "http://127.0.0.1:8001"
+npm run dev
+```
+
+Como o frontend envia cookies com `credentials: include`, a origem usada pelo
+navegador precisa estar permitida pelo CORS. Para origens adicionais às
+aceitas no desenvolvimento, configure `CORS_ORIGINS` no backend.
+
+## Banco de dados e migrations
+
+A partir de `backend/`, com `DATABASE_URL` apontando para o banco correto:
+
+```bash
+python -m alembic current
+python -m alembic heads
+python -m alembic upgrade head
+python -m alembic check
+```
+
+O head versionado é `0011` (`0011_fundacao_conteudo_usuario`). Antes de aplicar
+migrations:
+
+1. confira host e nome do banco;
+2. faça backup quando houver dados relevantes;
+3. não use um banco de produção em testes de integração;
+4. não execute downgrade sem revisar a migration e o conteúdo existente.
+
+As migrations criam a estrutura e as categorias oficiais de ambos os modos.
+Elas não carregam automaticamente todos os catálogos de perguntas.
+
+### Seed opcional de demonstração
+
+```bash
+cd backend
+python -m app.db.seed
+```
+
+O seed é idempotente e adiciona categorias oficiais ausentes do Quiz Clássico
+e 15 perguntas demonstrativas. Ele não alimenta o Nem a Pato e não deve ser
+tratado como catálogo de produção.
+
+## Administração dos catálogos
+
+Execute os comandos dentro de `backend`, com o ambiente virtual ativo e a
+conexão explicitamente conferida.
+
+### Categorias oficiais e prompt administrativo
+
+```bash
 python -m app.cli categoria listar
 python -m app.cli categoria criar
+python -m app.cli prompt gerar
 ```
 
-O comando `criar` solicita nome, código e descrição, mostra uma confirmação e
-só então persiste a categoria. O código deve começar com uma letra minúscula e
-usar somente letras minúsculas ASCII, números e hífens, com até 50 caracteres.
+O gerador do CLI monta texto para uma ferramenta de IA externa; ele não envia
+requisições a essa ferramenta nem importa automaticamente a resposta.
 
-### 3. Frontend
+### Quiz Clássico
 
-Em outro terminal, a partir da raiz do projeto:
+```bash
+python -m app.cli perguntas validar caminho/perguntas.xlsx
+python -m app.cli perguntas importar caminho/perguntas.xlsx
 
-```powershell
-npm install
-npm run dev -- --host 0.0.0.0
+python -m app.cli perguntas validar caminho/perguntas.csv
+python -m app.cli perguntas importar caminho/perguntas.csv
+
+python -m app.cli perguntas validar caminho/perguntas.json
+python -m app.cli perguntas importar caminho/perguntas.json
 ```
 
-O Vite usa por padrão a porta `5173`. A URL do backend pode ser definida antes de iniciar o frontend:
-
-```powershell
-$env:VITE_API_URL = "http://localhost:8001"
-npm run dev -- --host 0.0.0.0
-```
-
-Sem `VITE_API_URL`, o frontend usa o hostname pelo qual foi acessado e a porta `8001` para localizar a API.
-
-## Importação e validação das perguntas
-
-O CLI administrativo aceita XLSX, CSV e JSON e detecta o formato pela extensão:
-
-```powershell
-cd backend
-python -m app.cli perguntas validar caminho\perguntas.xlsx
-python -m app.cli perguntas validar caminho\perguntas.csv
-python -m app.cli perguntas validar caminho\perguntas.json
-
-python -m app.cli perguntas importar caminho\perguntas.xlsx
-python -m app.cli perguntas importar caminho\perguntas.csv
-python -m app.cli perguntas importar caminho\perguntas.json
-```
-
-`validar` consulta categorias e duplicidades, mas não insere, atualiza, exclui ou
-faz commit de dados. `importar` mostra primeiro o mesmo relatório de validação e
-solicita confirmação antes de persistir somente perguntas válidas e não
-duplicadas.
-
-O endpoint de importação é:
+XLSX e CSV usam as colunas:
 
 ```text
-POST /api/v1/perguntas/importar
+categoria_id,enunciado,alternativa_a,alternativa_b,alternativa_c,alternativa_d,alternativa_correta,explicacao
 ```
 
-Com o backend em execução, abra [http://localhost:8001/docs](http://localhost:8001/docs), localize o endpoint e envie uma planilha `.xlsx` no campo de arquivo. Para preservar o contrato público existente, esse endpoint continua aceitando somente XLSX; CSV e JSON estão disponíveis pelo CLI.
-
-### XLSX e CSV
-
-A primeira linha deve conter estas colunas:
-
-```text
-categoria_id
-enunciado
-alternativa_a
-alternativa_b
-alternativa_c
-alternativa_d
-alternativa_correta
-explicacao
-```
-
-O CSV oficial usa vírgula como delimitador, codificação UTF-8 com ou sem BOM e
-segue as regras usuais de aspas do formato para textos que contenham vírgulas.
-
-O campo `alternativa_correta` usa índices iniciados em zero:
-
-- `0` = A
-- `1` = B
-- `2` = C
-- `3` = D
-
-O importador valida cada linha e não insere uma pergunta quando já existe a mesma combinação de `categoria_id` e `enunciado`. A duplicata é informada no relatório da importação, e o registro existente não é alterado.
-
-### JSON
-
-O contrato JSON oficial é:
+`alternativa_correta` é um índice entre `0` (A) e `3` (D). O CSV usa vírgula e
+UTF-8 (com ou sem BOM). O JSON aceito pelo importador tem esta estrutura:
 
 ```json
 {
   "modo": "quiz_classico",
-  "categoria_id": "entretenimento",
+  "categoria_id": "geral",
   "perguntas": [
     {
-      "enunciado": "Qual filme...?",
-      "alternativas": [
-        "Alternativa A",
-        "Alternativa B",
-        "Alternativa C",
-        "Alternativa D"
-      ],
+      "enunciado": "Pergunta?",
+      "alternativas": ["A", "B", "C", "D"],
       "alternativa_correta": 0,
-      "explicacao": "Explicação breve da resposta."
+      "explicacao": "Explicação da resposta."
     }
   ]
 }
 ```
 
-`modo` deve ser exatamente `quiz_classico`, `categoria_id` identifica uma
-categoria ativa, `perguntas` deve ser uma lista não vazia e cada pergunta deve
-ter exatamente quatro alternativas. `alternativa_correta` é um índice de 0 a 3
-e `explicacao` é obrigatória.
+O endpoint legado `POST /api/v1/perguntas/importar` aceita XLSX. Ele não exige
+autenticação no código atual; em uma implantação pública, restrinja esse
+endpoint no proxy/rede ou prefira uma rotina administrativa controlada.
 
-JSON é o formato recomendado para conteúdo produzido externamente com auxílio
-de ChatGPT, Gemini ou outras ferramentas. O QuizHub não possui integração
-direta com nenhuma IA: o arquivo deve ser revisado e validado pelo CLI antes da
-importação.
+### Nem a Pato
 
-### Gerador de prompt para IA externa
-
-O CLI pode montar um prompt compatível com o contrato JSON do importador:
-
-```powershell
-cd backend
-python -m app.cli prompt gerar
-```
-
-O fluxo consulta as categorias ativas no PostgreSQL e solicita categoria, tema,
-quantidade, dificuldade e público-alvo. A quantidade deve estar entre 1 e 100.
-O limite de 100 mantém os lotes administráveis e reduz o risco de uma ferramenta
-externa truncar a resposta. Pressionar Enter no público-alvo usa `Público geral`.
-
-Exemplo resumido:
-
-```text
-Categorias ativas:
-1. Entretenimento (entretenimento)
-Categoria (número ou id): entretenimento
-Tema: Cinema, séries, música e cultura pop
-Quantidade de perguntas: 34
-Dificuldade: 4
-Público-alvo [Público geral]: Universitários
-
------ PROMPT GERADO -----
-...
------ FIM DO PROMPT -----
-```
-
-O comando somente imprime texto. Ele não chama ChatGPT, Gemini ou qualquer API,
-não exige chave e não grava perguntas nem arquivos. O processo administrativo é:
-
-```text
-QuizHub gera o prompt
-→ o usuário usa a IA externa escolhida
-→ a IA retorna JSON
-→ o usuário salva o JSON em um arquivo
-→ o QuizHub valida
-→ o usuário confirma a importação
-```
-
-Depois de revisar e salvar a resposta da IA, use:
-
-```powershell
-python -m app.cli perguntas validar arquivo.json
-python -m app.cli perguntas importar arquivo.json
-```
-
-## Catálogo numérico Nem a Pato
-
-O catálogo de perguntas numéricas usa a tabela `perguntas_nem_pato` e um
-importador separado do Quiz Clássico. Nesta fase há somente infraestrutura de
-catálogo/CLI; não há API nem gameplay Nem a Pato.
-
-O formato canônico aceita XLSX, CSV e JSON. XLSX/CSV usam a primeira linha
-como cabeçalho; são obrigatórias `categoria_id`, `enunciado`,
-`resposta_numerica` e `explicacao`. `unidade`, `fonte` e `ativa` são opcionais.
-Colunas adicionais são ignoradas. CSV usa vírgula, aspas CSV padrão e UTF-8
-com ou sem BOM. JSON deve ser uma lista de objetos com os mesmos nomes de
-campos. Uma lista JSON vazia é válida e contém zero itens; arquivo vazio ou
-XLSX/CSV sem cabeçalho é inválido. Linhas de planilha completamente vazias
-são ignoradas e fórmulas na coluna `resposta_numerica` são rejeitadas.
-
-`resposta_numerica` aceita inteiros não negativos e texto decimal composto
-somente por dígitos ASCII (por exemplo, `"40075"`). XLSX também aceita célula
-numérica inteira, dentro do limite de precisão inteira segura do Excel; frações,
-booleanos, `NaN`, infinito, texto inválido e valores acima do limite `BIGINT`
-são rejeitados. `ativa` aceita booleano, `true`/`false`, `1`/`0`, `sim`/`não`
-ou `s`/`n`, sem distinção de caixa; ausente ou vazio significa `true`.
-
-A duplicata é definida por `(categoria_id, enunciado)` após trim das
-extremidades, com comparação sensível a maiúsculas/minúsculas. Duplicatas do
-arquivo e do banco são reportadas e ignoradas; registros existentes nunca são
-atualizados. A validação não grava dados. A importação exige confirmação e é
-toda-ou-nada: qualquer registro inválido cancela o lote, enquanto duplicatas
-conhecidas podem ser ignoradas. Erros durante a persistência provocam rollback.
-
-Comandos, executados no diretório `backend`:
-
-```text
-python -m app.cli nem-pato perguntas validar arquivo.xlsx
-python -m app.cli nem-pato perguntas importar arquivo.csv
+```bash
+python -m app.cli nem-pato perguntas validar caminho/perguntas.xlsx
+python -m app.cli nem-pato perguntas importar caminho/perguntas.xlsx
 python -m app.cli nem-pato perguntas listar
 python -m app.cli nem-pato perguntas resumo
 python -m app.cli nem-pato perguntas criar
 ```
 
-`listar` não exibe as respostas numéricas. `criar` solicita os mesmos campos
-e usa as mesmas validações e detecção de duplicata da importação.
+O validador e o importador também aceitam CSV e JSON. Os campos são:
 
-## Lobby Nem a Pato
-
-O backend oferece endpoints do lobby, prepara a partida e permite abrir a
-primeira rodada com palpites numéricos crescentes:
-
-| Método | Endpoint | Finalidade |
-| --- | --- | --- |
-| `POST` | `/api/v1/nem-pato/salas` | Cria sala e primeiro participante anfitrião. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/participantes` | Entra em sala aguardando. |
-| `GET` | `/api/v1/nem-pato/salas/{codigo}` | Consulta estado público do lobby. |
-| `GET` | `/api/v1/nem-pato/salas/{codigo}/eu` | Recupera a participação autenticada após F5. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/iniciar` | Anfitrião inicia e prepara 10 rodadas. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/iniciar` | Anfitrião abre a primeira rodada. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/palpites` | Jogador da vez registra um palpite. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/desafiar` | Jogador elegível resolve a rodada contra o último palpite. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/rodadas/{rodada_id}/proxima` | Anfitrião ativo abre a próxima rodada após o resultado. |
-| `POST` | `/api/v1/nem-pato/salas/{codigo}/abandonar` | Abandona explicitamente e transfere anfitrião se necessário. |
-
-O código de sala tem seis caracteres maiúsculos e usa o alfabeto
-`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; é identificador, não credencial. Criação e
-entrada devolvem uma credencial aleatória opaca uma única vez. O banco guarda
-somente seu digest SHA-256. Endpoints privados usam `X-Nem-Pato-Token`, separado
-do cookie JWT de conta QuizHub. Um cliente pode guardar o token localmente e
-usar `GET /eu` após recarregar a página; recarregar não abandona a sala.
-
-O lobby aceita até seis participantes ativos; mínimo de três é requisito para
-uma partida futura. O serviço normaliza nome com trim, limita a 100 caracteres
-e trata diferenças de caixa simples como duplicatas. Ordens de entrada não são
-reutilizadas. Abandono preserva o registro e transfere o anfitrião ao ativo de
-menor ordem. Alterações de entrada e abandono incrementam uma vez a versão da
-sala. Operações de alteração bloqueiam primeiro a linha da sala e depois os
-participantes relacionados no PostgreSQL.
-
-O anfitrião pode iniciar quando há de 3 a 6 participantes ativos. O backend
-seleciona 10 perguntas numéricas ativas distintas, cria os snapshots dos
-jogadores e prepara 10 rodadas em `AGUARDANDO_INICIO`, sem deadline ou turno
-ativo. A sala muda para `EM_PARTIDA` e incrementa sua versão na mesma transação.
-Os clientes recuperam um resumo seguro da partida por `GET .../eu`; o DTO não
-inclui perguntas nem respostas. Nesta etapa, a categoria da partida registra
-a categoria da primeira pergunta selecionada (as categorias das demais
-perguntas podem variar). Durante uma rodada ativa, o abandono permanece bloqueado. Entre rodadas, em
-`RESULTADO`, o participante pode abandonar: seu snapshot é marcado, ele deixa as
-rotações futuras e, se era anfitrião, o papel passa ao próximo participante ativo.
-
-O início da rodada revela somente enunciado, categoria e unidade da pergunta;
-`resposta_numerica` e `explicacao` permanecem privadas. O primeiro jogador é
-derivado da ordem circular dos snapshots e do número da rodada. Cada palpite
-deve ser inteiro não negativo e estritamente maior que o anterior; depois de
-aceito, o turno avança circularmente. O payload de palpite exige
-`client_action_id` UUID, que torna seguro repetir a mesma ação sem criar outro
-registro nem avançar o turno novamente. Início e palpites usam o header
-`X-Nem-Pato-Token` e a ordem de locks sala → participantes → partida → rodada
-→ snapshots → palpites.
-
-O polling de `GET .../eu` devolve pergunta pública, jogador da vez, maior
-palpite, histórico e placar de patos. Após ao menos um palpite, qualquer jogador
-ativo do snapshot, inclusive fora de turno, pode desafiar o último palpite, exceto
-o próprio autor. O payload exige `client_action_id` UUID persistido. Se o palpite
-passou da resposta, seu autor recebe um pato; se ficou abaixo ou foi exatamente
-igual, o desafiante recebe o pato. A igualdade, portanto, favorece o autor.
-
-Palpite e desafio usam a mesma ordem de locks e o backend escolhe o último palpite
-sob lock. Apenas uma resolução por rodada é persistida. Em `RESULTADO`, resposta,
-explicação, autor, desafiante, penalizado e placar são revelados e reconstruídos
-após F5. O anfitrião ativo avança uma única rodada por ação, de R1 até R10;
-o backend preserva histórico e placar, escolhe o jogador inicial pela rotação
-circular dos snapshots ativos e incrementa a versão da sala uma vez. Repetições
-ou corridas de avanço não iniciam duas rodadas. Cada rodada dura 120 segundos e
-`termina_em` é o prazo autoritativo.
-O PostgreSQL fornece o instante de validação após os locks; o countdown local é
-apenas visual. Não há worker: `GET .../eu`, palpites e desafios detectam
-`agora >= termina_em` e convergem atomicamente para `RESULTADO`. Com palpite, o
-autor do último fica protegido e todos os demais snapshots ativos recebem um pato;
-sem palpite, ninguém é penalizado. Ações validadas após o prazo não são gravadas.
-Pollings concorrentes aplicam a transição e `estado_versao` uma única vez. O
-`finalizada_em` registra o instante efetivo da persistência, enquanto `termina_em`
-continua sendo o prazo. A ordem de locks é sala → participantes → partida → rodada
-→ snapshots → palpites. O frontend nunca finaliza a rodada nem revela dados por
-conta própria.
-
-Quando a R10 chega a `RESULTADO`, por desafio, tempo esgotado ou ausência de
-palpite, a mesma transação marca a partida `FINALIZADA` e a sala `ENCERRADA`.
-Não há botão de finalização. O resultado é derivado dos snapshots persistidos:
-menor número de patos define vencedor(es), maior número define Pato(s) da Partida,
-sem desempate. Se mínimo e máximo coincidirem, todos os elegíveis ocupam os dois
-extremos e o frontend apresenta empate geral. Snapshots `ABANDONOU` preservam nome,
-ordem e patos no histórico, mas ficam fora da classificação competitiva. O placar
-visual ordena ativos por patos crescentes e usa a ordem original apenas para
-estabilidade de exibição.
-
-Se restarem menos de três snapshots ativos entre rodadas, a partida muda para
-`CANCELADA` e a sala para `ENCERRADA`, sem vencedores ou Patos da Partida. O estado
-terminal e sua classificação são reconstruídos por `GET .../eu` após F5. Ao
-observá-los, o frontend encerra o polling e oferece somente voltar ao início; não
-há revanche ou reabertura de sala. A resolução da R10, as penalizações, o
-encerramento e o único incremento de `estado_versao` formam uma mudança lógica
-atômica. Retries e pollings posteriores não voltam a alterar placar ou versão.
-
-Após uma partida `FINALIZADA`, o anfitrião ativo pode iniciar uma revanche pelo
-endpoint `POST /api/v1/nem-pato/salas/{codigo}/jogar-novamente`. A sala é
-reutilizada diretamente de `ENCERRADA` para `EM_PARTIDA`, sem reabrir entrada de
-participantes. A nova partida recebe o próximo número, novos snapshots somente
-dos participantes que terminaram ativos, ordem circular compactada, patos zerados
-e dez rodadas em `AGUARDANDO_INICIO`; a primeira rodada continua sendo iniciada
-pelo anfitrião no fluxo normal. Participantes abandonados permanecem apenas no
-histórico anterior. Partidas `CANCELADA` e grupos com menos de três ativos não
-permitem revanche.
-
-A seleção prefere perguntas não usadas na partida imediatamente anterior. Se
-restarem menos de dez, reutiliza apenas o necessário, mantendo as dez perguntas
-da nova partida distintas. Partidas anteriores nunca são alteradas, a mesma
-credencial da sala continua válida e cada revanche incrementa `estado_versao`
-uma vez. O lock da sala torna duplo clique concorrente seguro. Enquanto a tela
-final permanece aberta, os clientes continuam em polling para convergir sem F5
-quando o host criar a nova partida; “Voltar ao início” remove a credencial local
-e encerra essa sincronização.
-
-## API
-
-Principais endpoints:
-
-| Método | Endpoint | Finalidade |
-| --- | --- | --- |
-| `POST` | `/api/v1/partidas` | Cria uma partida e disponibiliza a primeira pergunta. |
-| `POST` | `/api/v1/partidas/{partida_id}/respostas` | Processa uma resposta ou timeout e devolve o novo estado autoritativo. |
-| `GET` | `/api/v1/categorias` | Lista as categorias ativas disponíveis para partidas. |
-| `POST` | `/api/v1/perguntas/importar` | Importa perguntas de uma planilha XLSX. |
-| `GET` | `/health` | Informa se a API está ativa. |
-
-A documentação interativa fica em [http://localhost:8001/docs](http://localhost:8001/docs).
-
-## Testes
-
-Para executar a suíte automatizada do backend:
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python -m unittest discover -s tests -v
+```text
+categoria_id,enunciado,resposta_numerica,explicacao,unidade,fonte,ativa
 ```
 
-Os testes de concorrência real do Nem a Pato ficam separados da suíte SQLite.
-Eles cobrem entrada, início de partida/rodada, início versus entrada, palpites
-simultâneos, retries idempotentes, avanço concorrente, avanço versus abandono, pollings simultâneos e corridas de
-palpite/desafio versus timeout.
-Execute-os somente em um banco PostgreSQL descartável cujo nome comece
-com `np3_test_`; a suíte recusa outros nomes e exige Alembic `0010`:
+- Obrigatórios: `categoria_id`, `enunciado`, `resposta_numerica` e
+  `explicacao`.
+- Opcionais: `unidade`, `fonte` e `ativa`.
+- `resposta_numerica` deve ser um inteiro entre `0` e
+  `9223372036854775807`.
+- XLSX não deve usar fórmula nesse campo e está sujeito à precisão inteira do
+  formato; para inteiros muito grandes, prefira JSON ou CSV.
+- O JSON desse modo é um array de objetos na raiz.
+
+Os arquivos em `backend/dados/` são catálogos versionados. Não adicione
+planilhas pessoais, exportações ou arquivos com conteúdo privado sem uma
+decisão explícita de versionamento.
+
+## API resumida
+
+Todas as rotas abaixo ficam sob `/api/v1`:
+
+| Área | Rotas principais |
+| --- | --- |
+| Autenticação | `/auth/cadastro`, `/auth/login`, `/auth/logout`, `/auth/me` |
+| Categorias | `/categorias`, `/categorias/jogaveis` |
+| Quiz Clássico | `/partidas`, `/partidas/{id}/respostas`, `/partidas/{id}/proxima` |
+| Nem a Pato | `/nem-pato/salas/...` |
+| Meu Conteúdo | `/meu-conteudo/resumo`, categorias, perguntas e importações |
+| Importação legada | `/perguntas/importar` |
+| Ranking | `/ranking` (sem persistência global implementada) |
+
+Consulte `/docs` para os payloads exatos e os códigos de resposta.
+
+## Testes e qualidade
+
+### Frontend
+
+Na raiz do repositório:
 
 ```bash
-cd backend
-createdb np3_test_local
-export DATABASE_URL="postgresql+psycopg://USUARIO:SENHA@localhost:5432/np3_test_local"
-python -m alembic upgrade 0010
-export NEM_A_PATO_TEST_DATABASE_URL="$DATABASE_URL"
-python -m unittest discover -s tests/integration -v
-dropdb np3_test_local
-```
-
-Não aponte `NEM_A_PATO_TEST_DATABASE_URL` para o banco de desenvolvimento. Os
-testes abrem sessões/conexões PostgreSQL independentes e observam a segunda
-transação esperando pelo lock da linha da sala em `pg_stat_activity`.
-
-Para validar o frontend, execute na raiz do projeto:
-
-```powershell
+npm test
 npm run lint
 npm run build
 ```
 
-## Acesso em rede
+- `npm test` executa `node --test tests/*.test.js`.
+- `npm run build` gera o frontend em `dist/`.
+- `npm run preview` serve o build apenas para inspeção local; não é uma
+  recomendação de servidor de produção.
 
-O backend e o frontend podem escutar em `0.0.0.0`, permitindo acesso por outros dispositivos da rede. O frontend deve ser iniciado com `npm run dev -- --host 0.0.0.0`, e o backend com a opção `--host 0.0.0.0` mostrada anteriormente.
+### Backend
 
-Para cenários em que a API esteja em outro host ou porta, configure `VITE_API_URL`. O backend aceita origens de desenvolvimento na porta `5173`, e origens adicionais podem ser informadas pela variável `CORS_ORIGINS`, separadas por vírgula.
+Dentro de `backend/`, com o ambiente virtual ativo:
 
-## Estado atual
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
 
-O MVP possui backend persistente, motor autoritativo de partidas, catálogo versionado com 139 perguntas em quatro categorias, partidas de 10 perguntas, frontend funcional e ranking local no navegador.
+Os testes de integração em `backend/tests/integration/` possuem variáveis e
+proteções próprias para bancos PostgreSQL descartáveis, por exemplo
+`NEM_A_PATO_TEST_DATABASE_URL` nos cenários multiplayer.
 
-## Próximas evoluções
+Antes de executar uma integração PostgreSQL:
 
-As possibilidades abaixo ainda não estão implementadas:
+- abra o arquivo do teste e confira as variáveis exigidas;
+- use somente um banco temporário com o padrão de nome aceito pelo teste;
+- confirme que a URL não aponta para desenvolvimento ou produção;
+- considere que a suíte pode criar, esvaziar ou reconstruir dados/schema no
+  banco autorizado.
 
-- ranking persistente no PostgreSQL;
-- diferentes quantidades e modos de partida;
-- novos modos de jogo;
-- multiplayer;
-- melhorias visuais;
-- modo para eventos e apresentações;
-- QR Code para entrada;
-- leaderboard compartilhado.
+Não há `pytest` em `backend/requirements.txt`; instalar ou documentar pytest
+não é necessário para a suíte atual.
 
-## Projeto acadêmico
+## Build e implantação
 
-O QuizHub foi desenvolvido como projeto acadêmico e continua em evolução.
+Gere o frontend estático com:
+
+```bash
+npm ci
+npm run build
+```
+
+O repositório não inclui Dockerfile, Compose, configuração de Caddy/Nginx ou
+unidade systemd. Uma implantação de produção precisa definir esses elementos
+fora do projeto ou adicioná-los em uma etapa própria.
+
+Requisitos mínimos para produção:
+
+- servir `dist/` por um servidor HTTP de produção;
+- encaminhar rotas da API ao Uvicorn executado sem `--reload`;
+- configurar fallback da SPA para `index.html` nas rotas do frontend e deep
+  links do Nem a Pato;
+- usar HTTPS e `JWT_COOKIE_SECURE=true`;
+- configurar `VITE_API_URL` no build ou usar proxy reverso coerente com a URL
+  pública;
+- permitir no CORS somente as origens necessárias quando frontend e API forem
+  de origens diferentes;
+- manter PostgreSQL fora da exposição pública e realizar backups;
+- executar Uvicorn por um gerenciador de processos com reinício e logs;
+- dimensionar workers, pool de conexões e recursos com medições do ambiente,
+  não com números copiados de outra máquina.
+
+Exemplo genérico, sem assumir gerenciador de processos ou quantidade de
+workers:
+
+```bash
+cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+Um proxy reverso pode encaminhar `/api/`, `/health` e `/docs` para a API. Se a
+API ficar em outro domínio, ajuste `VITE_API_URL`, cookies, HTTPS e CORS como
+um conjunto. Tailscale Funnel, Caddy e Nginx são opções de infraestrutura, não
+dependências do código versionado.
+
+## Segurança e privacidade
+
+- Nunca versione `.env`, segredos JWT, credenciais PostgreSQL ou tokens de
+  participantes.
+- Use um `JWT_SECRET` aleatório, longo e exclusivo por ambiente.
+- Ative o cookie `Secure` somente junto de HTTPS e mantenha o cookie HttpOnly.
+- Restrinja CORS; `allow_credentials` está ativo porque o frontend usa cookie
+  de sessão.
+- A credencial do Nem a Pato fica no `localStorage` para recuperação da sala.
+  Evite scripts de terceiros e trate qualquer XSS como comprometimento dessa
+  credencial.
+- O ranking local e as credenciais de sala pertencem ao perfil do navegador;
+  limpar o armazenamento local remove esses dados.
+- Valide arquivos antes de importar e revise a confirmação. A prévia privada
+  não substitui as validações definitivas do backend.
+- Não exponha diretamente PostgreSQL nem execute testes destrutivos em bancos
+  com dados reais.
+
+## Solução de problemas
+
+### A API não conecta ao PostgreSQL
+
+1. confira se PostgreSQL está ativo;
+2. confira host, porta, usuário e nome do banco em `DATABASE_URL`;
+3. execute `python -m alembic current` dentro de `backend/`;
+4. não publique a URL completa em logs ou chamados, pois ela pode conter uma
+   senha.
+
+### Login retorna erro sobre `JWT_SECRET`
+
+Copie `backend/.env.example` para `backend/.env` e defina um segredo forte.
+Reinicie o processo do backend depois da alteração.
+
+### O frontend não alcança a API
+
+- confira `/health` diretamente;
+- confira `VITE_API_URL` e se ela possui protocolo correto;
+- lembre que variáveis `VITE_*` são incorporadas ao iniciar/buildar o
+  frontend;
+- se o navegador reportar CORS, adicione a origem exata a `CORS_ORIGINS` em
+  vez de desativar a proteção.
+
+### Cookie de login não é enviado
+
+- em HTTP local, mantenha `JWT_COOKIE_SECURE=false`;
+- em produção, use HTTPS e `JWT_COOKIE_SECURE=true`;
+- confira domínio, origem, proxy e CORS;
+- não tente resolver o problema expondo o token ao JavaScript.
+
+### Uma categoria não inicia partida
+
+Ela precisa estar ativa, não excluída, pertencer ao modo escolhido e possuir
+pelo menos 10 perguntas elegíveis. Conteúdo privado só pode ser usado pelo seu
+proprietário autenticado.
+
+### Deep link da SPA retorna 404 em produção
+
+Configure o servidor dos arquivos estáticos para entregar `index.html` nas
+rotas de frontend que não correspondam a um arquivo. Não encaminhe por engano
+as rotas `/api/` para a SPA.
+
+### PowerShell bloqueia a ativação do venv
+
+Execute o Python do ambiente virtual diretamente, como mostrado na instalação
+Windows, sem mudar a política global da máquina.
+
+## Estado e limites conhecidos
+
+- O ranking é local ao navegador, não compartilhado entre dispositivos.
+- O multiplayer usa polling HTTP; frequência e capacidade devem ser validadas
+  no ambiente de implantação.
+- A saúde em `/health` confirma que o processo responde, mas não executa uma
+  verificação profunda do PostgreSQL.
+- O endpoint legado de importação XLSX não possui autenticação própria.
+- Não há configuração de infraestrutura de produção versionada.
+- Compatibilidade visual e de teclado em navegadores/dispositivos específicos
+  ainda exige validação no ambiente alvo.
+
+## Licença
+
+Não há arquivo de licença versionado no repositório. Antes de redistribuir ou
+publicar o projeto sob uma licença específica, defina e adicione o documento
+correspondente.
