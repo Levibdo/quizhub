@@ -1,0 +1,235 @@
+/* Camada visual do Nem a Pato, carregada após os estilos compartilhados. */
+.screen-frame:has(.np-screen) {
+  border-color: var(--color-border);
+  background:
+    radial-gradient(ellipse at 78% 8%, rgba(79, 17, 30, .18), transparent 25rem),
+    radial-gradient(ellipse at 18% 82%, rgba(108, 58, 166, .13), transparent 28rem),
+    linear-gradient(155deg, rgba(14, 12, 22, .94), rgba(4, 3, 10, .99));
+  box-shadow: var(--shadow-strong), inset 0 0 5rem rgba(4, 3, 10, .48);
+}
+
+.screen-frame:has(.np-screen)::before { border-color: rgba(169, 124, 216, .08); }
+
+.np-screen {
+  --np-black: var(--cosmic-void);
+  --np-coal: var(--cosmic-graphite);
+  --np-panel: var(--cosmic-surface);
+  --np-wine: var(--cosmic-danger-deep);
+  --np-wine-bright: #71182b;
+  --np-blood: var(--cosmic-danger);
+  --np-ivory: var(--cosmic-ivory);
+  --np-ivory-muted: var(--cosmic-ivory-muted);
+  --np-metal: var(--cosmic-violet);
+  --np-metal-light: var(--cosmic-violet-bright);
+}
+
+.np-screen::before {
+  opacity: .38;
+  background:
+    radial-gradient(ellipse at 18% 84%, rgba(108, 58, 166, .13), transparent 32rem),
+    radial-gradient(ellipse at 82% 90%, rgba(79, 17, 30, .16), transparent 28rem),
+    repeating-linear-gradient(104deg, transparent 0 4.5rem, rgba(236, 233, 223, .012) 4.6rem 4.65rem);
+}
+
+.screen-frame:has(.np-screen--entry) {
+  position: relative;
+  width: 100%;
+  min-height: calc(100svh - var(--header-height));
+  margin: 0;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-frame:has(.np-screen--entry)::before { display: none; }
+
+.np-screen--entry {
+  isolation: isolate;
+  width: 100%;
+  min-height: calc(100svh - var(--header-height));
+  padding: clamp(1.25rem, 4vw, 3rem) var(--page-gutter);
+  align-content: start;
+}
+
+.np-entry-scene {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background-image:
+    linear-gradient(90deg, rgba(4, 3, 10, .74) 0%, rgba(4, 3, 10, .4) 44%, rgba(4, 3, 10, .08) 72%),
+    linear-gradient(0deg, rgba(4, 3, 10, .62) 0%, transparent 48%, rgba(4, 3, 10, .12) 100%),
+    url('/images/cenario-nem-a-pato.webp');
+  background-position: center, center, 54% center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
+
+.np-screen--entry > :not(.np-entry-scene) {
+  position: relative;
+  z-index: 1;
+}
+
+.np-screen--entry .np-actions,
+.np-screen--entry .np-form {
+  align-self: end;
+  margin-inline: auto;
+  margin-top: auto;
+  backdrop-filter: blur(.35rem);
+}
+
+.np-screen--entry .np-heading {
+  width: min(100%, 62rem);
+  margin-inline: auto;
+  background:
+    linear-gradient(90deg, rgba(8, 6, 17, .92) 0%, rgba(20, 12, 29, .7) 48%, rgba(8, 6, 17, .22) 78%, transparent 100%);
+  backdrop-filter: blur(.12rem);
+}
+
+.np-screen--entry > .np-message {
+  width: min(100%, 62rem);
+  margin-inline: auto;
+}
+
+.np-heading {
+  border-color: rgba(169, 124, 216, .34);
+  background:
+    linear-gradient(180deg, rgba(79, 17, 30, .22), transparent 58%),
+    linear-gradient(145deg, rgba(28, 22, 42, .95), rgba(8, 6, 17, .99));
+  box-shadow: inset 0 0 2.75rem rgba(4, 3, 10, .72), 0 1rem 3rem rgba(4, 3, 10, .34);
+}
+.np-heading::before,
+.np-heading::after { border-color: rgba(167, 122, 216, .38); }
+.np-heading h1 { color: var(--cosmic-ivory); text-shadow: 0 .15rem 0 var(--cosmic-violet-deep), 0 0 1.4rem rgba(189, 67, 91, .28); }
+.np-heading p { color: var(--cosmic-ivory-muted); }
+.np-heading__rule { color: var(--cosmic-spectral-soft) !important; }
+.np-eyebrow { color: var(--cosmic-violet-bright); text-shadow: 0 0 .6rem rgba(108, 58, 166, .42); }
+
+.np-art-slot {
+  display: grid;
+  width: min(78vw, 18rem);
+  height: 8.5rem;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 72%, rgba(189, 67, 91, .13), transparent 66%);
+  pointer-events: none;
+}
+.np-art-slot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 .65rem .9rem rgba(4, 3, 10, .82));
+  pointer-events: none;
+  user-select: none;
+}
+
+.np-actions,
+.np-form,
+.np-guess-form { border-color: var(--color-border); background: linear-gradient(145deg, rgba(38, 19, 63, .35), rgba(8, 6, 17, .96)); }
+.np-form input,
+.np-guess-form input { border-color: var(--color-border-strong); color: var(--color-text); background: rgba(4, 3, 10, .76); }
+.np-form input:focus-visible { border-color: var(--color-focus); box-shadow: 0 0 0 .2rem rgba(115, 199, 223, .13); }
+
+.np-message { border-color: var(--color-border-strong); color: var(--color-text); background: linear-gradient(90deg, rgba(38, 19, 63, .46), rgba(14, 12, 22, .96)); box-shadow: inset 3px 0 var(--color-spectral); }
+.np-message--error { border-color: rgba(189, 67, 91, .68); color: #f1d6dc; background: rgba(79, 17, 30, .68); box-shadow: inset 3px 0 var(--color-danger); }
+.np-sync { border-color: var(--color-border); color: var(--color-text-muted); background: rgba(8, 6, 17, .86); }
+.np-retry,
+.np-room-code button { border-color: var(--color-border-strong); }
+
+.np-room-code { border-color: var(--color-border-strong); background: linear-gradient(135deg, rgba(79, 17, 30, .2), transparent 48%), rgba(8, 6, 17, .97); box-shadow: inset 0 0 2.5rem rgba(4, 3, 10, .62), 0 1rem 2rem rgba(4, 3, 10, .24); }
+.np-room-code::before,
+.np-room-code::after { background: linear-gradient(90deg, transparent, rgba(115, 199, 223, .5)); }
+.np-room-code input { color: var(--cosmic-spectral-soft); text-shadow: 0 0 1rem rgba(115, 199, 223, .32); }
+.np-room-count { border-block-color: var(--color-border); color: var(--cosmic-violet-bright); }
+
+.np-player { border-color: var(--color-border); background: linear-gradient(90deg, rgba(79, 17, 30, .16), transparent 42%), rgba(14, 12, 22, .95); box-shadow: inset 2px 0 rgba(108, 58, 166, .55); }
+.np-player > span:first-child { color: var(--cosmic-spectral-soft); text-shadow: 0 0 .55rem rgba(115, 199, 223, .22); }
+.np-player__badge,
+.np-player__you { border-color: var(--color-border); color: var(--color-text); background: rgba(4, 3, 10, .56); }
+.np-player__badge,
+.np-host-note { color: var(--cosmic-violet-bright); }
+.np-player__you { color: var(--cosmic-spectral-soft); }
+
+.np-started,
+.np-final { border-color: var(--color-border-strong); background: radial-gradient(ellipse at 50% 0, rgba(79, 17, 30, .28), transparent 48%), linear-gradient(155deg, rgba(28, 22, 42, .97), rgba(4, 3, 10, .99)); }
+.np-started::before,
+.np-dialog::before { border-color: rgba(167, 122, 216, .09); }
+.np-started__eyebrow,
+.np-final__eyebrow,
+.np-final h3,
+.np-score h3,
+.np-round h3,
+.np-round__counter { color: var(--cosmic-violet-bright); }
+.np-score,
+.np-final__score { border-color: var(--color-border); background: rgba(8, 6, 17, .68); }
+.np-score li,
+.np-final__score li { border-bottom-color: rgba(169, 124, 216, .18); }
+.np-score small { color: var(--cosmic-spectral-soft); }
+
+.np-round,
+.np-round__header { border-color: var(--color-border); }
+.np-round__question { border-color: rgba(169, 124, 216, .3); color: var(--color-text); background: linear-gradient(135deg, rgba(38, 19, 63, .36), rgba(8, 6, 17, .88)); }
+.np-round__status p { border-color: var(--color-border); background: rgba(8, 6, 17, .82); }
+.np-round__status strong { color: var(--cosmic-spectral-soft); }
+.np-timer strong { color: var(--cosmic-spectral-soft); text-shadow: 0 0 .65rem rgba(115, 199, 223, .22); }
+.np-timer--urgent strong { color: #ef7185; text-shadow: 0 0 .8rem rgba(189, 67, 91, .5); }
+.np-guess-history { scrollbar-color: rgba(108, 58, 166, .62) transparent; }
+.np-guess-history li { border-left-color: var(--cosmic-violet); background: rgba(8, 6, 17, .76); }
+
+.np-challenge { border-color: rgba(189, 67, 91, .72); color: #f6e7ea; background: linear-gradient(180deg, rgba(189, 67, 91, .2), transparent 50%), var(--cosmic-danger-deep); box-shadow: 0 0 1rem rgba(189, 67, 91, .12); }
+.np-challenge:hover:not(:disabled) { border-color: #df7086; background: #71182b; }
+.np-result__answer,
+.np-final__extremes section,
+.np-final__highlight { border-color: var(--color-border-strong); background: linear-gradient(135deg, rgba(79, 17, 30, .38), rgba(8, 6, 17, .9)); }
+.np-result__answer strong { color: var(--cosmic-spectral-soft); text-shadow: 0 0 .7rem rgba(115, 199, 223, .24); }
+.np-result__explanation { border-color: var(--color-border); color: var(--color-text-muted); background: rgba(8, 6, 17, .52); }
+
+.np-dialog { border-color: var(--color-border-strong); background: linear-gradient(145deg, rgba(79, 17, 30, .34), transparent 45%), linear-gradient(155deg, var(--cosmic-surface-raised), var(--cosmic-abyss) 82%); }
+.np-dialog h4 { color: var(--cosmic-ivory); text-shadow: 0 0 .8rem rgba(189, 67, 91, .3); }
+.np-final h2 { color: var(--cosmic-ivory); }
+.np-final__abandoned { border-top-color: var(--color-border); color: var(--color-text-muted); }
+
+@media (min-width: 48rem) {
+  .np-heading { padding-right: 17rem; }
+  .np-art-slot {
+    position: absolute;
+    right: .75rem;
+    bottom: .6rem;
+    width: 16rem;
+    height: 11.5rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .np-screen--entry {
+    min-height: calc(100svh - var(--header-height));
+    padding: 1rem var(--page-gutter);
+  }
+  .np-entry-scene {
+    background-image:
+      linear-gradient(180deg, rgba(4, 3, 10, .34), rgba(4, 3, 10, .82)),
+      url('/images/cenario-nem-a-pato.webp');
+    background-position: center, 61% center;
+  }
+  .np-heading > :not(.np-art-slot) {
+    position: relative;
+    z-index: 1;
+  }
+  .np-heading h1 {
+    font-size: clamp(2rem, 9vw, 2.5rem);
+    letter-spacing: .02em;
+  }
+  .np-heading p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .np-art-slot {
+    width: min(68vw, 12.5rem);
+    height: 6rem;
+    margin-bottom: .25rem;
+  }
+}
