@@ -14,13 +14,17 @@ if TYPE_CHECKING:
 
 class Jogador(Base):
     __tablename__ = "jogadores"
-    __table_args__ = (Index("ix_jogadores_usuario_id", "usuario_id"),)
+    __table_args__ = (
+        Index("ix_jogadores_usuario_id", "usuario_id"),
+        Index("ix_jogadores_visitante_id", "visitante_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     nome: Mapped[str] = mapped_column(String, nullable=False)
     usuario_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("usuarios.id"), nullable=True
     )
+    visitante_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

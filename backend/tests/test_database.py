@@ -110,9 +110,9 @@ class TestAlembicConfiguration(unittest.TestCase):
         revisions = list(scripts.walk_revisions())
         self.assertEqual(
             [revision.revision for revision in revisions],
-            ["0011", "0010", "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002", "0001"],
+            ["0012", "0011", "0010", "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002", "0001"],
         )
-        self.assertEqual(scripts.get_current_head(), "0011")
+        self.assertEqual(scripts.get_current_head(), "0012")
 
 
 if __name__ == "__main__":

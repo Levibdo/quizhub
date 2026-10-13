@@ -40,6 +40,8 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     const fetchOriginal = globalThis.fetch
     const storageOriginal = globalThis.localStorage
     const storage = new Map()
+    const rankingLegado = JSON.stringify([{ id: 99, jogador: 'Legado', pontuacao: 50 }])
+    storage.set('quizhub-ranking', rankingLegado)
     globalThis.localStorage = {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -146,9 +148,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
       assert.ok(botao('Jogar novamente →'))
       assert.ok(botao('Ver ranking'))
       assert.ok(botao('Voltar ao início'))
-      const ranking = JSON.parse(storage.get('quizhub-ranking'))
-      assert.equal(ranking.length, 1)
-      assert.equal(ranking[0].pontuacao, 1234)
+      assert.equal(storage.get('quizhub-ranking'), rankingLegado)
       assert.equal(chamadas.filter((c) => c.url.endsWith('/proxima')).length, 0)
       const marca = renderer.root.findByProps({ className: 'site-brand' })
       await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
@@ -219,6 +219,48 @@ test('categoria privada usa fallback, selo de origem e UUID correto', async (t) 
   assert.deepEqual(JSON.parse(criacao.options.body), {
     categoria: '11111111-1111-4111-8111-111111111111',
   })
+})
+
+test('visitante envia identidade persistente ao criar partida', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  const storage = new Map()
+  globalThis.localStorage = {
+    getItem: (chave) => storage.get(chave) ?? null,
+    setItem: (chave, valor) => storage.set(chave, valor),
+  }
+  const chamadas = []
+  globalThis.fetch = async (url, options = {}) => {
+    chamadas.push({ url, options })
+    if (url.endsWith('/auth/me')) return Response.json({ detail: 'Não autenticado' }, { status: 401 })
+    if (url.endsWith('/auth/logout')) return new Response(null, { status: 204 })
+    if (url.endsWith('/categorias/jogaveis')) return Response.json([
+      { id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO', origem: 'OFICIAL' },
+    ])
+    if (url.endsWith('/partidas')) return Response.json({
+      partida_id: 'visitante', jogador: 'Apelido novo', categoria: 'geral',
+      status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0,
+      pergunta_atual: { id: 1, pergunta: 'Pergunta?', alternativas: ['A', 'B', 'C', 'D'] },
+    })
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
+  await act(async () => botao('Jogar').props.onClick())
+  const nome = renderer.root.findByProps({ id: 'jogador-nome' })
+  await act(async () => nome.props.onChange({ target: { value: 'Apelido novo' } }))
+  await act(async () => renderer.root.findByProps({ className: 'auth-form' }).props.onSubmit({ preventDefault() {} }))
+  await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
+  const corpo = JSON.parse(chamadas.find((item) => item.url.endsWith('/partidas')).options.body)
+  assert.equal(corpo.jogador, 'Apelido novo')
+  assert.match(corpo.visitante_id, /^[0-9a-f-]{36}$/)
+  assert.equal(storage.get('quizhub-visitante-id'), corpo.visitante_id)
 })
 
 test('erro ao carregar categorias permite tentar novamente', async (t) => {
@@ -295,16 +337,18 @@ test('lista vazia de categorias exibe estado vazio sem permitir partida', async 
 test('ranking usa categorias dinâmicas e separa Todos da categoria geral', async (t) => {
   const fetchOriginal = globalThis.fetch
   const storageOriginal = globalThis.localStorage
+  const categoria = (id, slug, nome) => ({ id, slug, nome })
   const registros = [
-    { id: 1, jogador: 'Ana', categoria: 'geral', pontuacao: 900, acertos: 5, erros: 5 },
-    { id: 2, jogador: 'Ana', categoria: 'macabro', pontuacao: 1800, acertos: 9, erros: 1 },
-    { id: 3, jogador: 'Bia', categoria: 'entretenimento', pontuacao: 1200, acertos: 7, erros: 3 },
-    { id: 4, jogador: 'Arquivo', categoria: 'removida', pontuacao: 1000, acertos: 6, erros: 4 },
+    { posicao: 1, jogador: 'Ana', categoria: categoria('cat-macabro', 'macabro', 'Macabro'), pontuacao: 1800, acertos: 9, erros: 1 },
+    { posicao: 2, jogador: 'Bia', categoria: categoria('cat-entretenimento', 'entretenimento', 'Entretenimento'), pontuacao: 1200, acertos: 7, erros: 3 },
+    { posicao: 3, jogador: 'Caio', categoria: categoria('cat-geral', 'geral', 'Geral'), pontuacao: 900, acertos: 5, erros: 5 },
   ]
+  const rankingLegado = JSON.stringify([{ id: 4, jogador: 'Arquivo', categoria: 'removida', pontuacao: 9999 }])
   globalThis.localStorage = {
-    getItem: (key) => key === 'quizhub-ranking' ? JSON.stringify(registros) : null,
+    getItem: (key) => key === 'quizhub-ranking' ? rankingLegado : null,
     setItem: () => {},
   }
+  const chamadasRanking = []
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return new Response(JSON.stringify({ nome: 'Jogador' }), { status: 200 })
     if (url.endsWith('/categorias/jogaveis')) return new Response(JSON.stringify([
@@ -312,6 +356,11 @@ test('ranking usa categorias dinâmicas e separa Todos da categoria geral', asyn
       { id: '2a01b416-ae0c-53b4-8081-b5f33230048c', slug: 'entretenimento', nome: 'Entretenimento', descricao: '', modo: 'QUIZ_CLASSICO' },
       { id: '11111111-1111-4111-8111-111111111111', slug: 'macabro', nome: 'Macabro', descricao: '', modo: 'QUIZ_CLASSICO' },
     ]), { status: 200 })
+    if (url.includes('/ranking?')) {
+      chamadasRanking.push(url)
+      const filtro = new URL(url).searchParams.get('categoria')
+      return Response.json(filtro ? registros.filter((item) => item.categoria.slug === filtro) : registros)
+    }
     throw new Error(`URL inesperada: ${url}`)
   }
   let renderer
@@ -329,15 +378,17 @@ test('ranking usa categorias dinâmicas e separa Todos da categoria geral', asyn
   assert.equal(botao('Geral').props['aria-pressed'], false)
   assert.ok(botao('Entretenimento'))
   assert.ok(botao('Macabro'))
-  assert.ok(texto(renderer.root).includes('Arquivo'))
+  assert.ok(!texto(renderer.root).includes('Arquivo'))
   assert.equal(renderer.root.findAllByProps({ className: 'ranking-item' }).length, 3)
+  assert.match(chamadasRanking[0], /ranking\?limit=10$/)
 
   await act(async () => botao('Geral').props.onClick())
   assert.equal(botao('Todos').props['aria-pressed'], false)
   assert.equal(botao('Geral').props['aria-pressed'], true)
-  assert.ok(texto(renderer.root).includes('Ana'))
+  assert.ok(texto(renderer.root).includes('Caio'))
   assert.ok(!texto(renderer.root).includes('Arquivo'))
   assert.equal(renderer.root.findAllByProps({ className: 'ranking-item' }).length, 1)
+  assert.match(chamadasRanking.at(-1), /categoria=geral/)
 
   await act(async () => botao('Macabro').props.onClick())
   assert.ok(texto(renderer.root).includes('1.800'))
@@ -353,6 +404,7 @@ test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) =
     if (url.endsWith('/categorias/jogaveis')) return new Response(JSON.stringify([
       { id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' },
     ]), { status: 200 })
+    if (url.includes('/ranking?')) return Response.json([])
     throw new Error(`URL inesperada: ${url}`)
   }
   let renderer
@@ -366,10 +418,52 @@ test('ranking vazio mantém filtros dinâmicos e ação para jogar', async (t) =
   const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
   await act(async () => botao('Ver ranking').props.onClick())
   assert.ok(texto(renderer.root).includes('Ranking vazio'))
-  assert.ok(texto(renderer.root).includes('Ainda não existem resultados registrados neste dispositivo.'))
+  assert.ok(texto(renderer.root).includes('Ainda não existem resultados oficiais no ranking global.'))
   assert.ok(botao('Jogar novamente →'))
   await act(async () => botao('Geral').props.onClick())
   assert.ok(texto(renderer.root).includes('Ainda não existem resultados em Geral.'))
+})
+
+test('ranking global mostra carregamento, erro e tenta novamente sem usar histórico local', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  const storageOriginal = globalThis.localStorage
+  const legado = JSON.stringify([{ id: 1, jogador: 'Não exibir', pontuacao: 9999 }])
+  globalThis.localStorage = {
+    getItem: (chave) => chave === 'quizhub-ranking' ? legado : null,
+    setItem() {},
+  }
+  let tentativaRanking = 0
+  let liberarPrimeira
+  globalThis.fetch = async (url) => {
+    if (url.endsWith('/auth/me')) return Response.json({ nome: 'Jogador' })
+    if (url.endsWith('/categorias/jogaveis')) return Response.json([])
+    if (url.includes('/ranking?')) {
+      tentativaRanking += 1
+      if (tentativaRanking === 1) {
+        await new Promise((resolve) => { liberarPrimeira = resolve })
+        throw new TypeError('rede indisponível')
+      }
+      return Response.json([])
+    }
+    throw new Error(`URL inesperada: ${url}`)
+  }
+  let renderer
+  t.after(async () => {
+    if (renderer) await act(async () => renderer.unmount())
+    globalThis.fetch = fetchOriginal
+    globalThis.localStorage = storageOriginal
+  })
+  await act(async () => { renderer = create(createElement(App)) })
+  const botao = (label) => renderer.root.findAllByType('button').find((item) => texto(item) === label)
+  await act(async () => botao('Ver ranking').props.onClick())
+  assert.match(texto(renderer.root), /Carregando ranking global/)
+  assert.doesNotMatch(texto(renderer.root), /Não exibir/)
+  await act(async () => liberarPrimeira())
+  assert.match(texto(renderer.root), /Não foi possível carregar o ranking global/)
+  assert.doesNotMatch(texto(renderer.root), /Ranking vazio/)
+  await act(async () => botao('Tentar novamente').props.onClick())
+  assert.match(texto(renderer.root), /Ranking vazio/)
+  assert.equal(tentativaRanking, 2)
 })
 
 test('marca protege partida clássica ativa e confirmação abandona o progresso', async (t) => {

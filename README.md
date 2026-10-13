@@ -24,9 +24,11 @@ gerenciar catálogos privados.
 - Categorias oficiais e, para usuários autenticados, categorias próprias
   elegíveis.
 - Resultado com pontuação, acertos e erros.
-- Ranking exibido no frontend e armazenado no `localStorage` do navegador.
-  Ele não é um ranking global persistido no PostgreSQL; o endpoint atual
-  `GET /api/v1/ranking` retorna uma lista vazia.
+- Ranking global das melhores partidas oficiais finalizadas, consultado pelo
+  frontend em `GET /api/v1/ranking` e calculado a partir do PostgreSQL.
+- Perfis visitantes usam o UUID pseudônimo `quizhub-visitante-id`, persistido
+  no `localStorage` do navegador. Ele agrupa resultados futuros no ranking,
+  mas não autentica o visitante nem é vinculado automaticamente a uma conta.
 
 ### Nem a Pato
 
@@ -415,7 +417,7 @@ Todas as rotas abaixo ficam sob `/api/v1`:
 | Nem a Pato | `/nem-pato/salas/...` |
 | Meu Conteúdo | `/meu-conteudo/resumo`, categorias, perguntas e importações |
 | Importação legada | `/perguntas/importar` |
-| Ranking | `/ranking` (sem persistência global implementada) |
+| Ranking | `/ranking` (público; aceita `categoria` e `limit`) |
 
 Consulte `/docs` para os payloads exatos e os códigos de resposta.
 
@@ -539,8 +541,11 @@ servidor silenciosamente.
 - A credencial do Nem a Pato fica no `localStorage` para recuperação da sala.
   Evite scripts de terceiros e trate qualquer XSS como comprometimento dessa
   credencial.
-- O ranking local e as credenciais de sala pertencem ao perfil do navegador;
-  limpar o armazenamento local remove esses dados.
+- A identidade pseudônima de visitante e as credenciais de sala pertencem ao
+  perfil do navegador; limpar o armazenamento local gera uma nova identidade
+  para partidas futuras e remove as credenciais locais.
+- A chave legada `quizhub-ranking` pode permanecer no navegador por
+  compatibilidade, mas não é usada como fonte do ranking global.
 - Valide arquivos antes de importar e revise a confirmação. A prévia privada
   não substitui as validações definitivas do backend.
 - Não exponha diretamente PostgreSQL nem execute testes destrutivos em bancos
@@ -596,7 +601,8 @@ Windows, sem mudar a política global da máquina.
 
 ## Estado e limites conhecidos
 
-- O ranking é local ao navegador, não compartilhado entre dispositivos.
+- Visitantes são agrupados no ranking pelo UUID guardado no perfil atual do
+  navegador; navegadores ou perfis diferentes permanecem identidades distintas.
 - O multiplayer usa polling HTTP; frequência e capacidade devem ser validadas
   no ambiente de implantação.
 - A saúde em `/health` confirma que o processo responde, mas não executa uma

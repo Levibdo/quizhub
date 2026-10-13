@@ -37,12 +37,28 @@ test('auth e partidas enviam cookies; autenticado omite apelido', async () => {
   await api.login('levi@example.com', 'senha-teste')
   await api.obterUsuarioAtual()
   await api.criarPartida(undefined, 'geral')
-  await api.criarPartida('Convidado', 'geral')
+  await api.criarPartida('Convidado', 'geral', '11111111-2222-4333-8444-555555555555')
   await api.enviarResposta('partida', 1, 2)
   assert.ok(chamadas.every((c) => c.credentials === 'include'))
   assert.equal(chamadas[0].url, 'http://127.0.0.1:8001/api/v1/auth/cadastro')
   assert.deepEqual(JSON.parse(chamadas[3].body), { categoria: 'geral' })
-  assert.deepEqual(JSON.parse(chamadas[4].body), { jogador: 'Convidado', categoria: 'geral' })
+  assert.deepEqual(JSON.parse(chamadas[4].body), {
+    jogador: 'Convidado', categoria: 'geral',
+    visitante_id: '11111111-2222-4333-8444-555555555555',
+  })
+})
+
+test('ranking global usa limite e filtro opcionais no endpoint público', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    return Response.json([])
+  }
+  await api.listarRanking()
+  await api.listarRanking('geral', 10)
+  assert.equal(chamadas[0].url, 'http://127.0.0.1:8001/api/v1/ranking?limit=10')
+  assert.equal(chamadas[1].url, 'http://127.0.0.1:8001/api/v1/ranking?limit=10&categoria=geral')
+  assert.ok(chamadas.every(({ opcoes }) => opcoes.method === 'GET' && opcoes.credentials === 'include'))
 })
 
 test('logout 204 não interpreta JSON', async () => {

@@ -209,11 +209,19 @@ export function listarCategoriasJogaveis() {
   return requisitar('/api/v1/categorias/jogaveis', { method: 'GET' })
 }
 
-export function criarPartida(jogador, categoria) {
+export function criarPartida(jogador, categoria, visitanteId) {
+  const dados = { jogador, categoria }
+  if (visitanteId !== undefined) dados.visitante_id = visitanteId
   return requisitar('/api/v1/partidas', {
     method: 'POST',
-    body: JSON.stringify({ jogador, categoria }),
+    body: JSON.stringify(dados),
   })
+}
+
+export function listarRanking(categoria = null, limit = 10) {
+  const parametros = new URLSearchParams({ limit: String(limit) })
+  if (categoria) parametros.set('categoria', categoria)
+  return requisitar(`/api/v1/ranking?${parametros}`, { method: 'GET' })
 }
 
 export function enviarResposta(partidaId, perguntaId, alternativa) {

@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -143,6 +143,56 @@ class TestPartidasPersistentes(unittest.TestCase):
         self.assertEqual(criada.status, "EM_ANDAMENTO")
         self.assertNotIn("alternativa_correta", criada.pergunta_atual.model_dump())
         self.assertNotIn("correta", criada.pergunta_atual.model_dump())
+
+    def test_criacao_visitante_persiste_identidade_opcional(self):
+        visitante_id = uuid4()
+        with self.sessions() as session:
+            criada = self.servico.criar(
+                session,
+                "Visitante",
+                "tecnologia",
+                visitante_id=visitante_id,
+            )
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            self.assertEqual(partida.jogador.visitante_id, visitante_id)
+            self.assertIsNone(partida.jogador.usuario_id)
+
+    def test_criacao_sem_identidade_preserva_visitante_historico(self):
+        criada = self.criar(jogador="Visitante legado")
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            self.assertIsNone(partida.jogador.visitante_id)
+            self.assertIsNone(partida.jogador.usuario_id)
+
+    def test_usuario_autenticado_ignora_identidade_de_visitante(self):
+        visitante_id = uuid4()
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Usuária",
+                email="usuario-ranking@example.com",
+                senha_hash="hash-de-teste",
+            )
+            session.add(usuario)
+            session.commit()
+            criada = self.servico.criar(
+                session,
+                None,
+                "tecnologia",
+                usuario,
+                visitante_id=visitante_id,
+            )
+            partida = session.get(Partida, UUID(criada.partida_id))
+            self.assertEqual(partida.jogador.usuario_id, usuario.id)
+            self.assertIsNone(partida.jogador.visitante_id)
+
+    def test_schema_rejeita_visitante_id_invalido(self):
+        with self.assertRaises(ValidationError):
+            CriarPartida(
+                jogador="Visitante",
+                categoria="tecnologia",
+                visitante_id="nao-e-uuid",
+            )
 
     def test_cada_nova_partida_cria_novo_jogador_mesmo_nome(self):
         self.criar(jogador="João")

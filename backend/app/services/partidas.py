@@ -82,6 +82,8 @@ class PartidasPersistentes:
         jogador: str | None,
         categoria_id: str,
         usuario: Usuario | None = None,
+        *,
+        visitante_id: UUID | None = None,
     ) -> PartidaPublica:
         try:
             nome_jogador = usuario.nome if usuario is not None else jogador
@@ -158,6 +160,7 @@ class PartidasPersistentes:
             jogador_db = Jogador(
                 nome=nome_jogador,
                 usuario=usuario,
+                visitante_id=visitante_id if usuario is None else None,
             )
             partida = Partida(
                 jogador=jogador_db,

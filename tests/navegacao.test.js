@@ -59,6 +59,7 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
     if (url.endsWith('/meu-conteudo/resumo')) return Response.json({ modos: ['QUIZ_CLASSICO', 'NEM_A_PATO'].map((modo) => ({ modo, categorias: { usadas: 0, limite: 10 }, perguntas: { usadas: 0, limite: 200 } })) })
     if (url.includes('/meu-conteudo/categorias?')) return Response.json([])
     if (url.endsWith('/categorias/jogaveis')) return Response.json(categorias)
+    if (url.includes('/ranking?')) return Response.json([])
     if (url.endsWith('/partidas') && partida) return Response.json(await partida)
     return Response.json({ detail: 'inesperado' }, { status: 500 })
   }
@@ -87,6 +88,24 @@ test('cabeçalho não mostra sessão para visitante ou jogador convidado', async
   await act(async () => ui.button('Jogar').props.onClick())
   assert.equal(window.location.pathname, '/jogador')
   assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
+})
+
+test('recarregar a rota do ranking também restaura os filtros de categorias', async (t) => {
+  const ui = await montar(t, {
+    caminhoInicial: '/ranking',
+    categorias: [{
+      id: '40f40d1f-fa4a-5cc0-9a2f-910bfbf4b4cb',
+      slug: 'geral',
+      nome: 'Geral',
+      descricao: '',
+      modo: 'QUIZ_CLASSICO',
+      origem: 'OFICIAL',
+    }],
+  })
+
+  assert.match(ui.texto(), /Ranking/)
+  assert.ok(ui.button('Geral'))
+  assert.doesNotMatch(ui.texto(), /Nenhuma categoria disponível para filtro/)
 })
 
 test('Voltar e Avançar reproduzem login e cadastro e focam o título', async (t) => {

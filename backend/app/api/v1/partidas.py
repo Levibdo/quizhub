@@ -25,7 +25,13 @@ def criar_partida(
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(usuario_atual_opcional),
 ):
-    return partidas.criar(db, entrada.jogador, entrada.categoria, usuario)
+    return partidas.criar(
+        db,
+        entrada.jogador,
+        entrada.categoria,
+        usuario,
+        visitante_id=entrada.visitante_id,
+    )
 
 
 @router.post("/partidas/{partida_id}/respostas", response_model=ResultadoResposta)

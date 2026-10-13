@@ -16,7 +16,7 @@ import TelaMeuConteudo from './components/TelaMeuConteudo'
 import AppShell from './components/layout/AppShell'
 import useModalAcessivel from './hooks/useModalAcessivel'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
-import { carregarRanking, salvarResultado } from './utils/ranking'
+import { obterVisitanteId } from './utils/visitante'
 
 const TEMPO_POR_PERGUNTA = 15
 const TOTAL_PERGUNTAS = 10
@@ -46,7 +46,6 @@ function App() {
   const [resultadoResposta, setResultadoResposta] = useState(null)
   const [requisicaoEmAndamento, setRequisicaoEmAndamento] = useState(false)
   const [erro, setErro] = useState('')
-  const [ranking, setRanking] = useState(carregarRanking)
   const enviandoRef = useRef(false)
   const respostaConfirmadaRef = useRef(false)
   const avancandoRef = useRef(false)
@@ -182,6 +181,15 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (tela !== 'ranking') return undefined
+    let ativo = true
+    Promise.resolve().then(() => {
+      if (ativo) carregarCategorias()
+    })
+    return () => { ativo = false }
+  }, [carregarCategorias, tela])
+
+  useEffect(() => {
     function aoVoltarAvancar(evento) {
       if (ignorarProximoPopRef.current) { ignorarProximoPopRef.current = false; return }
       if (window.location.pathname?.startsWith('/nem-a-pato')) {
@@ -299,24 +307,13 @@ function App() {
   const salvarEFinalizar = useCallback((estadoFinal) => {
     setPartida(estadoFinal)
     if (!resultadoSalvoRef.current) {
-      salvarResultado({
-        id: Date.now(),
-        jogador: estadoFinal.jogador,
-        categoria: estadoFinal.categoria,
-        pontuacao: estadoFinal.pontuacao,
-        acertos: estadoFinal.acertos,
-        erros: estadoFinal.erros,
-      })
-      setRanking(carregarRanking())
       resultadoSalvoRef.current = true
     }
     navegar('resultado')
   }, [navegar])
 
   function abrirRanking() {
-    setRanking(carregarRanking())
     navegar('ranking')
-    if (categorias.length === 0 && !carregandoCategorias) carregarCategorias()
   }
 
   async function iniciarQuiz(categoria) {
@@ -327,7 +324,11 @@ function App() {
     setErro('')
     const versaoNavegacao = versaoNavegacaoRef.current
     try {
-      const novaPartida = await criarPartida(usuario ? undefined : jogador, categoria)
+      const novaPartida = await criarPartida(
+        usuario ? undefined : jogador,
+        categoria,
+        usuario ? undefined : obterVisitanteId(),
+      )
       if (versaoNavegacao !== versaoNavegacaoRef.current) return
       setCategoriaSelecionada(novaPartida.categoria)
       setPartida(novaPartida)
@@ -544,7 +545,6 @@ function App() {
       )}
       {tela === 'ranking' && (
         <TelaRanking
-          ranking={ranking}
           categorias={categorias}
           carregandoCategorias={carregandoCategorias}
           erroCategorias={erroCategorias}
