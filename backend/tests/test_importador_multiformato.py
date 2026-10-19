@@ -1,10 +1,12 @@
 import csv
 import json
+import os
 import tempfile
 import unittest
 from collections import Counter
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
@@ -16,7 +18,8 @@ from app.db.base import Base
 from app.db.seed import seed_database
 from app.db.session import get_db
 from app.main import app
-from app.models import Pergunta
+from app.models import Pergunta, Usuario
+from app.security import password_hash
 from app.services.importador_perguntas import (
     ArquivoImportacaoInvalido,
     COLUNAS_OBRIGATORIAS,
@@ -317,6 +320,11 @@ class TestCliPerguntas(unittest.TestCase):
 
 class TestApiImportacaoXlsx(unittest.TestCase):
     def setUp(self):
+        self.env = patch.dict(
+            os.environ,
+            {"JWT_SECRET": "segredo-de-teste-importacao-administrativa"},
+        )
+        self.env.start()
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -326,6 +334,12 @@ class TestApiImportacaoXlsx(unittest.TestCase):
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         with self.sessions() as session:
             seed_database(session)
+            session.add(Usuario(
+                nome="Admin", email="admin-importacao@example.com",
+                senha_hash=password_hash.hash("senha-administrativa"),
+                perfil="ADMIN",
+            ))
+            session.commit()
 
         def banco_teste():
             with self.sessions() as session:
@@ -333,11 +347,17 @@ class TestApiImportacaoXlsx(unittest.TestCase):
 
         app.dependency_overrides[get_db] = banco_teste
         self.client = TestClient(app)
+        resposta = self.client.post("/api/v1/auth/login", json={
+            "email": "admin-importacao@example.com",
+            "senha": "senha-administrativa",
+        })
+        self.assertEqual(resposta.status_code, 200)
 
     def tearDown(self):
         self.client.close()
         app.dependency_overrides.clear()
         self.engine.dispose()
+        self.env.stop()
 
     def test_endpoint_continua_exclusivo_para_xlsx(self):
         resposta = self.client.post(

@@ -88,6 +88,14 @@ class TestPartidaMetadata(unittest.TestCase):
             {"categorias.id"},
         )
         self.assertEqual(
+            {fk.target_fullname for fk in table.c.temporada_id.foreign_keys},
+            {"temporadas.id"},
+        )
+        self.assertEqual(
+            {fk.ondelete for fk in table.c.temporada_id.foreign_keys},
+            {"RESTRICT"},
+        )
+        self.assertEqual(
             check_expressions(table),
             {
                 "status IN ('EM_ANDAMENTO', 'FINALIZADA', 'EXPIRADA')",
@@ -102,6 +110,8 @@ class TestPartidaMetadata(unittest.TestCase):
                 "ix_partidas_jogador_id",
                 "ix_partidas_categoria_id",
                 "ix_partidas_status",
+                "ix_partidas_temporada_id",
+                "ix_partidas_temporada_status_categoria",
             },
         )
 
@@ -118,7 +128,7 @@ class TestPartidaMetadata(unittest.TestCase):
         )
         self.assertEqual(
             set(partida.__mapper__.relationships.keys()),
-            {"jogador", "categoria", "perguntas_partida"},
+            {"jogador", "categoria", "temporada", "perguntas_partida"},
         )
 
 

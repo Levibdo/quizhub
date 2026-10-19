@@ -17,7 +17,9 @@ from app.db.base import Base
 from app.db.seed import seed_database
 from app.db.session import get_db
 from app.main import app
-from app.models import Categoria, Partida, PartidaPergunta, Pergunta, Usuario
+from app.models import (
+    CatalogoOficial, Categoria, Partida, PartidaPergunta, Pergunta, Usuario,
+)
 from app.security import usuario_atual_opcional
 from app.services.partidas import PartidasPersistentes
 
@@ -33,6 +35,18 @@ class TestC14GameplayPrivado(unittest.TestCase):
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         with self.sessions() as session:
             seed_database(session)
+            catalogo = CatalogoOficial(
+                catalogo_id="quiz-classico-c14", versao=1,
+                modo=MODO_QUIZ_CLASSICO, status="ATIVO", sha256="0" * 64,
+            )
+            session.add(catalogo)
+            session.flush()
+            self.catalogo_id = catalogo.id
+            for pergunta in session.scalars(select(Pergunta).where(
+                Pergunta.origem == "OFICIAL"
+            )):
+                pergunta.catalogo_oficial_id = catalogo.id
+                pergunta.id_editorial = f"QC-C14-{pergunta.id}"
             self.usuario = Usuario(
                 nome="Dona", email="dona-c14@example.com", senha_hash="hash"
             )
@@ -206,6 +220,8 @@ class TestC14GameplayPrivado(unittest.TestCase):
                     alternativa_a="A", alternativa_b="B",
                     alternativa_c="C", alternativa_d="D",
                     alternativa_correta=0, explicacao="Oficial",
+                    catalogo_oficial_id=self.catalogo_id,
+                    id_editorial=f"QC-C14-EXTRA-{indice}",
                 ))
             session.commit()
         for identificador in (str(geral_id), "geral"):

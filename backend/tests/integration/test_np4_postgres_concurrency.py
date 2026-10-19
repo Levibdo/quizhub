@@ -1,6 +1,6 @@
 """Real PostgreSQL concurrency tests for NP4 match start.
 
-Run against a disposable PostgreSQL database, migrated to 0009:
+Run against a disposable PostgreSQL database, migrated through 0018:
 
     NEM_A_PATO_TEST_DATABASE_URL=postgresql+psycopg://.../np3_test_local \
         python -m unittest discover -s tests/integration -v
@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.nem_a_pato import PartidaNemPatoStatus, SalaNemPatoStatus
 from app.services.salas_nem_a_pato import SalasNemAPatoService
+from catalogo_helpers import garantir_catalogo_ativo
 
 ENV_NAME = "NEM_A_PATO_TEST_DATABASE_URL"
 DATABASE_URL = os.getenv(ENV_NAME, "").strip()
@@ -59,9 +60,9 @@ class TestNemAPatoStartPostgresConcurrency(unittest.TestCase):
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
         with cls.engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0012":
+        if revision != "0018":
             cls.engine.dispose()
-            raise RuntimeError(f"expected revision 0012, received {revision!r}")
+            raise RuntimeError(f"expected revision 0018, received {revision!r}")
 
     @classmethod
     def tearDownClass(cls):
@@ -83,11 +84,13 @@ class TestNemAPatoStartPostgresConcurrency(unittest.TestCase):
 
     def add_ten_active_questions(self):
         with self.sessions() as session:
+            catalogo = garantir_catalogo_ativo(session, MODO_NEM_A_PATO)
             categoria_id = CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"]
             if session.get(Categoria, categoria_id) is None:
                 self.fail("base category 'geral' missing from migration 0009")
             session.add_all([
                 PerguntaNemPato(
+                    catalogo_oficial_id=catalogo.id,
                     categoria_id=categoria_id,
                     enunciado=f"Postgres NP4 {uuid4()}",
                     resposta_numerica=index,

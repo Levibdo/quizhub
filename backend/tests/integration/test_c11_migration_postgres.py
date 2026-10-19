@@ -318,6 +318,11 @@ class TestC11MigrationPostgres(unittest.TestCase):
         self.assert_0011_structure()
         self.assertEqual(self.counts(), {**before, "categorias": 8})
         self.assert_backfills_and_snapshots()
+        # O autogenerate só pode comparar os modelos atuais com o head atual.
+        # As asserções acima continuam cobrindo especificamente a revisão 0011;
+        # em seguida validamos também a cadeia completa até a revisão vigente.
+        self.migrate("upgrade", "head")
+        self.assertEqual(self.revision(), "0018")
         with patch.dict(os.environ, {"DATABASE_URL": DATABASE_URL}):
             command.check(self.config)
 

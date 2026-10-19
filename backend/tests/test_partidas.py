@@ -23,12 +23,14 @@ from app.conteudo import (
     ORIGEM_USUARIO,
 )
 from app.models import (
+    CatalogoOficial,
     Categoria,
     Jogador,
     Partida,
     PartidaPergunta,
     Pergunta,
     Resposta,
+    Temporada,
     Usuario,
 )
 from app.schemas.partidas import AvancarPergunta, CriarPartida, EnviarResposta, PartidaPublica
@@ -49,6 +51,17 @@ def como_utc(valor):
 
 def seed_catalogo_partidas(session):
     seed_database(session)
+    catalogo = CatalogoOficial(
+        catalogo_id="quiz-classico-testes", versao=1,
+        modo=MODO_QUIZ_CLASSICO, status="ATIVO", sha256="0" * 64,
+    )
+    session.add(catalogo)
+    session.flush()
+    for pergunta in session.scalars(select(Pergunta).where(
+        Pergunta.origem == "OFICIAL"
+    )):
+        pergunta.catalogo_oficial_id = catalogo.id
+        pergunta.id_editorial = f"QC-TEST-{pergunta.id}"
     proximo_id = 16
     for categoria_id in ("geral", "tecnologia", "matematica"):
         for numero in range(6, 11):
@@ -63,6 +76,8 @@ def seed_catalogo_partidas(session):
                     alternativa_d="D",
                     alternativa_correta=0,
                     explicacao="A alternativa A e a correta nesta pergunta de teste.",
+                    catalogo_oficial_id=catalogo.id,
+                    id_editorial=f"QC-TEST-{proximo_id}",
                 )
             )
             proximo_id += 1
@@ -118,6 +133,7 @@ class TestPartidasPersistentes(unittest.TestCase):
 
             self.assertEqual(session.scalar(select(func.count()).select_from(Jogador)), 1)
             self.assertEqual(partida.status, "EM_ANDAMENTO")
+            self.assertIsNotNone(partida.temporada_id)
             self.assertEqual(len(ocorrencias), 10)
             self.assertEqual([item.ordem for item in ocorrencias], list(range(1, 11)))
             self.assertEqual(len({item.pergunta_id for item in ocorrencias}), 10)
@@ -143,6 +159,43 @@ class TestPartidasPersistentes(unittest.TestCase):
         self.assertEqual(criada.status, "EM_ANDAMENTO")
         self.assertNotIn("alternativa_correta", criada.pergunta_atual.model_dump())
         self.assertNotIn("correta", criada.pergunta_atual.model_dump())
+
+    def test_criacao_falha_sem_temporada_ativa(self):
+        with self.sessions() as session:
+            temporada = session.scalar(select(Temporada).where(
+                Temporada.status == "ATIVA"
+            ))
+            temporada.status = "ENCERRADA"
+            temporada.encerra_em = max(
+                self.relogio.agora,
+                temporada.inicia_em.replace(tzinfo=timezone.utc),
+            )
+            session.commit()
+        with self.assertRaises(HTTPException) as contexto:
+            self.criar()
+        self.assertEqual(contexto.exception.status_code, 503)
+        with self.sessions() as session:
+            self.assertEqual(session.scalar(select(func.count()).select_from(Partida)), 0)
+
+    def test_temporada_atribuida_na_criacao_e_preservada_ao_finalizar(self):
+        criada = self.criar()
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            temporada_original = partida.temporada_id
+        for _ in range(10):
+            with self.sessions() as session:
+                atual = self.atual(session, UUID(criada.partida_id))
+                pergunta_id = atual.pergunta_id
+            resposta = self.responder(criada.partida_id, pergunta_id, 0)
+            if resposta.status == "EM_ANDAMENTO":
+                with self.sessions() as session:
+                    self.servico.avancar(
+                        session, criada.partida_id, pergunta_id
+                    )
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            self.assertEqual(partida.status, "FINALIZADA")
+            self.assertEqual(partida.temporada_id, temporada_original)
 
     def test_criacao_visitante_persiste_identidade_opcional(self):
         visitante_id = uuid4()

@@ -40,6 +40,11 @@ class TestDatabaseConfiguration(unittest.TestCase):
                 "rodadas_nem_pato",
                 "palpites_nem_pato",
                 "desafios_nem_pato",
+                "temporadas",
+                "catalogos_oficiais",
+                "fontes_perguntas_oficiais",
+                "fontes_perguntas_nem_pato_oficiais",
+                "auditorias_administrativas",
             },
         )
 
@@ -110,9 +115,13 @@ class TestAlembicConfiguration(unittest.TestCase):
         revisions = list(scripts.walk_revisions())
         self.assertEqual(
             [revision.revision for revision in revisions],
-            ["0012", "0011", "0010", "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002", "0001"],
+            [
+                "0018", "0017", "0016", "0015", "0014", "0013", "0012", "0011", "0010",
+                "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002",
+                "0001",
+            ],
         )
-        self.assertEqual(scripts.get_current_head(), "0012")
+        self.assertEqual(scripts.get_current_head(), "0018")
 
 
 if __name__ == "__main__":

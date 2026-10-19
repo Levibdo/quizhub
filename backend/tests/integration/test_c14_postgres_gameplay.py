@@ -9,7 +9,13 @@ from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-from app.conteudo import MODO_NEM_A_PATO, MODO_QUIZ_CLASSICO, ORIGEM_USUARIO
+from app.conteudo import (
+    CATEGORIAS_OFICIAIS,
+    MODO_NEM_A_PATO,
+    MODO_QUIZ_CLASSICO,
+    ORIGEM_OFICIAL,
+    ORIGEM_USUARIO,
+)
 from app.db.base import Base  # noqa: F401
 from app.models import (
     Categoria,
@@ -22,6 +28,7 @@ from app.models import (
 )
 from app.services.partidas import PartidasPersistentes
 from app.services.salas_nem_a_pato import SalasNemAPatoService
+from catalogo_helpers import garantir_catalogo_ativo
 
 
 ENV_NAME = "C14_TEST_DATABASE_URL"
@@ -45,7 +52,7 @@ class TestC14PostgresGameplay(unittest.TestCase):
         with cls.engine.connect() as conexao:
             atual = conexao.scalar(text("SELECT current_database()"))
             revisao = conexao.scalar(text("SELECT version_num FROM alembic_version"))
-        if atual != esperado or revisao != "0011":
+        if atual != esperado or revisao != "0018":
             cls.engine.dispose()
             raise RuntimeError(f"banco/revisão inesperados: {atual!r}, {revisao!r}")
 
@@ -58,6 +65,8 @@ class TestC14PostgresGameplay(unittest.TestCase):
         self.transacao = self.conexao.begin()
         self.sessions = sessionmaker(bind=self.conexao, expire_on_commit=False)
         with self.sessions() as db:
+            garantir_catalogo_ativo(db, MODO_QUIZ_CLASSICO)
+            catalogo_np = garantir_catalogo_ativo(db, MODO_NEM_A_PATO)
             self.usuario = Usuario(
                 id=uuid4(), nome="C14 U1",
                 email=f"c14-{uuid4()}@example.com", senha_hash="hash",
@@ -100,6 +109,14 @@ class TestC14PostgresGameplay(unittest.TestCase):
             ) for owner, categoria in (
                 (self.usuario, self.np), (self.outro, self.np_outro)
             ) for indice in range(10))
+            db.add(PerguntaNemPato(
+                categoria_id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"],
+                enunciado=f"C14 NP Oficial {uuid4()}",
+                resposta_numerica=42,
+                explicacao="C14 oficial",
+                origem=ORIGEM_OFICIAL,
+                catalogo_oficial_id=catalogo_np.id,
+            ))
             db.commit()
 
     def tearDown(self):

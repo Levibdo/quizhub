@@ -9,12 +9,12 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.db.base import Base  # noqa: F401
-from app.models import Categoria, Jogador, Partida, Usuario
+from app.models import Categoria, Jogador, Partida, Temporada, Usuario
 from app.services.ranking import RankingService
 
 
@@ -53,9 +53,9 @@ class TestRankingPostgres(unittest.TestCase):
             raise RuntimeError(
                 f"connected to {current_name!r}, expected disposable database {expected_name!r}"
             )
-        if revision != "0012":
+        if revision != "0018":
             cls.engine.dispose()
-            raise RuntimeError(f"expected revision 0012, received {revision!r}")
+            raise RuntimeError(f"expected revision 0018, received {revision!r}")
 
     @classmethod
     def tearDownClass(cls):
@@ -85,6 +85,22 @@ class TestRankingPostgres(unittest.TestCase):
         self.assertIsNotNone(self.general)
         self.assertIsNotNone(self.technology)
         self.assertIsNotNone(self.nem_pato)
+        temporada_anterior = self.session.scalar(select(Temporada).where(
+            Temporada.status == "ATIVA"
+        ))
+        self.assertIsNotNone(temporada_anterior)
+        switch_time = max(self.now, temporada_anterior.inicia_em)
+        temporada_anterior.status = "ENCERRADA"
+        temporada_anterior.encerra_em = switch_time
+        self.session.flush([temporada_anterior])
+        self.temporada = Temporada(
+            numero=self.session.scalar(select(func.max(Temporada.numero))) + 1,
+            nome="Temporada isolada do teste de ranking",
+            status="ATIVA",
+            inicia_em=switch_time,
+        )
+        self.session.add(self.temporada)
+        self.session.flush()
 
     def tearDown(self):
         self.session.close()
@@ -115,6 +131,7 @@ class TestRankingPostgres(unittest.TestCase):
             id=match_id or uuid4(),
             jogador_id=player.id,
             categoria_id=(category or self.general).id,
+            temporada_id=self.temporada.id,
             status=status,
             pontuacao=score,
             acertos=hits,

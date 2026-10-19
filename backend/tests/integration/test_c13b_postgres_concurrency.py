@@ -48,7 +48,7 @@ class TestC13BPostgresConcurrency(unittest.TestCase):
         with cls.engine.connect() as conexao:
             atual = conexao.scalar(text("SELECT current_database()"))
             revisao = conexao.scalar(text("SELECT version_num FROM alembic_version"))
-        if atual != esperado or revisao != "0011":
+        if atual != esperado or revisao != "0018":
             cls.engine.dispose()
             raise RuntimeError(f"banco/revisão inesperados: {atual!r}, {revisao!r}")
 

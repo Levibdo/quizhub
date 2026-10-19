@@ -17,6 +17,7 @@ from app.conteudo import (
 from app.db.session import get_db
 from app.main import app
 from app.models import (
+    CatalogoOficial,
     Categoria,
     JogadorPartidaNemPato,
     PartidaNemPato,
@@ -45,6 +46,16 @@ class InicioNemAPatoTestCase(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         with self.sessions() as session:
+            catalogo = CatalogoOficial(
+                catalogo_id="nem-a-pato-testes",
+                versao=1,
+                modo=MODO_NEM_A_PATO,
+                status="ATIVO",
+                sha256="0" * 64,
+            )
+            session.add(catalogo)
+            session.flush()
+            self.catalogo_id = catalogo.id
             session.add_all([
                 Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["geral"], slug="geral", nome="Geral", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
                 Categoria(id=CATEGORIAS_OFICIAIS[MODO_NEM_A_PATO]["tecnologia"], slug="tecnologia", nome="Tecnologia", modo=MODO_NEM_A_PATO, origem="OFICIAL", ativa=True),
@@ -82,6 +93,8 @@ class InicioNemAPatoTestCase(unittest.TestCase):
                     resposta_numerica=indice,
                     explicacao="Explicação privada de teste.",
                     ativa=ativas,
+                    catalogo_oficial_id=self.catalogo_id,
+                    id_editorial=f"NP-TEST-{indice}-{uuid4()}",
                 )
                 for indice in range(quantidade)
             ])
@@ -515,11 +528,18 @@ class TestInicioNemAPatoService(InicioNemAPatoTestCase):
 class TestInicioNemAPatoApi(InicioNemAPatoTestCase):
     def test_endpoint_iniciar_autenticado_e_resposta_privada_segura(self):
         host = self.sala_com(["Levi", "Jorge", "Luana"])
-        with self.client() as client:
+        client = self.client()
+        try:
             resposta = client.post(
                 f"/api/v1/nem-pato/salas/{host.sala.codigo}/iniciar",
                 headers={"X-Nem-Pato-Token": host.credencial_participante},
             )
+            recuperada = client.get(
+                f"/api/v1/nem-pato/salas/{host.sala.codigo}/eu",
+                headers={"X-Nem-Pato-Token": host.credencial_participante},
+            )
+        finally:
+            client.close()
         self.assertEqual(resposta.status_code, 200, resposta.text)
         dados = resposta.json()
         self.assertEqual(dados["sala"]["status"], "EM_PARTIDA")
@@ -530,18 +550,17 @@ class TestInicioNemAPatoApi(InicioNemAPatoTestCase):
             "resposta_numerica", "explicacao", "token_hash", "pergunta_id", "enunciado"
         ):
             self.assertNotIn(proibido, resposta.text)
-            recuperada = client.get(
-                f"/api/v1/nem-pato/salas/{host.sala.codigo}/eu",
-                headers={"X-Nem-Pato-Token": host.credencial_participante},
-            )
-            self.assertEqual(recuperada.status_code, 200, recuperada.text)
-            self.assertEqual(recuperada.json()["partida"]["status"], "EM_ANDAMENTO")
-            self.assertNotIn("resposta_numerica", recuperada.text)
+        self.assertEqual(recuperada.status_code, 200, recuperada.text)
+        self.assertEqual(recuperada.json()["partida"]["status"], "EM_ANDAMENTO")
+        self.assertNotIn("resposta_numerica", recuperada.text)
 
     def test_endpoint_sem_token_nao_inicia(self):
         host = self.sala_com(["Levi", "Jorge", "Luana"])
-        with self.client() as client:
+        client = self.client()
+        try:
             resposta = client.post(f"/api/v1/nem-pato/salas/{host.sala.codigo}/iniciar")
+        finally:
+            client.close()
         self.assertEqual(resposta.status_code, 401)
         sala, partida, _, _ = self.contagens(host.sala.codigo)
         self.assertEqual(sala.status, SalaNemPatoStatus.AGUARDANDO)

@@ -9,8 +9,9 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.api.v1.ranking import ranking
 from app.main import app
-from app.models import Categoria, Jogador, Partida, Usuario
+from app.models import Categoria, Jogador, Partida, Temporada, Usuario
 from app.services.ranking import RankingService
+from app.services.temporadas import TemporadaInexistente
 
 
 class TestRankingGlobal(unittest.TestCase):
@@ -26,6 +27,20 @@ class TestRankingGlobal(unittest.TestCase):
         self.agora = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
         self.proximo_id = 1
         with self.sessions() as session:
+            self.temporada_id = uuid4()
+            self.temporada_anterior_id = uuid4()
+            session.add_all([
+                Temporada(
+                    id=self.temporada_id, numero=2, nome="Temporada 2",
+                    status="ATIVA", inicia_em=self.agora,
+                ),
+                Temporada(
+                    id=self.temporada_anterior_id, numero=1,
+                    nome="Temporada 1", status="ENCERRADA",
+                    inicia_em=self.agora - timedelta(days=30),
+                    encerra_em=self.agora,
+                ),
+            ])
             dono = Usuario(
                 nome="Dona",
                 email="dona-ranking@example.com",
@@ -80,6 +95,7 @@ class TestRankingGlobal(unittest.TestCase):
         usuario_id=None,
         visitante_id=None,
         partida_id=None,
+        temporada_id=None,
     ):
         jogador = Jogador(
             nome=nome,
@@ -94,6 +110,7 @@ class TestRankingGlobal(unittest.TestCase):
             id=identificador,
             jogador_id=jogador.id,
             categoria_id=categoria_id or self.geral_id,
+            temporada_id=temporada_id or self.temporada_id,
             status=status,
             pontuacao=pontuacao,
             acertos=acertos,
@@ -258,7 +275,7 @@ class TestRankingGlobal(unittest.TestCase):
             ["Tech"],
         )
 
-    def test_exclui_categoria_privada_e_modo_nem_a_pato(self):
+    def test_exclui_privada_e_nem_pato_mas_preserva_oficial_inativa(self):
         with self.sessions() as session:
             self.adicionar_partida(
                 session, nome="Privado", pontuacao=2000, acertos=10,
@@ -276,7 +293,32 @@ class TestRankingGlobal(unittest.TestCase):
                 session, nome="Público", pontuacao=900, acertos=6,
             )
             session.commit()
-        self.assertEqual([item.jogador for item in self.listar()], ["Público"])
+        self.assertEqual(
+            [item.jogador for item in self.listar()],
+            ["Inativo", "Público"],
+        )
+
+    def test_filtra_temporada_por_numero_e_uuid_e_padrao_usa_ativa(self):
+        with self.sessions() as session:
+            self.adicionar_partida(
+                session, nome="Atual", pontuacao=1000, acertos=7,
+            )
+            self.adicionar_partida(
+                session, nome="Legado", pontuacao=2000, acertos=10,
+                temporada_id=self.temporada_anterior_id,
+            )
+            session.commit()
+        self.assertEqual([item.jogador for item in self.listar()], ["Atual"])
+        self.assertEqual(
+            [item.jogador for item in self.listar(temporada="1")],
+            ["Legado"],
+        )
+        self.assertEqual(
+            [item.jogador for item in self.listar(
+                temporada=str(self.temporada_anterior_id)
+            )],
+            ["Legado"],
+        )
 
     def test_limite_padrao_e_limite_configuravel_sao_aplicados_no_sql(self):
         with self.sessions() as session:
@@ -316,6 +358,11 @@ class TestRankingGlobal(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "entre 1 e 100"):
                 self.servico.listar(session, limit=101)
 
+    def test_temporada_inexistente_nao_cai_no_ranking_ativo(self):
+        with self.sessions() as session:
+            with self.assertRaises(TemporadaInexistente):
+                self.servico.listar(session, temporada="999")
+
     def test_openapi_declara_endpoint_publico_e_limites_http(self):
         operacao = app.openapi()["paths"]["/api/v1/ranking"]["get"]
         parametros = {item["name"]: item for item in operacao["parameters"]}
@@ -324,6 +371,8 @@ class TestRankingGlobal(unittest.TestCase):
         self.assertEqual(parametros["limit"]["schema"]["minimum"], 1)
         self.assertEqual(parametros["limit"]["schema"]["maximum"], 100)
         self.assertFalse(parametros["categoria"]["required"])
+        self.assertFalse(parametros["temporada"]["required"])
+        self.assertIn("/api/v1/ranking/temporadas", app.openapi()["paths"])
 
 
 if __name__ == "__main__":

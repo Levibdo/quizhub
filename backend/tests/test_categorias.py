@@ -78,7 +78,7 @@ class TestCategoriasService(CategoriasTestCase):
                         )
             session.flush()
 
-        self.assertEqual(len(encontradas), 8)
+        self.assertEqual(len(encontradas), 9)
         for modo, categorias in CATEGORIAS_OFICIAIS.items():
             for slug, categoria_id in categorias.items():
                 self.assertEqual(
