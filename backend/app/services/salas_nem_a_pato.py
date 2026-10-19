@@ -48,6 +48,10 @@ from app.schemas.nem_a_pato import (
     SalaLobbyPublica,
     SalaRecuperada,
 )
+from app.services.catalogos_oficiais import (
+    exigir_catalogo_ativo,
+    predicado_catalogo_ativo,
+)
 
 ALFABETO_CODIGO_SALA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 TAMANHO_CODIGO_SALA = 6
@@ -146,6 +150,7 @@ class SalasNemAPatoService:
         origem_permitida = and_(
             PerguntaNemPato.origem == "OFICIAL",
             PerguntaNemPato.usuario_id.is_(None),
+            predicado_catalogo_ativo(PerguntaNemPato, "NEM_A_PATO"),
             Categoria.origem == "OFICIAL",
             Categoria.usuario_id.is_(None),
         )
@@ -863,6 +868,8 @@ class SalasNemAPatoService:
                     detail="quantidade de participantes ativos inválida",
                 )
 
+            exigir_catalogo_ativo(db, "NEM_A_PATO")
+
             partida_ativa = db.scalar(
                 select(PartidaNemPato.id)
                 .where(
@@ -1081,6 +1088,8 @@ class SalasNemAPatoService:
                 raise HTTPException(
                     status_code=409, detail="sala não está encerrada"
                 )
+
+            exigir_catalogo_ativo(db, "NEM_A_PATO")
 
             partidas = list(db.scalars(
                 select(PartidaNemPato)

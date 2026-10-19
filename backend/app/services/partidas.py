@@ -19,6 +19,14 @@ from app.models import (
     Usuario,
 )
 from app.schemas.partidas import PartidaPublica, PerguntaPublica, ResultadoResposta
+from app.services.catalogos_oficiais import (
+    exigir_catalogo_ativo,
+    predicado_catalogo_ativo,
+)
+from app.services.temporadas import (
+    TemporadaAtivaAusente,
+    temporadas_service,
+)
 
 QUANTIDADE_PERGUNTAS = 10
 PRAZO_RESPOSTA_SEGUNDOS = 15
@@ -86,6 +94,7 @@ class PartidasPersistentes:
         visitante_id: UUID | None = None,
     ) -> PartidaPublica:
         try:
+            exigir_catalogo_ativo(db, "QUIZ_CLASSICO")
             nome_jogador = usuario.nome if usuario is not None else jogador
             if nome_jogador is None:
                 raise HTTPException(
@@ -134,6 +143,7 @@ class PartidasPersistentes:
                 propriedade = and_(
                     Pergunta.origem == "OFICIAL",
                     Pergunta.usuario_id.is_(None),
+                    predicado_catalogo_ativo(Pergunta, "QUIZ_CLASSICO"),
                 )
             else:
                 propriedade = and_(
@@ -157,6 +167,13 @@ class PartidasPersistentes:
                 )
 
             agora = self.relogio()
+            try:
+                temporada = temporadas_service.ativa_para_nova_partida(db)
+            except TemporadaAtivaAusente as erro:
+                raise HTTPException(
+                    status_code=503,
+                    detail="não existe temporada ativa para iniciar a partida",
+                ) from erro
             jogador_db = Jogador(
                 nome=nome_jogador,
                 usuario=usuario,
@@ -165,6 +182,7 @@ class PartidasPersistentes:
             partida = Partida(
                 jogador=jogador_db,
                 categoria=categoria,
+                temporada=temporada,
                 status="EM_ANDAMENTO",
                 iniciada_em=agora,
             )

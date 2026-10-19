@@ -8,6 +8,9 @@ class Base(DeclarativeBase):
 # Import models after Base is defined so they are registered in its metadata.
 from app.models import (  # noqa: E402, F401
     Categoria,
+    CatalogoOficial,
+    FontePerguntaNemPatoOficial,
+    FontePerguntaOficial,
     Jogador,
     JogadorPartidaNemPato,
     PalpiteNemPato,
@@ -20,5 +23,6 @@ from app.models import (  # noqa: E402, F401
     Resposta,
     RodadaNemPato,
     SalaNemPato,
+    Temporada,
     Usuario,
 )

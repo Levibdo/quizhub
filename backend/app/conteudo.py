@@ -24,5 +24,6 @@ CATEGORIAS_OFICIAIS = {
         "tecnologia": UUID("968d29fc-c00f-50c5-9f71-e2d1c53a603d"),
         "matematica": UUID("57036809-591b-54a0-a1ea-b2b815ffea01"),
         "entretenimento": UUID("6feed2ed-5be2-58a8-ad78-37077af2cfca"),
+        "macabro": UUID("c73ff198-c1de-5787-b796-c74d2df1b696"),
     },
 }

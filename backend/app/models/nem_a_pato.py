@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
@@ -36,6 +37,9 @@ from app.nem_a_pato import (
 )
 
 if TYPE_CHECKING:
+    from app.models.catalogo_oficial import (
+        CatalogoOficial, FontePerguntaNemPatoOficial,
+    )
     from app.models.categoria import Categoria
 
 
@@ -77,7 +81,19 @@ class PerguntaNemPato(Base):
             "origem <> 'OFICIAL' OR excluida_em IS NULL",
             name="ck_perguntas_nem_pato_oficial_nao_excluida",
         ),
+        CheckConstraint(
+            "natureza_resposta IS NULL OR "
+            "natureza_resposta IN ('EXATA', 'ESTIMATIVA')",
+            name="ck_perguntas_nem_pato_natureza_resposta",
+        ),
         Index("ix_perguntas_nem_pato_categoria_ativa", "categoria_id", "ativa"),
+        UniqueConstraint(
+            "catalogo_oficial_id", "id_editorial",
+            name="uq_perguntas_nem_pato_catalogo_id_editorial",
+        ),
+        Index(
+            "ix_perguntas_nem_pato_catalogo_oficial_id", "catalogo_oficial_id"
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -93,6 +109,8 @@ class PerguntaNemPato(Base):
     unidade: Mapped[str | None] = mapped_column(String, nullable=True)
     explicacao: Mapped[str] = mapped_column(Text, nullable=False)
     fonte: Mapped[str | None] = mapped_column(String, nullable=True)
+    fonte_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fonte_acessada_em: Mapped[date | None] = mapped_column(Date, nullable=True)
     ativa: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
@@ -111,12 +129,26 @@ class PerguntaNemPato(Base):
     excluida_em: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    catalogo_oficial_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("catalogos_oficiais.id", ondelete="RESTRICT"), nullable=True
+    )
+    id_editorial: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    tema_editorial: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    natureza_resposta: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    qualificacao_estimativa: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     categoria: Mapped["Categoria"] = relationship(
         back_populates="perguntas_nem_pato"
     )
     rodadas: Mapped[list["RodadaNemPato"]] = relationship(
         back_populates="pergunta"
+    )
+    catalogo_oficial: Mapped["CatalogoOficial | None"] = relationship(
+        back_populates="perguntas_nem_pato"
+    )
+    fontes_editoriais: Mapped[list["FontePerguntaNemPatoOficial"]] = relationship(
+        back_populates="pergunta", cascade="all, delete-orphan",
+        order_by="FontePerguntaNemPatoOficial.ordem",
     )
 
 

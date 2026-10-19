@@ -41,5 +41,17 @@ class Autenticacao:
             )
         return usuario
 
+    def criar_admin_inicial(
+        self, db: Session, nome: str, email: str, senha: str
+    ) -> Usuario:
+        if db.scalar(select(Usuario.id).where(Usuario.perfil == "ADMIN")) is not None:
+            raise ValueError("já existe um administrador; criação inicial recusada")
+        if len(senha) < 12:
+            raise ValueError("a senha administrativa deve ter ao menos 12 caracteres")
+        usuario = self.cadastrar(db, nome, email, senha)
+        usuario.perfil = "ADMIN"
+        db.flush()
+        return usuario
+
 
 autenticacao = Autenticacao()

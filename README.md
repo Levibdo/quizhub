@@ -56,6 +56,9 @@ gerenciar catálogos privados.
   instalação atual).
 - Sessão JWT de 8 horas em cookie `HttpOnly`, `SameSite=Lax`; a opção
   `Secure` é configurável por ambiente.
+- Perfis explícitos `JOGADOR` e `ADMIN`; novos cadastros recebem somente
+  `JOGADOR`. O painel `/admin` e os endpoints administrativos validam o perfil
+  no backend e retornam `401` sem sessão ou `403` sem permissão.
 - Categorias privadas separadas entre Quiz Clássico e Nem a Pato.
 - CRUD de categorias e perguntas próprias, com exclusão lógica.
 - Limites implementados de 10 categorias e 200 perguntas por usuário e por
@@ -116,7 +119,7 @@ versões JavaScript ficam em `package.json` e `package-lock.json`.
 ```text
 quizhub/
 ├── backend/
-│   ├── alembic/                 # migrations 0001 a 0011
+│   ├── alembic/                 # migrations incrementais (0001 a 0018)
 │   ├── app/
 │   │   ├── api/v1/              # endpoints HTTP
 │   │   ├── cli/                 # comandos administrativos
@@ -324,6 +327,20 @@ tratado como catálogo de produção.
 Execute os comandos dentro de `backend`, com o ambiente virtual ativo e a
 conexão explicitamente conferida.
 
+### Primeiro administrador
+
+Depois de aplicar a migration `0018`, crie o primeiro administrador por um
+terminal confiável. O comando solicita e confirma a senha sem gravá-la em
+argumentos, arquivos ou histórico do shell, exige ao menos 12 caracteres e é
+recusado quando já existe um perfil `ADMIN`:
+
+```bash
+python -m app.cli admin criar-inicial --nome "Administrador" --email admin@example.com
+```
+
+Não há credencial administrativa padrão nem promoção automática de usuários.
+Confirme sempre o `DATABASE_URL` de destino antes de executar o bootstrap.
+
 ### Categorias oficiais e prompt administrativo
 
 ```bash
@@ -372,9 +389,8 @@ UTF-8 (com ou sem BOM). O JSON aceito pelo importador tem esta estrutura:
 }
 ```
 
-O endpoint legado `POST /api/v1/perguntas/importar` aceita XLSX. Ele não exige
-autenticação no código atual; em uma implantação pública, restrinja esse
-endpoint no proxy/rede ou prefira uma rotina administrativa controlada.
+O endpoint legado `POST /api/v1/perguntas/importar` aceita XLSX, exige sessão
+com perfil `ADMIN` e registra o resultado na auditoria administrativa.
 
 ### Nem a Pato
 
@@ -416,7 +432,8 @@ Todas as rotas abaixo ficam sob `/api/v1`:
 | Quiz Clássico | `/partidas`, `/partidas/{id}/respostas`, `/partidas/{id}/proxima` |
 | Nem a Pato | `/nem-pato/salas/...` |
 | Meu Conteúdo | `/meu-conteudo/resumo`, categorias, perguntas e importações |
-| Importação legada | `/perguntas/importar` |
+| Administração | `/admin/resumo` (perfil `ADMIN`) |
+| Importação legada | `/perguntas/importar` (perfil `ADMIN`) |
 | Ranking | `/ranking` (público; aceita `categoria` e `limit`) |
 
 Consulte `/docs` para os payloads exatos e os códigos de resposta.
@@ -607,7 +624,9 @@ Windows, sem mudar a política global da máquina.
   no ambiente de implantação.
 - A saúde em `/health` confirma que o processo responde, mas não executa uma
   verificação profunda do PostgreSQL.
-- O endpoint legado de importação XLSX não possui autenticação própria.
+- Operações administrativas feitas pela API exigem perfil `ADMIN`; os comandos
+  locais continuam destinados apenas a operadores com acesso ao ambiente e ao
+  banco explicitamente configurado.
 - Não há configuração de infraestrutura de produção versionada.
 - Compatibilidade visual e de teclado em navegadores/dispositivos específicos
   ainda exige validação no ambiente alvo.

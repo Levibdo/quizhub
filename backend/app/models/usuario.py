@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     String,
     Text,
@@ -22,12 +23,21 @@ if TYPE_CHECKING:
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-    __table_args__ = (UniqueConstraint("email", name="uq_usuarios_email"),)
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_usuarios_email"),
+        CheckConstraint(
+            "perfil IN ('JOGADOR', 'ADMIN')",
+            name="ck_usuarios_perfil",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     nome: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String, nullable=False)
     senha_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    perfil: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="JOGADOR", server_default="JOGADOR"
+    )
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )

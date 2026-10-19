@@ -19,6 +19,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.partida_pergunta import PartidaPergunta
+    from app.models.temporada import Temporada
 
 
 class Partida(Base):
@@ -34,6 +35,11 @@ class Partida(Base):
         Index("ix_partidas_jogador_id", "jogador_id"),
         Index("ix_partidas_categoria_id", "categoria_id"),
         Index("ix_partidas_status", "status"),
+        Index("ix_partidas_temporada_id", "temporada_id"),
+        Index(
+            "ix_partidas_temporada_status_categoria",
+            "temporada_id", "status", "categoria_id",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -42,6 +48,11 @@ class Partida(Base):
     )
     categoria_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("categorias.id"), nullable=False
+    )
+    temporada_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("temporadas.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(
         String,
@@ -67,6 +78,7 @@ class Partida(Base):
 
     jogador: Mapped["Jogador"] = relationship(back_populates="partidas")
     categoria: Mapped["Categoria"] = relationship(back_populates="partidas")
+    temporada: Mapped["Temporada | None"] = relationship(back_populates="partidas")
     perguntas_partida: Mapped[list["PartidaPergunta"]] = relationship(
         back_populates="partida"
     )

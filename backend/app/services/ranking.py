@@ -3,8 +3,9 @@ from uuid import UUID
 from sqlalchemy import String, case, cast, func, literal, select
 from sqlalchemy.orm import Session
 
-from app.models import Categoria, Jogador, Partida
+from app.models import Categoria, Jogador, Partida, Temporada
 from app.schemas.ranking import CategoriaRankingPublica, ItemRankingPublico
+from app.services.temporadas import temporadas_service
 
 
 class RankingService:
@@ -23,10 +24,18 @@ class RankingService:
         db: Session,
         *,
         categoria: str | None = None,
+        temporada: str | UUID | int | None = None,
         limit: int = 10,
     ) -> list[ItemRankingPublico]:
         if limit < 1 or limit > 100:
             raise ValueError("limit deve estar entre 1 e 100")
+        temporada_id = (
+            select(Temporada.id)
+            .where(Temporada.status == "ATIVA")
+            .scalar_subquery()
+            if temporada is None
+            else temporadas_service.resolver(db, temporada).id
+        )
         identidade = case(
             (
                 Jogador.usuario_id.is_not(None),
@@ -72,9 +81,9 @@ class RankingService:
             .join(Categoria, Categoria.id == Partida.categoria_id)
             .where(
                 Partida.status == "FINALIZADA",
+                Partida.temporada_id == temporada_id,
                 Categoria.modo == "QUIZ_CLASSICO",
                 Categoria.origem == "OFICIAL",
-                Categoria.ativa.is_(True),
                 Categoria.excluida_em.is_(None),
             )
         )

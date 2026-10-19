@@ -96,3 +96,12 @@ def usuario_atual(
             detail="não autenticado",
         )
     return usuario
+
+
+def exigir_admin(usuario: Usuario = Depends(usuario_atual)) -> Usuario:
+    if usuario.perfil != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="acesso exclusivo para administradores",
+        )
+    return usuario

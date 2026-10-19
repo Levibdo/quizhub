@@ -5,8 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.data.perguntas import PERGUNTAS
 from app.db.session import get_session_factory
-from app.models import Categoria, Pergunta
+from app.models import Categoria, Pergunta, Temporada
 from app.conteudo import CATEGORIAS_OFICIAIS, MODO_QUIZ_CLASSICO
+from app.temporadas import (
+    STATUS_TEMPORADA_ATIVA,
+    TEMPORADA_LEGADO_ID,
+    TEMPORADA_LEGADO_NOME,
+    TEMPORADA_LEGADO_NUMERO,
+)
 
 CATEGORIAS_INICIAIS = (
     {"slug": "geral", "nome": "Geral", "descricao": "Conhecimentos gerais."},
@@ -34,6 +40,14 @@ def seed_database(session: Session) -> tuple[int, int]:
     perguntas_criadas = 0
 
     with session.begin():
+        if session.scalar(select(Temporada.id).limit(1)) is None:
+            session.add(Temporada(
+                id=TEMPORADA_LEGADO_ID,
+                numero=TEMPORADA_LEGADO_NUMERO,
+                nome=TEMPORADA_LEGADO_NOME,
+                status=STATUS_TEMPORADA_ATIVA,
+                inicia_em=datetime.now(timezone.utc),
+            ))
         categorias_existentes = set(session.scalars(select(Categoria.slug).where(
             Categoria.modo == MODO_QUIZ_CLASSICO,
         )))

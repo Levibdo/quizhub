@@ -1,4 +1,5 @@
 import argparse
+import getpass
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -26,6 +27,9 @@ from app.services.gerador_prompt import (
     ParametrosPromptInvalidos,
     gerar_prompt_perguntas,
 )
+from app.services.validador_catalogos_oficiais import validar_catalogos
+from app.services.auth import autenticacao
+from app.services.auditoria_administrativa import registrar_auditoria_administrativa
 
 
 def _listar(session, output: Callable[[str], None]) -> int:
@@ -327,12 +331,64 @@ def _criar_pergunta_nem_a_pato(
     return 0
 
 
+def _validar_catalogos_oficiais(args, output: Callable[[str], None]) -> int:
+    relatorio = validar_catalogos(
+        quiz=Path(args.quiz_classico) if args.quiz_classico else None,
+        nem_pato=Path(args.nem_a_pato) if args.nem_a_pato else None,
+        manifesto=Path(args.manifesto) if args.manifesto else None,
+    )
+    for caminho, digest in sorted(relatorio.hashes.items()):
+        output(f"SHA-256 {digest}  {caminho}")
+    for item in relatorio.ocorrencias:
+        referencia = f" [{item.referencia}]" if item.referencia else ""
+        output(f"{item.nivel} {item.codigo}{referencia}: {item.mensagem}")
+    output(
+        f"Resultado: {len(relatorio.erros)} erro(s), "
+        f"{len(relatorio.avisos)} aviso(s)."
+    )
+    return 0 if relatorio.valido else 1
+
+
+def _criar_admin_inicial(
+    session,
+    nome: str,
+    email: str,
+    input_password: Callable[[str], str],
+    output: Callable[[str], None],
+) -> int:
+    senha = input_password("Senha administrativa: ")
+    confirmacao = input_password("Confirme a senha: ")
+    if senha != confirmacao:
+        output("Erro: as senhas não conferem.")
+        return 1
+    try:
+        administrador = autenticacao.criar_admin_inicial(
+            session, nome.strip(), email.strip(), senha
+        )
+        registrar_auditoria_administrativa(
+            session,
+            administrador,
+            operacao="CRIAR_ADMIN_INICIAL",
+            recurso_tipo="USUARIO",
+            recurso_id=administrador.id,
+            resultado="SUCESSO",
+        )
+        session.commit()
+    except Exception as erro:
+        session.rollback()
+        output(f"Erro: {erro}")
+        return 1
+    output(f"Administrador '{administrador.email}' criado com sucesso.")
+    return 0
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     input_fn: Callable[[str], str] = input,
     output: Callable[[str], None] = print,
     session_factory=None,
+    input_password: Callable[[str], str] = getpass.getpass,
 ) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     comandos = parser.add_subparsers(dest="recurso", required=True)
@@ -359,10 +415,28 @@ def main(
         comando.add_argument("arquivo")
     for acao in ("listar", "resumo", "criar"):
         acoes_nem_pato.add_parser(acao)
+    catalogo_oficial = comandos.add_parser("catalogo-oficial")
+    acoes_catalogo = catalogo_oficial.add_subparsers(dest="acao", required=True)
+    validar_catalogo = acoes_catalogo.add_parser("validar")
+    validar_catalogo.add_argument("--quiz-classico")
+    validar_catalogo.add_argument("--nem-a-pato")
+    validar_catalogo.add_argument("--manifesto")
+    admin = comandos.add_parser("admin")
+    acoes_admin = admin.add_subparsers(dest="acao_admin", required=True)
+    criar_admin = acoes_admin.add_parser("criar-inicial")
+    criar_admin.add_argument("--nome", required=True)
+    criar_admin.add_argument("--email", required=True)
     args = parser.parse_args(argv)
+
+    if args.recurso == "catalogo-oficial":
+        return _validar_catalogos_oficiais(args, output)
 
     factory = session_factory or get_session_factory()
     with factory() as session:
+        if args.recurso == "admin":
+            return _criar_admin_inicial(
+                session, args.nome, args.email, input_password, output
+            )
         if args.recurso == "categoria":
             if args.acao == "listar":
                 return _listar(session, output)

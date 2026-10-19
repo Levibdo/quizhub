@@ -1,12 +1,12 @@
 import re
 from uuid import uuid4
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.conteudo import ORIGEM_OFICIAL
-from app.models import Categoria, Usuario
+from app.models import CatalogoOficial, Categoria, Usuario
 
 
 PADRAO_CATEGORIA_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
@@ -54,6 +54,10 @@ class CategoriasService:
                 Categoria.modo == "QUIZ_CLASSICO",
                 Categoria.ativa.is_(True),
                 Categoria.excluida_em.is_(None),
+                exists(select(CatalogoOficial.id).where(
+                    CatalogoOficial.modo == "QUIZ_CLASSICO",
+                    CatalogoOficial.status == "ATIVO",
+                )),
                 origens_permitidas,
             )
             .order_by(Categoria.nome, Categoria.slug)

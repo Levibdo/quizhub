@@ -38,6 +38,7 @@ class UsuarioPublico(BaseModel):
     nome: str
     email: str
     ativo: bool
+    perfil: str
     criado_em: datetime
 
     model_config = {"from_attributes": True}
