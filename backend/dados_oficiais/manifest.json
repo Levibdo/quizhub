@@ -1,0 +1,19 @@
+{
+  "schema_version": "quizhub.catalogos.manifest.v1",
+  "catalogos": [
+    {
+      "catalogo_id": "quiz_classico_v2",
+      "arquivo": "quiz_classico_v2.json",
+      "schema_version": "quizhub.quiz_classico.v2",
+      "sha256": "e987e892d92189913f077cdc481a8ee2d651942801d47534217b2ad5a4801db5",
+      "status": "PRONTO"
+    },
+    {
+      "catalogo_id": "nem_a_pato_macabro_v1",
+      "arquivo": "nem_a_pato_macabro_v1.json",
+      "schema_version": "quizhub.nem_a_pato.macabro.v1",
+      "sha256": "e8f3f4ce35d352e11bbd0ad5fb05e3dc79f07aa264bf402f994c1edfd57308c5",
+      "status": "PRONTO"
+    }
+  ]
+}

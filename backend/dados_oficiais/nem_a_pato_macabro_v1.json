@@ -1,0 +1,1722 @@
+{
+  "schema_version": "quizhub.nem_a_pato.macabro.v1",
+  "catalogo_id": "nem_a_pato_macabro_v1",
+  "versao": 3,
+  "modo": "NEM_A_PATO",
+  "categoria": {
+    "slug": "macabro",
+    "nome": "Macabro",
+    "perguntas": [
+      {
+        "id_editorial": "np-macabro-piloto-001",
+        "enunciado": "Quantas pessoas morreram no incêndio da fábrica Triangle Shirtwaist, em Nova York, em 1911?",
+        "resposta_numerica": 146,
+        "unidade": "pessoas",
+        "explicacao": "O incêndio de 25 de março de 1911 matou 146 trabalhadores e impulsionou reformas de segurança e condições de trabalho.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Triangle Shirtwaist Factory (Brown Building) — U.S. National Park Service",
+            "url": "https://home.nps.gov/places/triangle-shirtwaist-factory-brown-building.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-002",
+        "enunciado": "Quantas pessoas morreram no desastre do dirigível Hindenburg em 1937, contando as vítimas a bordo e em terra?",
+        "resposta_numerica": 36,
+        "unidade": "pessoas",
+        "explicacao": "Morreram 35 das 97 pessoas a bordo e um integrante da equipe em terra, totalizando 36 vítimas.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Following the Hindenburg — Smithsonian National Air and Space Museum",
+            "url": "https://airandspace.si.edu/stories/editorial/following-hindenburg",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-003",
+        "enunciado": "Quantos homens morreram instantaneamente na explosão do depósito naval de Port Chicago, em 1944?",
+        "resposta_numerica": 320,
+        "unidade": "pessoas",
+        "explicacao": "A explosão de dois navios que carregavam munições matou instantaneamente 320 marinheiros e civis e expôs desigualdades raciais nas tarefas militares.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Port Chicago Naval Magazine National Memorial — U.S. National Park Service",
+            "url": "https://www.nps.gov/poch",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-004",
+        "enunciado": "Aproximadamente quantas pessoas morreram na explosão de Halifax, no Canadá, em 1917?",
+        "resposta_numerica": 2000,
+        "unidade": "pessoas",
+        "explicacao": "A Parks Canada resume o desastre como responsável por quase 2.000 mortes e cerca de 9.000 feridos; uma base memorial da Nova Escócia registra 1.946 vítimas fatais identificadas.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "ESTIMATIVA",
+        "qualificacao_estimativa": "Valor arredondado para jogo. A fonte narrativa usa 'nearly 2,000'; a contagem nominal de 1.946 depende do critério e da identificação documental.",
+        "fontes": [
+          {
+            "titulo": "The Halifax Explosion — Parks Canada",
+            "url": "https://www.canada.ca/en/parks-canada/news/2016/07/the-halifax-explosion.html",
+            "acessada_em": "2026-10-14"
+          },
+          {
+            "titulo": "Halifax Explosion Remembrance Book — Nova Scotia Archives",
+            "url": "https://open.canada.ca/data/en/dataset/a43ed9ca-1f6d-063a-6bc7-66dc422c363e",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-005",
+        "enunciado": "Aproximadamente quantas pessoas morreram no naufrágio do Titanic em 1912?",
+        "resposta_numerica": 1500,
+        "unidade": "pessoas",
+        "explicacao": "A NOAA registra que aproximadamente 1.500 das mais de 2.200 pessoas a bordo morreram no naufrágio.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "ESTIMATIVA",
+        "qualificacao_estimativa": "Valor arredondado da NOAA; listas históricas variam conforme critérios sobre passageiros, tripulação e mortes posteriores.",
+        "fontes": [
+          {
+            "titulo": "R.M.S Titanic — Frequently Asked Questions — NOAA",
+            "url": "https://www.noaa.gov/office-of-general-counsel/gc-international-section/rms-titanic-frequently-asked-questions",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-006",
+        "enunciado": "Quantos homens participaram originalmente do estudo de sífilis do Serviço de Saúde Pública dos EUA em Tuskegee?",
+        "resposta_numerica": 600,
+        "unidade": "participantes",
+        "explicacao": "Foram recrutados 399 homens com sífilis e 201 sem a doença. Os participantes foram enganados sobre o estudo e o tratamento eficaz foi deliberadamente retido, tornando o caso um marco de violações éticas em pesquisa.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "About the Untreated Syphilis Study at Tuskegee — CDC",
+            "url": "https://www.cdc.gov/tuskegee/index.html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-021",
+        "enunciado": "Quantos recém-nascidos receberam a vacina BCG contaminada no desastre de Lübeck, iniciado em 1930?",
+        "resposta_numerica": 251,
+        "unidade": "recém-nascidos",
+        "explicacao": "Em Lübeck, 251 recém-nascidos receberam doses de BCG contaminadas com bacilos virulentos de tuberculose. A pergunta usa o tamanho documentado da coorte exposta, evitando a controvérsia posterior sobre quantas mortes foram diretamente atribuíveis à tuberculose.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Lübeck Disaster and the Beginning of the BCG Vaccine — Journal of Medical Biography / PubMed Central",
+            "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4721647/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-024",
+        "enunciado": "Quantos médicos e administradores foram julgados no Julgamento dos Médicos de Nuremberg, iniciado em 1946?",
+        "resposta_numerica": 23,
+        "unidade": "réus",
+        "explicacao": "Um tribunal militar norte-americano abriu processo contra 23 médicos e administradores por crimes de guerra e crimes contra a humanidade ligados, entre outros atos, a experimentos médicos sem consentimento.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Doctors Trial: The Medical Case of the Subsequent Nuremberg Proceedings — United States Holocaust Memorial Museum",
+            "url": "https://encyclopedia.ushmm.org/content/en/article/the-doctors-trial-the-medical-case-of-the-subsequent-nuremberg-proceedings",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-025",
+        "enunciado": "Quantos participantes o relatório presidencial dos EUA contabilizou como intencionalmente expostos a doenças sexualmente transmissíveis nos experimentos da Guatemala?",
+        "resposta_numerica": 1308,
+        "unidade": "participantes expostos",
+        "explicacao": "O relatório da Comissão Presidencial contabilizou 1.308 prisioneiros, soldados e pacientes psiquiátricos intencionalmente expostos a sífilis, gonorreia ou cancroide entre 1946 e 1948, sem consentimento válido.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala from 1946 to 1948 — U.S. Presidential Commission for the Study of Bioethical Issues",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-010",
+        "enunciado": "Quantas pessoas foram executadas por ordem das autoridades nos julgamentos de bruxaria de Salem, em 1692?",
+        "resposta_numerica": 20,
+        "unidade": "pessoas",
+        "explicacao": "Foram executadas 20 pessoas: 19 por enforcamento e Giles Corey por prensagem. Outras pessoas morreram na prisão, mas não integram esta contagem de execuções.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Salem in 1692 — U.S. National Park Service",
+            "url": "https://www.nps.gov/sama/learn/news/witch-calendar-lecture-2012.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-011",
+        "enunciado": "Quantos anos tinha Elizabeth Short, vítima do caso não resolvido conhecido como Dália Negra, em 1947?",
+        "resposta_numerica": 22,
+        "unidade": "anos",
+        "explicacao": "O FBI identifica Elizabeth Short como uma jovem de 22 anos; o assassinato permanece sem solução.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Black Dahlia — Federal Bureau of Investigation",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/black-dahlia",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-012",
+        "enunciado": "Quantos meses tinha Charles Lindbergh Jr. quando foi sequestrado em 1932?",
+        "resposta_numerica": 20,
+        "unidade": "meses de idade",
+        "explicacao": "O filho de Charles e Anne Lindbergh tinha 20 meses quando foi retirado do quarto; seu corpo foi encontrado posteriormente.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Lindbergh Kidnapping — Federal Bureau of Investigation",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/lindbergh-kidnapping",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-013",
+        "enunciado": "Quantas pessoas foram mortas no Massacre do Dia de São Valentim, em Chicago, em 1929?",
+        "resposta_numerica": 7,
+        "unidade": "pessoas",
+        "explicacao": "Sete integrantes ou associados do grupo de Bugs Moran foram mortos em uma garagem por criminosos que usavam uniformes policiais.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Al Capone — Federal Bureau of Investigation",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/al-capone",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-014",
+        "enunciado": "Qual é a estimativa central de mortes no mundo durante a pandemia de influenza de 1918–1919?",
+        "resposta_numerica": 50000000,
+        "unidade": "pessoas",
+        "explicacao": "Uma revisão publicada pelo CDC estima cerca de 50 milhões de mortes no mundo, ressalvando que algumas estimativas chegam a 100 milhões.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "ESTIMATIVA",
+        "qualificacao_estimativa": "Resposta central da revisão; não é contagem exata e existe uma faixa histórica ampla, chegando a 100 milhões em alguns estudos.",
+        "fontes": [
+          {
+            "titulo": "1918 Influenza: the Mother of All Pandemics — CDC Emerging Infectious Diseases",
+            "url": "https://wwwnc.cdc.gov/eid/article/12/1/05-0979_article/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-026",
+        "enunciado": "Quantas pessoas que estiveram no hotel da convenção da Legião Americana adoeceram no surto de 1976 que revelou a doença dos legionários?",
+        "resposta_numerica": 182,
+        "unidade": "pessoas doentes",
+        "explicacao": "O relatório do CDC registra 182 pessoas doentes entre as que estiveram no hotel da convenção; 29 delas morreram. Outros 39 casos ocorreram entre pessoas que estiveram nas proximidades e não entram no recorte da pergunta.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Legionnaires: the disease, the bacterium and methodology — Centers for Disease Control and Prevention",
+            "url": "https://stacks.cdc.gov/view/cdc/47770/cdc_47770_DS1.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-016",
+        "enunciado": "Quantas mortes haviam sido registradas na epidemia de febre amarela da Filadélfia até o início de novembro de 1793?",
+        "resposta_numerica": 4044,
+        "unidade": "pessoas",
+        "explicacao": "O National Park Service registra 4.044 mortes até o início de novembro. A epidemia continuou, e o total final posteriormente ultrapassou 5.000; por isso o recorte temporal faz parte da pergunta.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "A City Response to Yellow Fever — U.S. National Park Service",
+            "url": "https://home.nps.gov/articles/000/independence-mayorscommittee.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-027",
+        "enunciado": "Quantos segundos após a decolagem o controle da missão perdeu toda a telemetria do ônibus espacial Challenger em 1986?",
+        "resposta_numerica": 73,
+        "unidade": "segundos",
+        "explicacao": "A NASA registra que, 73 segundos após a decolagem, os controladores perderam toda a telemetria e observaram a desintegração da Challenger, que matou seus sete tripulantes.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "35 Years Ago: Remembering Challenger and Her Crew — NASA",
+            "url": "https://www.nasa.gov/history/35-years-ago-remembering-challenger-and-her-crew/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-023",
+        "enunciado": "Segundo o relatório oficial apresentado à IAEA, quantas pessoas examinadas após o acidente radiológico de Goiânia apresentaram contaminação?",
+        "resposta_numerica": 249,
+        "unidade": "pessoas contaminadas",
+        "explicacao": "O relatório oficial informa que 112.800 pessoas foram monitoradas e 249 apresentaram contaminação; quatro morreram. Resumos posteriores às vezes arredondam o número de contaminados para cerca de 250.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Measures to strengthen international co-operation in Nuclear Safety and Radiological Protection — IAEA GC(32)/840",
+            "url": "https://www.iaea.org/sites/default/files/gc/gc32-840_en.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-019",
+        "enunciado": "Quantos oficiais e tripulantes integravam a expedição Franklin que desapareceu no Ártico após partir em 1845?",
+        "resposta_numerica": 129,
+        "unidade": "pessoas",
+        "explicacao": "Os navios HMS Erebus e HMS Terror partiram com 129 homens e não retornaram. O destino individual da tripulação não foi integralmente documentado, embora os naufrágios tenham sido localizados em 2014 e 2016 com apoio do conhecimento inuit e da arqueologia.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Who's who in the Franklin expedition — Parks Canada",
+            "url": "https://parks.canada.ca/lhn-nhs/nu/epaveswrecks/culture/histoire-history/qui-who",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-piloto-020",
+        "enunciado": "Quantos colonos permaneceram em Roanoke após John White voltar à Inglaterra em 1587 e depois não foram encontrados?",
+        "resposta_numerica": 117,
+        "unidade": "colonos",
+        "explicacao": "A expedição de 1587 levou 118 colonos, incluindo o governador John White. Quando White voltou à Inglaterra, 117 permaneceram; ao retornar em 1590, ele encontrou o assentamento abandonado. O destino do grupo não foi demonstrado de forma definitiva.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "1587: The Lost Colony — Fort Raleigh National Historic Site, U.S. National Park Service",
+            "url": "https://www.nps.gov/fora/learn/historyculture/1587-the-lost-colony.htm",
+            "acessada_em": "2026-10-14"
+          },
+          {
+            "titulo": "Remembering Our Losses — Waterside Theater Complex — U.S. National Park Service",
+            "url": "https://www.nps.gov/articles/p52-remembering-our-losses-waterside-theater-complex.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-028",
+        "enunciado": "Quantos dias durou o vazamento descontrolado da Deepwater Horizon em 2010?",
+        "resposta_numerica": 87,
+        "unidade": "dias",
+        "explicacao": "A NOAA registra 87 dias entre a explosão e o controle do poço, no maior derramamento marítimo dos Estados Unidos.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Deepwater Horizon — NOAA National Centers for Environmental Information",
+            "url": "https://www.ncei.noaa.gov/products/deepwater-horizon",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-029",
+        "enunciado": "Quantos trabalhadores morreram na explosão da plataforma Deepwater Horizon?",
+        "resposta_numerica": 11,
+        "unidade": "trabalhadores",
+        "explicacao": "A explosão de 20 de abril de 2010 matou 11 trabalhadores.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Deepwater Horizon — NOAA National Centers for Environmental Information",
+            "url": "https://www.ncei.noaa.gov/products/deepwater-horizon",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-030",
+        "enunciado": "Quantos trabalhadores ficaram feridos na explosão da Deepwater Horizon?",
+        "resposta_numerica": 17,
+        "unidade": "trabalhadores feridos",
+        "explicacao": "Além das 11 mortes, a NOAA registra 17 trabalhadores feridos.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Deepwater Horizon — NOAA National Centers for Environmental Information",
+            "url": "https://www.ncei.noaa.gov/products/deepwater-horizon",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-031",
+        "enunciado": "Aproximadamente quantos milhões de galões de petróleo vazaram no desastre da Deepwater Horizon, segundo a estimativa da NOAA?",
+        "resposta_numerica": 134,
+        "unidade": "milhões de galões",
+        "explicacao": "A NOAA informa uma estimativa de 3,2 milhões de barris. Usando 42 galões por barril, isso corresponde a 134,4 milhões de galões, arredondados para 134 milhões para a mecânica do jogo.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "ESTIMATIVA",
+        "qualificacao_estimativa": "Estimativa oficial da NOAA expressa em milhões de galões, arredondada para a unidade inteira.",
+        "fontes": [
+          {
+            "titulo": "Deepwater Horizon 10 Years Later: 10 Questions — NOAA Fisheries",
+            "url": "https://www.fisheries.noaa.gov/news/deepwater-horizon-10-years-later-10-questions",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-032",
+        "enunciado": "Quantas pessoas morreram no desastre de Aberfan, no País de Gales, em 1966?",
+        "resposta_numerica": 144,
+        "unidade": "pessoas",
+        "explicacao": "O deslizamento de rejeitos de carvão matou 144 pessoas.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Coal tip safety impact assessment — UK Government",
+            "url": "https://cdn.websitebuilder.service.justice.gov.uk/uploads/sites/54/2025/12/Draft-Impact-Assessment.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-033",
+        "enunciado": "Quantas crianças estavam entre as vítimas fatais do desastre de Aberfan?",
+        "resposta_numerica": 116,
+        "unidade": "crianças",
+        "explicacao": "Das 144 vítimas de Aberfan, 116 eram crianças.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Coal tip safety impact assessment — UK Government",
+            "url": "https://cdn.websitebuilder.service.justice.gov.uk/uploads/sites/54/2025/12/Draft-Impact-Assessment.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-034",
+        "enunciado": "Quantas pessoas foram mortas no desastre de Hillsborough, segundo a contagem oficial atual?",
+        "resposta_numerica": 97,
+        "unidade": "pessoas",
+        "explicacao": "A resposta governamental britânica registra 97 pessoas mortas ilegalmente no desastre de 1989.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "A Hillsborough legacy — UK Home Office",
+            "url": "https://www.gov.uk/government/publications/hillsborough-disaster-report-government-response/a-hillsborough-legacy-the-governments-response-to-bishop-james-jones-report-accessible",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-035",
+        "enunciado": "Em que ano ocorreu o desastre de Hillsborough?",
+        "resposta_numerica": 1989,
+        "unidade": "ano",
+        "explicacao": "O esmagamento fatal ocorreu em 15 de abril de 1989.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "A Hillsborough legacy — UK Home Office",
+            "url": "https://www.gov.uk/government/publications/hillsborough-disaster-report-government-response/a-hillsborough-legacy-the-governments-response-to-bishop-james-jones-report-accessible",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-036",
+        "enunciado": "Quantas pessoas morreram no incêndio da Grenfell Tower?",
+        "resposta_numerica": 72,
+        "unidade": "pessoas",
+        "explicacao": "O incêndio de 14 de junho de 2017 custou 72 vidas.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Grenfell Tower Inquiry Phase 2 report: government response — UK Government",
+            "url": "https://www.gov.uk/government/publications/grenfell-tower-inquiry-phase-2-report-government-response/grenfell-tower-inquiry-phase-2-report-government-response-html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-037",
+        "enunciado": "Em que ano ocorreu o incêndio da Grenfell Tower?",
+        "resposta_numerica": 2017,
+        "unidade": "ano",
+        "explicacao": "O incêndio começou em 14 de junho de 2017.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Grenfell Tower Inquiry Phase 2 report: government response — UK Government",
+            "url": "https://www.gov.uk/government/publications/grenfell-tower-inquiry-phase-2-report-government-response/grenfell-tower-inquiry-phase-2-report-government-response-html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-038",
+        "enunciado": "Quantas pessoas estavam a bordo do USS Indianapolis quando ele foi afundado em 1945, segundo a contagem corrigida da Marinha?",
+        "resposta_numerica": 1195,
+        "unidade": "pessoas",
+        "explicacao": "A revisão dos registros corrigiu a lotação para 1.195 pessoas.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Navy officially changes status of USS Indianapolis sailors — U.S. Navy",
+            "url": "https://www.navy.mil/Press-Office/News-Stories/display-news/Article/3046148/navy-officially-changes-status-of-13-uss-indianapolis-sailors-lost-during-world/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-039",
+        "enunciado": "Quantos tripulantes do USS Indianapolis sobreviveram ao naufrágio e aos dias no mar?",
+        "resposta_numerica": 316,
+        "unidade": "sobreviventes",
+        "explicacao": "A Marinha confirma 316 sobreviventes.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Navy officially changes status of USS Indianapolis sailors — U.S. Navy",
+            "url": "https://www.navy.mil/Press-Office/News-Stories/display-news/Article/3046148/navy-officially-changes-status-of-13-uss-indianapolis-sailors-lost-during-world/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-040",
+        "enunciado": "Quantos torpedos atingiram o USS Indianapolis antes de ele afundar?",
+        "resposta_numerica": 2,
+        "unidade": "torpedos",
+        "explicacao": "Dois torpedos japoneses atingiram o cruzador pouco depois da meia-noite.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Navy officially changes status of USS Indianapolis sailors — U.S. Navy",
+            "url": "https://www.navy.mil/Press-Office/News-Stories/display-news/Article/3046148/navy-officially-changes-status-of-13-uss-indianapolis-sailors-lost-during-world/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-041",
+        "enunciado": "Quantos minutos o USS Indianapolis levou para afundar após ser torpedeado?",
+        "resposta_numerica": 12,
+        "unidade": "minutos",
+        "explicacao": "A mensagem comemorativa da Marinha registra que o navio afundou em 12 minutos.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Navy officially changes status of USS Indianapolis sailors — U.S. Navy",
+            "url": "https://www.navy.mil/Press-Office/News-Stories/display-news/Article/3046148/navy-officially-changes-status-of-13-uss-indianapolis-sailors-lost-during-world/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-042",
+        "enunciado": "Quantos astronautas morreram no incêndio da Apollo 1 durante o teste de 1967?",
+        "resposta_numerica": 3,
+        "unidade": "astronautas",
+        "explicacao": "Virgil Grissom, Edward White e Roger Chaffee morreram no módulo de comando.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Apollo 1 — NASA Safety and Mission Assurance",
+            "url": "https://sma.nasa.gov/sma-disciplines/accllp/apollo-1",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-043",
+        "enunciado": "Quantas partes compunham o sistema de escotilhas que dificultou a fuga da Apollo 1?",
+        "resposta_numerica": 3,
+        "unidade": "partes da escotilha",
+        "explicacao": "A NASA descreve uma escotilha interna e duas externas, removidas pela equipe da plataforma.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Apollo 1 — NASA Safety and Mission Assurance",
+            "url": "https://sma.nasa.gov/sma-disciplines/accllp/apollo-1",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-044",
+        "enunciado": "Quantos tripulantes morreram na desintegração do ônibus espacial Columbia em 2003?",
+        "resposta_numerica": 7,
+        "unidade": "tripulantes",
+        "explicacao": "Os sete integrantes da missão STS-107 morreram durante a reentrada.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Remembering the Columbia STS-107 Mission — NASA",
+            "url": "https://www.nasa.gov/remembering-columbia-sts-107/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-045",
+        "enunciado": "Quantos dias durou a missão científica final da Columbia?",
+        "resposta_numerica": 16,
+        "unidade": "dias completos",
+        "explicacao": "A NASA descreve 16 dias de operações científicas antes da perda durante a reentrada.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Remembering the Columbia STS-107 Mission — NASA",
+            "url": "https://www.nasa.gov/remembering-columbia-sts-107/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-046",
+        "enunciado": "Quantos minutos antes do pouso previsto a Columbia foi perdida?",
+        "resposta_numerica": 15,
+        "unidade": "minutos",
+        "explicacao": "A nave foi perdida aproximadamente 15 minutos antes do horário de pouso.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Remembering the Columbia STS-107 Mission — NASA",
+            "url": "https://www.nasa.gov/remembering-columbia-sts-107/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-047",
+        "enunciado": "Em que ano ocorreu o desastre do ônibus espacial Challenger?",
+        "resposta_numerica": 1986,
+        "unidade": "ano",
+        "explicacao": "A Challenger foi perdida em 28 de janeiro de 1986.",
+        "tema_editorial": "tragédias e desastres históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "35 Years Ago: Remembering Challenger and Her Crew — NASA",
+            "url": "https://www.nasa.gov/history/35-years-ago-remembering-challenger-and-her-crew/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-048",
+        "enunciado": "Quantos homens com sífilis foram recrutados para o estudo de Tuskegee?",
+        "resposta_numerica": 399,
+        "unidade": "participantes",
+        "explicacao": "Dos 600 homens recrutados, 399 tinham sífilis.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "About the Untreated Syphilis Study at Tuskegee — CDC",
+            "url": "https://www.cdc.gov/tuskegee/index.html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-049",
+        "enunciado": "Quantos homens sem sífilis formavam o grupo de comparação do estudo de Tuskegee?",
+        "resposta_numerica": 201,
+        "unidade": "participantes",
+        "explicacao": "O grupo de comparação tinha 201 homens sem sífilis.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "About the Untreated Syphilis Study at Tuskegee — CDC",
+            "url": "https://www.cdc.gov/tuskegee/index.html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-050",
+        "enunciado": "Em que ano começou o estudo de sífilis de Tuskegee?",
+        "resposta_numerica": 1932,
+        "unidade": "ano",
+        "explicacao": "O estudo começou em 1932 e tornou-se um marco negativo da ética em pesquisa.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "About the Untreated Syphilis Study at Tuskegee — CDC",
+            "url": "https://www.cdc.gov/tuskegee/index.html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-051",
+        "enunciado": "Em que ano o estudo de Tuskegee foi encerrado após vir a público?",
+        "resposta_numerica": 1972,
+        "unidade": "ano",
+        "explicacao": "A exposição pública levou ao encerramento do estudo em 1972.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "About the Untreated Syphilis Study at Tuskegee — CDC",
+            "url": "https://www.cdc.gov/tuskegee/index.html",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-052",
+        "enunciado": "Quantos réus foram condenados no Julgamento dos Médicos de Nuremberg?",
+        "resposta_numerica": 16,
+        "unidade": "réus condenados",
+        "explicacao": "Dos 23 réus, 16 foram considerados culpados.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Verdict announced in Medical Case — USHMM",
+            "url": "https://encyclopedia.ushmm.org/content/en/film/verdict-announced-in-medical-case",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-053",
+        "enunciado": "Quantos condenados no Julgamento dos Médicos receberam sentença de morte?",
+        "resposta_numerica": 7,
+        "unidade": "réus",
+        "explicacao": "Sete dos condenados receberam pena de morte.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Doctors Trial — United States Holocaust Memorial Museum",
+            "url": "https://encyclopedia.ushmm.org/content/en/article/the-doctors-trial-the-medical-case-of-the-subsequent-nuremberg-proceedings",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-054",
+        "enunciado": "Quantos princípios formam o Código de Nuremberg?",
+        "resposta_numerica": 10,
+        "unidade": "princípios",
+        "explicacao": "O veredicto transformou seis pontos iniciais em dez princípios de pesquisa médica permissível.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Nuremberg Code — United States Holocaust Memorial Museum",
+            "url": "https://encyclopedia.ushmm.org/content/en/article/the-nuremberg-code?series=18",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-055",
+        "enunciado": "Em que ano foi proferido o veredicto que apresentou o Código de Nuremberg?",
+        "resposta_numerica": 1947,
+        "unidade": "ano",
+        "explicacao": "O tribunal apresentou os princípios no veredicto de 19 de agosto de 1947.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Nuremberg Code — United States Holocaust Memorial Museum",
+            "url": "https://encyclopedia.ushmm.org/content/en/article/the-nuremberg-code?series=18",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-056",
+        "enunciado": "Quantos anos tinha Henrietta Lacks quando células de seu tumor foram coletadas sem consentimento?",
+        "resposta_numerica": 31,
+        "unidade": "anos",
+        "explicacao": "O NIH registra que Henrietta tinha 31 anos em 1951.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "HeLa Cells: A Lasting Contribution — NIH Office of Science Policy",
+            "url": "https://osp.od.nih.gov/hela-cells/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-057",
+        "enunciado": "Em que ano foram coletadas as células que originaram a linhagem HeLa?",
+        "resposta_numerica": 1951,
+        "unidade": "ano",
+        "explicacao": "As células foram coletadas em 1951 durante o tratamento de Henrietta Lacks.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "HeLa Cells: A Lasting Contribution — NIH Office of Science Policy",
+            "url": "https://osp.od.nih.gov/hela-cells/",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-058",
+        "enunciado": "Quantos pontos continha o memorando original de 1947 que antecedeu os dez princípios do Código de Nuremberg?",
+        "resposta_numerica": 6,
+        "unidade": "pontos",
+        "explicacao": "O USHMM registra que o memorando de Leo Alexander continha seis pontos, posteriormente revistos e expandidos para dez no veredicto.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Nuremberg Code — United States Holocaust Memorial Museum",
+            "url": "https://encyclopedia.ushmm.org/content/en/article/the-nuremberg-code?series=18",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-059",
+        "enunciado": "Quantos participantes dos experimentos da Guatemala receberam algum tratamento após exposição ou inoculação?",
+        "resposta_numerica": 678,
+        "unidade": "participantes tratados",
+        "explicacao": "O relatório presidencial contabiliza 678 participantes que receberam algum tratamento.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala — U.S. Presidential Commission",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-060",
+        "enunciado": "Quantas pessoas foram submetidas apenas a testes diagnósticos nos estudos de DST da Guatemala?",
+        "resposta_numerica": 5128,
+        "unidade": "pessoas testadas",
+        "explicacao": "O relatório separa 5.128 pessoas submetidas a testes diagnósticos da coorte intencionalmente exposta.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala — U.S. Presidential Commission",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-061",
+        "enunciado": "Quantos soldados foram expostos experimentalmente à gonorreia nos estudos da Guatemala?",
+        "resposta_numerica": 518,
+        "unidade": "soldados",
+        "explicacao": "A tabulação oficial registra 518 soldados expostos à gonorreia.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala — U.S. Presidential Commission",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-062",
+        "enunciado": "Em que ano começaram os experimentos de DST conduzidos na Guatemala?",
+        "resposta_numerica": 1946,
+        "unidade": "ano",
+        "explicacao": "Os experimentos começaram em 1946 e se estenderam até 1948.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala — U.S. Presidential Commission",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-063",
+        "enunciado": "Por quantos anos civis os experimentos da Guatemala se estenderam, de 1946 a 1948 inclusive?",
+        "resposta_numerica": 3,
+        "unidade": "anos civis",
+        "explicacao": "O período documentado abrangeu os anos civis de 1946, 1947 e 1948.",
+        "tema_editorial": "medicina e experimentos históricos",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Ethically Impossible: STD Research in Guatemala — U.S. Presidential Commission",
+            "url": "https://www.govinfo.gov/content/pkg/GOVPUB-PR-PURL-gpo15717/pdf/GOVPUB-PR-PURL-gpo15717.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-064",
+        "enunciado": "Quantas pessoas morreram no atentado de Oklahoma City em 1995?",
+        "resposta_numerica": 168,
+        "unidade": "pessoas",
+        "explicacao": "O atentado ao edifício federal Alfred P. Murrah matou 168 pessoas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Oklahoma City Bombing — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/oklahoma-city-bombing",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-065",
+        "enunciado": "Quantas pessoas morreram nos ataques com cartas contendo antraz em 2001?",
+        "resposta_numerica": 5,
+        "unidade": "pessoas",
+        "explicacao": "Cinco pessoas morreram nos ataques conhecidos como Amerithrax.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Amerithrax or Anthrax Investigation — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/amerithrax-or-anthrax-investigation",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-066",
+        "enunciado": "Quantas pessoas adoeceram nos ataques Amerithrax?",
+        "resposta_numerica": 17,
+        "unidade": "pessoas",
+        "explicacao": "Além das mortes, 17 pessoas adoeceram.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Amerithrax or Anthrax Investigation — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/amerithrax-or-anthrax-investigation",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-067",
+        "enunciado": "Quantas pessoas foram mortas pelos atiradores da região de Washington em 2002?",
+        "resposta_numerica": 10,
+        "unidade": "pessoas",
+        "explicacao": "A série de ataques matou 10 pessoas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Beltway (D.C.) Snipers — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/beltway-dc-snipers",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-068",
+        "enunciado": "Quantas pessoas ficaram gravemente feridas nos ataques dos atiradores da região de Washington?",
+        "resposta_numerica": 3,
+        "unidade": "pessoas",
+        "explicacao": "Três vítimas ficaram gravemente feridas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Beltway (D.C.) Snipers — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/beltway-dc-snipers",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-069",
+        "enunciado": "Quantas pessoas morreram nos atentados às embaixadas dos EUA no leste da África em 1998?",
+        "resposta_numerica": 224,
+        "unidade": "pessoas",
+        "explicacao": "Os ataques coordenados mataram 224 pessoas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "East African Embassy Bombings — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/east-african-embassy-bombings",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-070",
+        "enunciado": "Quantos norte-americanos estavam entre os mortos nos atentados às embaixadas no leste da África?",
+        "resposta_numerica": 12,
+        "unidade": "pessoas",
+        "explicacao": "Doze cidadãos norte-americanos estavam entre as vítimas fatais.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "East African Embassy Bombings — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/east-african-embassy-bombings",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-071",
+        "enunciado": "Quantas pessoas a bordo morreram no atentado contra o voo Pan Am 103?",
+        "resposta_numerica": 259,
+        "unidade": "pessoas a bordo",
+        "explicacao": "Todas as 259 pessoas a bordo morreram.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Pan Am 103 Bombing — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/pan-am-103-bombing",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-072",
+        "enunciado": "Quantas pessoas morreram em solo quando os destroços do voo Pan Am 103 atingiram Lockerbie?",
+        "resposta_numerica": 11,
+        "unidade": "pessoas em solo",
+        "explicacao": "Onze moradores de Lockerbie morreram em solo.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Pan Am 103 Bombing — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/pan-am-103-bombing",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-073",
+        "enunciado": "Quantas pessoas foram mortas pelos artefatos enviados pelo Unabomber?",
+        "resposta_numerica": 3,
+        "unidade": "pessoas",
+        "explicacao": "Os ataques atribuídos a Theodore Kaczynski mataram três pessoas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Unabomber — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/unabomber",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-074",
+        "enunciado": "Quantos marinheiros morreram no atentado ao USS Cole em 2000?",
+        "resposta_numerica": 17,
+        "unidade": "marinheiros",
+        "explicacao": "O ataque no porto de Áden matou 17 marinheiros.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "USS Cole Bombing — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/uss-cole-bombing",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-075",
+        "enunciado": "Quantas pessoas morreram no atentado de Wall Street de 1920?",
+        "resposta_numerica": 38,
+        "unidade": "pessoas",
+        "explicacao": "A explosão de 16 de setembro de 1920 matou 38 pessoas e feriu centenas. O resumo do FBI registra mais de 30 mortes imediatas; o total consolidado é 38.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Bombing of Wall Street — PBS American Experience",
+            "url": "https://www.pbs.org/wgbh/americanexperience/films/bombing-wall-street/",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-076",
+        "enunciado": "Quantas pessoas morreram no atentado ao World Trade Center de 1993?",
+        "resposta_numerica": 6,
+        "unidade": "pessoas",
+        "explicacao": "A bomba na garagem subterrânea matou seis pessoas.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "World Trade Center Bombing 1993 — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/world-trade-center-bombing-1993",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-077",
+        "enunciado": "Quantos trabalhadores de direitos civis foram assassinados no caso Mississippi Burning?",
+        "resposta_numerica": 3,
+        "unidade": "pessoas",
+        "explicacao": "James Chaney, Andrew Goodman e Michael Schwerner foram assassinados.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Mississippi Burning — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/mississippi-burning",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-078",
+        "enunciado": "Quantos homens foram condenados no processo federal original do caso Mississippi Burning?",
+        "resposta_numerica": 7,
+        "unidade": "condenados",
+        "explicacao": "Sete homens foram condenados por violações de direitos civis.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Mississippi Burning — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/mississippi-burning",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-079",
+        "enunciado": "Quantos atentados foram atribuídos a Eric Rudolph entre 1996 e 1998?",
+        "resposta_numerica": 4,
+        "unidade": "atentados",
+        "explicacao": "O FBI atribui a Rudolph quatro atentados, incluindo o do Parque Olímpico.",
+        "tema_editorial": "crimes e acontecimentos macabros",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Eric Rudolph — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/eric-rudolph",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-080",
+        "enunciado": "Quantos casos foram registrados no primeiro surto reconhecido de Ebola em Yambuku, no então Zaire, em 1976?",
+        "resposta_numerica": 318,
+        "unidade": "casos",
+        "explicacao": "A cronologia do CDC registra 318 casos em Yambuku.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Overview and lessons from Ebola outbreaks — CDC MMWR",
+            "url": "https://www.cdc.gov/mmwr/volumes/65/su/su6503a2.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-081",
+        "enunciado": "Em que ano ocorreu o último caso de varíola adquirido naturalmente no mundo?",
+        "resposta_numerica": 1977,
+        "unidade": "ano",
+        "explicacao": "O último caso natural ocorreu em 1977, na Somália.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Vaccine-Preventable Diseases, Immunizations, and MMWR — CDC",
+            "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/su6004a9.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-082",
+        "enunciado": "Em que ano a Assembleia Mundial da Saúde declarou a varíola erradicada?",
+        "resposta_numerica": 1980,
+        "unidade": "ano",
+        "explicacao": "A resolução mundial de erradicação foi adotada em maio de 1980.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Vaccine-Preventable Diseases, Immunizations, and MMWR — CDC",
+            "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/su6004a9.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-083",
+        "enunciado": "Em que ano ocorreu o último surto natural de varíola nos Estados Unidos?",
+        "resposta_numerica": 1949,
+        "unidade": "ano",
+        "explicacao": "O CDC registra 1949 como o ano do último surto natural no país.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Vaccine-Preventable Diseases, Immunizations, and MMWR — CDC",
+            "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/su6004a9.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-084",
+        "enunciado": "Quantos pacientes foram identificados na investigação inicial da síndrome pulmonar por hantavírus no sudoeste dos EUA até 7 de junho de 1993?",
+        "resposta_numerica": 24,
+        "unidade": "pacientes",
+        "explicacao": "O relatório preliminar do CDC contabilizou 24 pacientes no recorte temporal explícito.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Outbreak of Acute Illness — Southwestern United States, 1993 — CDC",
+            "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/00020769.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-085",
+        "enunciado": "Quantos dos 24 pacientes da investigação inicial de hantavírus haviam morrido até 7 de junho de 1993?",
+        "resposta_numerica": 12,
+        "unidade": "pacientes",
+        "explicacao": "Doze dos 24 pacientes haviam morrido no momento do relatório.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Outbreak of Acute Illness — Southwestern United States, 1993 — CDC",
+            "url": "https://www.cdc.gov/mmwr/preview/mmwrhtml/00020769.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-086",
+        "enunciado": "Quantos casos prováveis de SARS foram comunicados mundialmente ao fim de 2003?",
+        "resposta_numerica": 8096,
+        "unidade": "casos",
+        "explicacao": "A linha do tempo do CDC registra 8.096 casos prováveis em 29 países e regiões.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "CDC SARS Response Timeline",
+            "url": "https://archive.cdc.gov/www_cdc_gov/about/history/sars/timeline.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-087",
+        "enunciado": "Quantas mortes por SARS foram comunicadas mundialmente ao fim de 2003?",
+        "resposta_numerica": 774,
+        "unidade": "mortes",
+        "explicacao": "A síntese final do CDC registra 774 mortes.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "CDC SARS Response Timeline",
+            "url": "https://archive.cdc.gov/www_cdc_gov/about/history/sars/timeline.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-088",
+        "enunciado": "Quantos países e regiões notificaram casos prováveis de SARS em 2003?",
+        "resposta_numerica": 29,
+        "unidade": "países e regiões",
+        "explicacao": "A OMS recebeu notificações de 29 países e regiões, segundo a linha do tempo do CDC.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "CDC SARS Response Timeline",
+            "url": "https://archive.cdc.gov/www_cdc_gov/about/history/sars/timeline.htm",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-089",
+        "enunciado": "Quantas infecções por SARS foram confirmadas em laboratório nos Estados Unidos em 2003?",
+        "resposta_numerica": 8,
+        "unidade": "casos confirmados",
+        "explicacao": "O CDC documentou oito infecções confirmadas por laboratório.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "SARS Core Guidance — CDC",
+            "url": "https://archive.cdc.gov/www_cdc_gov/sars/guidance/core/app1.html",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-090",
+        "enunciado": "Quantos casos prováveis de SARS foram relatados nos Estados Unidos até julho de 2003?",
+        "resposta_numerica": 33,
+        "unidade": "casos prováveis",
+        "explicacao": "A orientação histórica do CDC registra 33 casos prováveis.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "SARS Core Guidance — CDC",
+            "url": "https://archive.cdc.gov/www_cdc_gov/sars/guidance/core/app1.html",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-091",
+        "enunciado": "Qual era o total norte-americano de notificações classificadas como suspeitas de SARS no fechamento de julho de 2003?",
+        "resposta_numerica": 159,
+        "unidade": "notificações suspeitas",
+        "explicacao": "A orientação histórica do CDC registra 159 notificações na categoria suspeita.",
+        "tema_editorial": "epidemias e mortes históricas",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "SARS Core Guidance — CDC",
+            "url": "https://archive.cdc.gov/www_cdc_gov/sars/guidance/core/app1.html",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-092",
+        "enunciado": "Qual era o número da unidade do reator destruído no acidente de Chernobyl?",
+        "resposta_numerica": 4,
+        "unidade": "número do reator",
+        "explicacao": "O acidente de abril de 1986 destruiu o núcleo da Unidade 4.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Chernobyl Disaster — United Nations Digital Library / UNEP",
+            "url": "https://digitallibrary.un.org/record/160106/files/UNEP_GC_SS.III_2-EN.pdf",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-093",
+        "enunciado": "Em que ano ocorreu o acidente nuclear de Chernobyl?",
+        "resposta_numerica": 1986,
+        "unidade": "ano",
+        "explicacao": "O reator 4 saiu de controle em 26 de abril de 1986.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Chernobyl Disaster — United Nations Digital Library / UNEP",
+            "url": "https://digitallibrary.un.org/record/160106/files/UNEP_GC_SS.III_2-EN.pdf",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-094",
+        "enunciado": "Quantos reatores de Fukushima Daiichi estavam operando antes do terremoto de 2011?",
+        "resposta_numerica": 3,
+        "unidade": "reatores",
+        "explicacao": "As unidades 1, 2 e 3 estavam em operação; 4, 5 e 6 estavam paradas.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Fukushima Daiichi Accident — IAEA",
+            "url": "https://gnssn.iaea.org/regnet_old/rcm/sc/Steering%20Committee%20Documents/BPTC%20Training%20Materials/Module-03/The%20Fukushima%20Daiichi%20Accident%20-%20Report%20by%20the%20Director%20General.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-095",
+        "enunciado": "Quantas funções fundamentais de segurança a IAEA enumera ao analisar acidentes nucleares?",
+        "resposta_numerica": 3,
+        "unidade": "funções de segurança",
+        "explicacao": "A IAEA enumera controle da reatividade, remoção de calor e confinamento.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "The Fukushima Daiichi Accident — IAEA",
+            "url": "https://gnssn.iaea.org/regnet_old/rcm/sc/Steering%20Committee%20Documents/BPTC%20Training%20Materials/Module-03/The%20Fukushima%20Daiichi%20Accident%20-%20Report%20by%20the%20Director%20General.pdf",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-096",
+        "enunciado": "Por quantas horas a criticidade continuou intermitentemente no acidente de Tokaimura em 1999?",
+        "resposta_numerica": 17,
+        "unidade": "horas",
+        "explicacao": "A IAEA registra que a criticidade prosseguiu intermitentemente por 17 horas.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Technical briefing on the radiation accident in Japan — IAEA",
+            "url": "https://www.iaea.org/newscenter/pressreleases/media-advisory-technical-briefing-radiation-accident-japan",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-097",
+        "enunciado": "Quantos trabalhadores receberam doses muito altas de radiação no acidente de Tokaimura?",
+        "resposta_numerica": 3,
+        "unidade": "trabalhadores",
+        "explicacao": "Três trabalhadores receberam doses altas; dois receberam ao menos 8.000 mSv.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Technical briefing on the radiation accident in Japan — IAEA",
+            "url": "https://www.iaea.org/newscenter/pressreleases/media-advisory-technical-briefing-radiation-accident-japan",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-098",
+        "enunciado": "Quantos metros ao redor da instalação de Tokaimura foram evacuados?",
+        "resposta_numerica": 350,
+        "unidade": "metros",
+        "explicacao": "A área imediata num raio de 350 metros foi evacuada.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Technical briefing on the radiation accident in Japan — IAEA",
+            "url": "https://www.iaea.org/newscenter/pressreleases/media-advisory-technical-briefing-radiation-accident-japan",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-099",
+        "enunciado": "Quantos experimentos estavam planejados para a missão final da Columbia?",
+        "resposta_numerica": 80,
+        "unidade": "experimentos",
+        "explicacao": "A NASA registra 80 experimentos planejados para a STS-107.",
+        "tema_editorial": "ciência sombria e fenômenos perturbadores",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "20 Years Ago: Remembering Columbia and Her Crew — NASA",
+            "url": "https://www.nasa.gov/history/20-years-ago-remembering-columbia-and-her-crew/",
+            "acessada_em": "2026-10-15"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-100",
+        "enunciado": "Quantas obras de arte foram roubadas do Isabella Stewart Gardner Museum em 1990?",
+        "resposta_numerica": 13,
+        "unidade": "obras",
+        "explicacao": "Dois homens levaram 13 obras, que continuam desaparecidas.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Isabella Stewart Gardner Museum Heist — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/isabella-stewart-gardner-museum-heist",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-101",
+        "enunciado": "Quantos minutos os ladrões permaneceram no Gardner Museum durante o roubo?",
+        "resposta_numerica": 81,
+        "unidade": "minutos",
+        "explicacao": "O FBI registra 81 minutos dentro do museu.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Isabella Stewart Gardner Museum Heist — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/isabella-stewart-gardner-museum-heist",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-102",
+        "enunciado": "Quantos homens tentaram escapar de Alcatraz durante seus anos como prisão federal?",
+        "resposta_numerica": 36,
+        "unidade": "homens",
+        "explicacao": "Entre 1934 e 1963, 36 homens tentaram fugir.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Alcatraz Escape — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/alcatraz-escape",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-103",
+        "enunciado": "Quantas tentativas separadas de fuga ocorreram em Alcatraz como prisão federal?",
+        "resposta_numerica": 14,
+        "unidade": "tentativas",
+        "explicacao": "O FBI contabiliza 14 tentativas separadas.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Alcatraz Escape — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/alcatraz-escape",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-104",
+        "enunciado": "Quantos paraquedas D. B. Cooper exigiu no sequestro do voo 305?",
+        "resposta_numerica": 4,
+        "unidade": "paraquedas",
+        "explicacao": "Cooper exigiu quatro paraquedas e desapareceu após saltar.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "D.B. Cooper Hijacking — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/db-cooper-hijacking",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-105",
+        "enunciado": "Quantos passageiros D. B. Cooper libertou em Seattle em troca do resgate e dos paraquedas?",
+        "resposta_numerica": 36,
+        "unidade": "passageiros",
+        "explicacao": "O FBI registra que os 36 passageiros foram libertados.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "D.B. Cooper Hijacking — FBI",
+            "url": "https://www.fbi.gov/history/cases-and-criminals/db-cooper-hijacking",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-106",
+        "enunciado": "Quantas pessoas estavam a bordo do voo MH370 quando ele desapareceu em 2014?",
+        "resposta_numerica": 239,
+        "unidade": "pessoas",
+        "explicacao": "A autoridade australiana registra 239 passageiros e tripulantes.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "ATSB acknowledges 10th anniversary of MH370 disappearance",
+            "url": "https://www.atsb.gov.au/news/2024/atsb-acknowledges-10th-anniversary-mh370-disappearance",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      },
+      {
+        "id_editorial": "np-macabro-107",
+        "enunciado": "Por quantas semanas durou a busca oficial inicial por Amelia Earhart e Fred Noonan em 1937?",
+        "resposta_numerica": 2,
+        "unidade": "semanas",
+        "explicacao": "O Smithsonian registra que a busca governamental terminou após duas semanas sem vestígios.",
+        "tema_editorial": "mistérios históricos documentados",
+        "natureza_resposta": "EXATA",
+        "qualificacao_estimativa": null,
+        "fontes": [
+          {
+            "titulo": "Amelia Earhart — Smithsonian National Air and Space Museum",
+            "url": "https://airandspace.si.edu/explore/stories/amelia-earhart",
+            "acessada_em": "2026-10-14"
+          }
+        ]
+      }
+    ]
+  }
+}
