@@ -5,6 +5,7 @@ import './MeuConteudo.css'
 
 import TelaJogador from './components/TelaJogador'
 import TelaInicial from './components/TelaInicial'
+import TelaMenuJogos from './components/TelaMenuJogos'
 import TelaCategorias from './components/TelaCategorias'
 import TelaQuiz from './components/TelaQuiz'
 import TelaResultado from './components/TelaResultado'
@@ -13,6 +14,7 @@ import TelaLogin from './components/TelaLogin'
 import TelaCadastro from './components/TelaCadastro'
 import TelaNemAPato from './components/TelaNemAPato'
 import TelaMeuConteudo from './components/TelaMeuConteudo'
+import TelaAdmin from './components/TelaAdmin'
 import AppShell from './components/layout/AppShell'
 import useModalAcessivel from './hooks/useModalAcessivel'
 import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
@@ -21,8 +23,9 @@ import { obterVisitanteId } from './utils/visitante'
 const TEMPO_POR_PERGUNTA = 15
 const TOTAL_PERGUNTAS = 10
 const ROTAS_TELA = {
-  inicio: '/', login: '/login', cadastro: '/cadastro', jogador: '/jogador',
+  inicio: '/', jogos: '/jogos', login: '/login', cadastro: '/cadastro', jogador: '/jogador',
   categorias: '/categorias', ranking: '/ranking', 'meu-conteudo': '/meu-conteudo',
+  admin: '/admin',
   jogando: '/quiz', resultado: '/resultado',
 }
 
@@ -60,6 +63,7 @@ function App() {
   const authRef = useRef(false)
   const versaoSessao = useRef(0)
   const conteudoPrivadoInicialRef = useRef(tela === 'meu-conteudo')
+  const [loginAdministrativo, setLoginAdministrativo] = useState(tela === 'admin')
   const acaoMarcaNemPatoRef = useRef(null)
   const acaoMarcaMeuConteudoRef = useRef(null)
   const ignorarProximoPopRef = useRef(false)
@@ -75,6 +79,7 @@ function App() {
 
   const navegar = useCallback((destino, { substituir = false, registrar = true } = {}) => {
     versaoNavegacaoRef.current += 1
+    if (!['admin', 'login'].includes(destino)) setLoginAdministrativo(false)
     setErro('')
     setErroAuth('')
     if (registrar && destino !== 'nem-pato') {
@@ -102,10 +107,13 @@ function App() {
         conteudoPrivadoInicialRef.current = false
         navegar('login', { substituir: true })
         setErroAuth('Entre para acessar seu conteúdo.')
+      } else if (error.status === 401 && loginAdministrativo) {
+        navegar('login', { substituir: true })
+        setErroAuth('Entre com uma conta administrativa para continuar.')
       }
     })
     return () => { ativo = false }
-  }, [navegar, tentativaSessao])
+  }, [loginAdministrativo, navegar, tentativaSessao])
 
   useEffect(() => {
     if (!window.history.state?.quizhubTela && tela !== 'nem-pato') {
@@ -202,7 +210,8 @@ function App() {
         || (destino === 'resultado' && !partida)
       if (rotaSemEstado) destino = 'inicio'
       const conteudoPrivadoBloqueado = destino === 'meu-conteudo' && statusSessao === 'anonimo'
-      if (conteudoPrivadoBloqueado) destino = 'login'
+      const adminBloqueado = destino === 'admin' && statusSessao === 'anonimo'
+      if (conteudoPrivadoBloqueado || adminBloqueado) destino = 'login'
       const posicaoDestino = Number.isInteger(evento.state?.quizhubPosicao) ? evento.state.quizhubPosicao : null
       const deslocamento = posicaoDestino === null ? null : posicaoDestino - posicaoHistoricoRef.current
       const aplicar = () => {
@@ -211,6 +220,10 @@ function App() {
         else if (destino === 'login' && window.location.pathname !== ROTAS_TELA.login) navegar(destino, { substituir: true })
         else navegar(destino, { registrar: false })
         if (conteudoPrivadoBloqueado) setErroAuth('Entre para acessar seu conteúdo.')
+        if (adminBloqueado) {
+          setLoginAdministrativo(true)
+          setErroAuth('Entre com uma conta administrativa para continuar.')
+        }
         if (destino === 'categorias') carregarCategorias()
       }
       const cancelar = () => {
@@ -243,6 +256,16 @@ function App() {
     navegar('meu-conteudo')
   }
 
+  function abrirAdministracao() {
+    setLoginAdministrativo(true)
+    if (!usuario) {
+      navegar('login')
+      setErroAuth('Entre com uma conta administrativa para continuar.')
+      return
+    }
+    navegar('admin')
+  }
+
   const expirarSessaoMeuConteudo = useCallback(() => {
     ++versaoSessao.current
     setUsuario(null)
@@ -263,7 +286,10 @@ function App() {
       setUsuario(atual)
       setStatusSessao('autenticado')
       setJogador('')
-      if (versaoNavegacao === versaoNavegacaoRef.current) abrirCategorias()
+      if (versaoNavegacao === versaoNavegacaoRef.current) {
+        if (loginAdministrativo) navegar('admin')
+        else navegar('jogos')
+      }
     } catch (error) {
       if (versaoNavegacao === versaoNavegacaoRef.current) {
         setErroAuth(error.status === 409 ? 'Este e-mail já está cadastrado.'
@@ -284,6 +310,7 @@ function App() {
     try {
       await logout()
       setUsuario(null)
+      setLoginAdministrativo(false)
       setStatusSessao('anonimo')
       setJogador('')
       setPartida(null)
@@ -445,6 +472,18 @@ function App() {
     <AppShell
       aoClicarMarca={clicarMarca}
       usuario={statusSessao === 'autenticado' ? usuario : null}
+      navegacao={{
+        tela,
+        bloqueado: authCarregando || statusSessao === 'carregando',
+        inicio: () => navegar('inicio'),
+        jogos: () => navegar('jogos'),
+        ranking: abrirRanking,
+        entrar: () => navegar('login'),
+        cadastrar: () => navegar('cadastro'),
+        meuConteudo: abrirMeuConteudo,
+        administrar: abrirAdministracao,
+        sair: () => sair(),
+      }}
     >
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
       {statusSessao === 'carregando' && <p role="status">Verificando sessão...</p>}
@@ -463,18 +502,33 @@ function App() {
         <TelaInicial
           usuario={usuario}
           bloqueado={authCarregando || statusSessao === 'carregando' || statusSessao === 'erro'}
-          jogar={jogarAtual}
-          convidado={() => sair('jogador')}
+          convidado={() => navegar('jogos')}
           entrar={() => navegar('login')}
-          cadastrar={() => navegar('cadastro')}
-          sair={() => sair()}
+          continuarJogos={() => navegar('jogos')}
+        />
+      )}
+      {tela === 'jogos' && (
+        <TelaMenuJogos
+          bloqueado={authCarregando || statusSessao === 'carregando' || statusSessao === 'erro'}
+          jogar={jogarAtual}
           verRanking={abrirRanking}
           nemAPato={abrirNemAPato}
-          meuConteudo={abrirMeuConteudo}
         />
       )}
       {tela === 'meu-conteudo' && usuario && (
         <TelaMeuConteudo voltar={() => navegar('inicio')} aoExpirarSessao={expirarSessaoMeuConteudo} registrarAcaoMarca={registrarAcaoMarcaMeuConteudo} />
+      )}
+      {tela === 'admin' && usuario?.perfil === 'ADMIN' && (
+        <TelaAdmin voltar={() => { setLoginAdministrativo(false); navegar('inicio') }} aoExpirarSessao={expirarSessaoMeuConteudo} />
+      )}
+      {tela === 'admin' && usuario && usuario.perfil !== 'ADMIN' && (
+        <section className="admin-screen" aria-labelledby="admin-negado-title">
+          <div className="admin-panel" role="alert">
+            <h1 id="admin-negado-title">Acesso negado</h1>
+            <p>Seu usuário não possui permissão administrativa.</p>
+            <button className="button-secondary" onClick={() => { setLoginAdministrativo(false); navegar('inicio') }}>Voltar ao início</button>
+          </div>
+        </section>
       )}
       {tela === 'nem-pato' && (
         <TelaNemAPato
@@ -485,7 +539,8 @@ function App() {
       {tela === 'login' && (
         <TelaLogin entrar={(...dados) => autenticar('login', ...dados)}
           criarConta={() => navegar('cadastro')} voltar={() => navegar('inicio')}
-          carregando={authCarregando} erro={erroAuth} />
+          carregando={authCarregando} erro={erroAuth}
+          administrativo={loginAdministrativo} />
       )}
       {tela === 'cadastro' && (
         <TelaCadastro cadastrar={(...dados) => autenticar('cadastro', ...dados)}

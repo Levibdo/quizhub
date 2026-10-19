@@ -156,6 +156,8 @@ test('home abre a entrada Nem a Pato sem remover Quiz Clássico', async (t) => {
     : response({}), { path: '/' })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  assert.ok(ui.view().includes('Bem-vindo ao QuizHub'))
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   assert.ok(ui.view().includes('Quiz Clássico'))
   await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
   assert.ok(ui.view().includes('NEM A PATO!'))
@@ -179,6 +181,7 @@ test('criar sala persiste token no namespace e entra no lobby sem mostrar token'
   }, { path: '/' })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
   await act(async () => ui.button('Criar sala').props.onClick())
   await act(async () => {
@@ -206,6 +209,7 @@ test('entrar normaliza código visual e mostra erro de sala cheia', async (t) =>
   }, { path: '/' })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
   await act(async () => ui.button('Entrar em sala').props.onClick())
   await act(async () => ui.findInput('Código da sala').props.onChange({ target: { value: 'k7m 4qx$' } }))
@@ -235,6 +239,7 @@ test('entrar em sala persiste a credencial por código e traduz nome duplicado',
   }, { path: '/' })
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
   await act(async () => ui.button('Entrar em sala').props.onClick())
   await act(async () => ui.findInput('Código da sala').props.onChange({ target: { value: 'k7m4qx' } }))
@@ -250,6 +255,7 @@ test('entrar em sala persiste a credencial por código e traduz nome duplicado',
   location.pathname = '/'
   await ui.render()
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
   await act(async () => ui.button('Entrar em sala').props.onClick())
   await act(async () => ui.findInput('Código da sala').props.onChange({ target: { value: 'K7M4QX' } }))
@@ -699,6 +705,34 @@ test('host inicia com credencial e todos recuperam tela EM_PARTIDA após F5', as
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
   assert.ok(reloaded.view().includes('A PARTIDA COMEÇOU'))
   assert.ok(reloaded.button('Iniciar rodada'))
+})
+
+test('catálogo inativo mostra indisponibilidade compreensível no lobby', async (t) => {
+  const token = 'host-token'
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const fetcher = async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    if (url.endsWith('/iniciar')) return response({ detail: {
+      codigo: 'CATALOGO_OFICIAL_INATIVO',
+      mensagem: 'Este modo de jogo está temporariamente indisponível. Nenhum catálogo de perguntas está ativo.',
+    } }, 503)
+    if (url.endsWith('/eu')) return response({
+      sala: sala('K7M4QX', players, 3, 'AGUARDANDO'),
+      participante: players[0],
+      partida: null,
+    })
+    return response({})
+  }
+  const ui = setup(t, fetcher, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token } }) },
+  })
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await act(async () => ui.button('Iniciar partida').props.onClick())
+  assert.ok(ui.view().includes('temporariamente indisponível'))
+  assert.ok(ui.view().includes('Nenhum catálogo de perguntas está ativo'))
+  assert.ok(ui.button('Iniciar partida'))
 })
 
 function partidaNp5(players, euId, rodadaStatus = 'AGUARDANDO_INICIO', palpites = []) {
@@ -1484,8 +1518,8 @@ test('empate geral e partida cancelada têm estados próprios', async (t) => {
   assert.ok(!ui.button('JOGAR NOVAMENTE'))
   assert.ok(ui.button('VOLTAR AO INÍCIO'))
   await act(async () => ui.button('VOLTAR AO INÍCIO').props.onClick())
-  assert.ok(ui.view().includes('Quiz Clássico'))
-  assert.ok(ui.view().includes('Abrir Nem a Pato'))
+  assert.ok(ui.view().includes('Bem-vindo ao QuizHub'))
+  assert.ok(ui.button('Jogar como convidado'))
   assert.equal(chamadasAbandono, 0)
   assert.deepEqual(JSON.parse(ui.storage.get('quizhub-nem-pato-sessoes')), {})
 })

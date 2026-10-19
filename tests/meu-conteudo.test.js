@@ -198,7 +198,7 @@ test('formulário sujo exige confirmação ao trocar aba e pela marca', async (t
   await act(async () => marca.props.onClick({ preventDefault() {}, currentTarget: { focus() {} } }))
   assert.match(ui.texto(), /Descartar alterações/)
   await act(async () => ui.button('Descartar alterações').props.onClick())
-  assert.ok(ui.button('Jogar'))
+  assert.ok(ui.button('Continuar para os jogos'))
 })
 
 test('formulário limpo permite trocar de aba sem confirmação', async (t) => {
@@ -554,8 +554,8 @@ test('sair durante validação pendente desmonta painel e resposta antiga é ign
   await act(async () => marca.props.onClick({ preventDefault() {} }))
   resolver(Response.json(previewImportacao()))
   await act(async () => validacao)
-  assert.match(ui.texto(), /Quiz Clássico/)
-  assert.match(ui.texto(), /Meu Conteúdo/)
+  assert.match(ui.texto(), /Bem-vindo ao QuizHub/)
+  assert.match(ui.texto(), /Continuar para os jogos/)
   assert.doesNotMatch(ui.texto(), /Resultado da validação|token-preview/)
 })
 

@@ -52,6 +52,9 @@ export async function requisitar(caminho, opcoes) {
     try {
       const corpo = await resposta.json()
       if (typeof corpo.detail === 'string') mensagem = corpo.detail
+      if (corpo.detail && typeof corpo.detail === 'object' && !Array.isArray(corpo.detail)) {
+        if (typeof corpo.detail.mensagem === 'string') mensagem = corpo.detail.mensagem
+      }
       if (Array.isArray(corpo.detail)) {
         const mensagens = {
           nome: 'Informe um nome válido (até 100 caracteres).',
@@ -69,6 +72,7 @@ export async function requisitar(caminho, opcoes) {
     const erro = new Error(mensagem)
     erro.status = resposta.status
     erro.detail = erroDetalhes
+    erro.codigo = erroDetalhes?.codigo
     throw erro
   }
 
@@ -199,6 +203,10 @@ export function logout() {
 
 export function obterUsuarioAtual() {
   return requisitar('/api/v1/auth/me', { method: 'GET' })
+}
+
+export function obterResumoAdministrativo() {
+  return requisitar('/api/v1/admin/resumo', { method: 'GET' })
 }
 
 export function listarCategorias() {

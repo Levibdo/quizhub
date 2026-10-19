@@ -53,13 +53,15 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
   globalThis.localStorage = { getItem: () => null, setItem() {} }
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return autenticado
-      ? Response.json({ id: 'u1', nome: 'Levi' })
+      ? Response.json(typeof autenticado === 'object' ? autenticado : { id: 'u1', nome: 'Levi', perfil: 'JOGADOR' })
       : Response.json({ detail: 'Não autenticado' }, { status: 401 })
+    if (url.endsWith('/auth/login')) return Response.json({ id: 'u1', nome: 'Levi', perfil: 'JOGADOR' })
     if (url.endsWith('/auth/logout')) return new Response(null, { status: 204 })
     if (url.endsWith('/meu-conteudo/resumo')) return Response.json({ modos: ['QUIZ_CLASSICO', 'NEM_A_PATO'].map((modo) => ({ modo, categorias: { usadas: 0, limite: 10 }, perguntas: { usadas: 0, limite: 200 } })) })
     if (url.includes('/meu-conteudo/categorias?')) return Response.json([])
     if (url.endsWith('/categorias/jogaveis')) return Response.json(categorias)
     if (url.includes('/ranking?')) return Response.json([])
+    if (url.endsWith('/admin/resumo')) return Response.json({ catalogos: [], auditorias: [] })
     if (url.endsWith('/partidas') && partida) return Response.json(await partida)
     return Response.json({ detail: 'inesperado' }, { status: 500 })
   }
@@ -85,9 +87,29 @@ test('cabeçalho não mostra sessão para visitante ou jogador convidado', async
   const ui = await montar(t, { autenticado: false })
   assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
 
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
   await act(async () => ui.button('Jogar').props.onClick())
   assert.equal(window.location.pathname, '/jogador')
   assert.equal(ui.renderer.root.findAllByProps({ className: 'site-session' }).length, 0)
+})
+
+test('menu global expõe navegação acessível e recolhe após a ação', async (t) => {
+  const ui = await montar(t, { autenticado: false })
+  const menu = ui.button('Menu')
+  assert.equal(menu.props['aria-expanded'], false)
+  assert.equal(menu.props['aria-controls'], 'site-navigation')
+
+  await act(async () => menu.props.onClick())
+  assert.equal(ui.button('Fechar').props['aria-expanded'], true)
+  assert.ok(ui.button('Ranking'))
+  assert.ok(ui.button('Entrar'))
+  assert.ok(ui.button('Criar conta'))
+  assert.equal(ui.button('Meu Conteúdo'), undefined)
+  assert.equal(ui.button('Administração'), undefined)
+
+  await act(async () => ui.button('Ranking').props.onClick())
+  assert.equal(window.location.pathname, '/ranking')
+  assert.ok(ui.button('Menu'))
 })
 
 test('recarregar a rota do ranking também restaura os filtros de categorias', async (t) => {
@@ -124,7 +146,7 @@ test('Voltar e Avançar reproduzem login e cadastro e focam o título', async (t
 
 test('histórico respeita cancelamento e confirmação de formulário sujo', async (t) => {
   const ui = await montar(t)
-  await act(async () => ui.button('Ver ranking').props.onClick())
+  await act(async () => ui.button('Ranking').props.onClick())
   await act(async () => ui.button('Voltar ao início').props.onClick())
   await act(async () => ui.button('Meu Conteúdo').props.onClick())
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
@@ -151,6 +173,7 @@ test('histórico protege partida clássica ativa ao voltar', async (t) => {
       pergunta_atual: { id: 1, pergunta: 'Pergunta preservada?', alternativas: ['A', 'B', 'C', 'D'] },
     },
   })
+  await act(async () => ui.button('Continuar para os jogos').props.onClick())
   await act(async () => ui.button('Jogar').props.onClick())
   await act(async () => ui.renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
   assert.equal(window.location.pathname, '/quiz')
@@ -166,7 +189,7 @@ test('histórico protege partida clássica ativa ao voltar', async (t) => {
   assert.doesNotMatch(ui.texto(), /Pergunta preservada/)
   await act(async () => window.history.forward())
   assert.equal(window.location.pathname, '/')
-  assert.ok(ui.button('Jogar'))
+  assert.ok(ui.button('Continuar para os jogos'))
 })
 
 test('histórico privado não reabre Meu Conteúdo após logout', async (t) => {
@@ -188,6 +211,7 @@ test('resposta pendente não reabre Quiz Clássico após navegação pelo histó
     categorias: [{ id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' }],
     partida: partidaPendente,
   })
+  await act(async () => ui.button('Continuar para os jogos').props.onClick())
   await act(async () => ui.button('Jogar').props.onClick())
   await act(async () => {
     ui.renderer.root.findByProps({ className: 'categoria-card' }).props.onClick()
@@ -200,7 +224,7 @@ test('resposta pendente não reabre Quiz Clássico após navegação pelo histó
     pergunta_atual: { id: 1, pergunta: 'Não deve reaparecer', alternativas: ['A', 'B', 'C', 'D'] },
   })
   await act(async () => { await partidaPendente; await new Promise((resolve) => setTimeout(resolve, 0)) })
-  assert.equal(window.location.pathname, '/')
+  assert.equal(window.location.pathname, '/jogos')
   assert.ok(ui.button('Jogar'))
   assert.doesNotMatch(ui.texto(), /Não deve reaparecer/)
 })
@@ -208,11 +232,93 @@ test('resposta pendente não reabre Quiz Clássico após navegação pelo histó
 test('F5 em rota sem estado não reconstrói partida e conteúdo privado exige sessão', async (t) => {
   const quiz = await montar(t, { caminhoInicial: '/quiz' })
   assert.equal(window.location.pathname, '/')
-  assert.ok(quiz.button('Jogar'))
+  assert.ok(quiz.button('Continuar para os jogos'))
+})
+
+test('boas-vindas separa visitante e autenticado antes do menu de jogos', async (t) => {
+  const visitante = await montar(t, { autenticado: false })
+  assert.match(visitante.texto(), /Bem-vindo ao QuizHub/)
+  assert.ok(visitante.button('Jogar como convidado'))
+  assert.ok(visitante.button('Fazer login'))
+  assert.equal(visitante.button('Jogar'), undefined)
+  await act(async () => visitante.button('Jogar como convidado').props.onClick())
+  assert.equal(window.location.pathname, '/jogos')
+  assert.ok(visitante.button('Jogar'))
+  assert.ok(visitante.button('Abrir Nem a Pato'))
+})
+
+test('cards dos modos expõem uma única ação semântica em toda a superfície', async (t) => {
+  const ui = await montar(t, { autenticado: false })
+  await act(async () => ui.button('Jogar como convidado').props.onClick())
+
+  const cards = ui.renderer.root.findAll((node) => (
+    node.type === 'article' && node.props.className?.includes('mode-card--')
+  ))
+  assert.equal(cards.length, 2)
+  for (const card of cards) {
+    const acoes = card.findAllByType('button')
+    assert.equal(acoes.length, 1)
+    assert.equal(acoes[0].props.type, 'button')
+    assert.equal(acoes[0].props.className, 'mode-card__hit-area')
+  }
+
+  await act(async () => ui.button('Jogar').props.onClick())
+  assert.equal(window.location.pathname, '/jogador')
+  await act(async () => window.history.back())
+  await act(async () => ui.button('Abrir Nem a Pato').props.onClick())
+  assert.equal(window.location.pathname, '/nem-a-pato')
+})
+
+test('login iniciado na boas-vindas redireciona ao menu de jogos', async (t) => {
+  const ui = await montar(t, { autenticado: false })
+  await act(async () => ui.button('Fazer login').props.onClick())
+  assert.equal(window.location.pathname, '/login')
+  await act(async () => ui.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.equal(window.location.pathname, '/jogos')
+  assert.ok(ui.button('Jogar'))
+})
+
+test('usuário autenticado continua da boas-vindas para os jogos', async (t) => {
+  const ui = await montar(t)
+  assert.ok(ui.button('Continuar para os jogos'))
+  assert.equal(ui.button('Jogar como convidado'), undefined)
+  await act(async () => ui.button('Continuar para os jogos').props.onClick())
+  assert.equal(window.location.pathname, '/jogos')
+  assert.ok(ui.button('Jogar'))
 })
 
 test('URL direta de Meu Conteúdo sem sessão converge para login', async (t) => {
   const ui = await montar(t, { autenticado: false, caminhoInicial: '/meu-conteudo' })
   assert.equal(window.location.pathname, '/login')
   assert.match(ui.texto(), /Entrar no QuizHub/)
+})
+
+test('URL administrativa direciona visitante ao login administrativo', async (t) => {
+  const ui = await montar(t, { autenticado: false, caminhoInicial: '/admin' })
+  assert.equal(window.location.pathname, '/login')
+  assert.match(ui.texto(), /Acesso administrativo/)
+  assert.match(ui.texto(), /conta administrativa/)
+})
+
+test('jogador comum recebe acesso negado e não vê menu administrativo', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'u1', nome: 'Jogador', perfil: 'JOGADOR' },
+    caminhoInicial: '/admin',
+  })
+  assert.equal(window.location.pathname, '/admin')
+  assert.match(ui.texto(), /Acesso negado/)
+  assert.equal(ui.button('Administração'), undefined)
+})
+
+test('administrador vê menu e acessa painel restrito', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+  })
+  assert.ok(ui.button('Administração'))
+  await act(async () => ui.button('Administração').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.equal(window.location.pathname, '/admin')
+  assert.match(ui.texto(), /Catálogos oficiais/)
+  assert.match(ui.texto(), /Auditoria recente/)
 })

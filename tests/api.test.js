@@ -70,6 +70,18 @@ test('logout 204 não interpreta JSON', async () => {
   assert.equal(await api.logout(), null)
 })
 
+test('resumo administrativo usa endpoint protegido com cookie', async () => {
+  globalThis.fetch = async (url, opcoes) => {
+    assert.equal(url, 'http://127.0.0.1:8001/api/v1/admin/resumo')
+    assert.equal(opcoes.method, 'GET')
+    assert.equal(opcoes.credentials, 'include')
+    return Response.json({ catalogos: [], auditorias: [] })
+  }
+  assert.deepEqual(await api.obterResumoAdministrativo(), {
+    catalogos: [], auditorias: [],
+  })
+})
+
 test('Meu Conteúdo usa contratos reais, cookies e aceita 204', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {
@@ -197,6 +209,22 @@ test('preserva status e detail textual', async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ detail: 'Falha' }), { status })
     await assert.rejects(api.obterUsuarioAtual(), (e) => e.status === status && e.message === 'Falha')
   }
+})
+
+test('preserva código e mensagem estruturada de catálogo inativo', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    detail: {
+      codigo: 'CATALOGO_OFICIAL_INATIVO',
+      mensagem: 'Este modo de jogo está temporariamente indisponível. Nenhum catálogo de perguntas está ativo.',
+    },
+  }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+
+  await assert.rejects(
+    () => api.criarPartida('Visitante', 'geral'),
+    (erro) => erro.status === 503 &&
+      erro.codigo === 'CATALOGO_OFICIAL_INATIVO' &&
+      erro.message.includes('temporariamente indisponível'),
+  )
 })
 
 test('422 não expõe input ou mensagem bruta com senha', async () => {

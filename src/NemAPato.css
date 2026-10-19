@@ -85,9 +85,51 @@
 .np-screen--entry .np-heading {
   width: min(100%, 62rem);
   margin-inline: auto;
-  background:
-    linear-gradient(90deg, rgba(8, 6, 17, .92) 0%, rgba(20, 12, 29, .7) 48%, rgba(8, 6, 17, .22) 78%, transparent 100%);
-  backdrop-filter: blur(.12rem);
+  overflow: visible;
+  padding: clamp(.5rem, 2vw, 1rem);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.np-screen--entry .np-heading::before,
+.np-screen--entry .np-heading::after {
+  content: none;
+}
+
+.np-screen--entry .np-actions {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* A apresentação inicial forma um único conjunto central; formulários mantêm o fluxo próprio. */
+.np-screen--entry:has(> .np-actions) {
+  align-content: center;
+  justify-items: center;
+  gap: clamp(1rem, 3vh, 1.75rem);
+}
+
+.np-screen--entry:has(> .np-actions) .np-heading {
+  min-height: 0;
+  padding: clamp(.5rem, 2vw, 1rem);
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.np-screen--entry:has(> .np-actions) .np-heading p {
+  text-align: center;
+}
+
+.np-screen--entry:has(> .np-actions) .np-actions {
+  align-self: center;
+  margin: 0 auto;
 }
 
 .np-screen--entry > .np-message {
@@ -108,24 +150,6 @@
 .np-heading p { color: var(--cosmic-ivory-muted); }
 .np-heading__rule { color: var(--cosmic-spectral-soft) !important; }
 .np-eyebrow { color: var(--cosmic-violet-bright); text-shadow: 0 0 .6rem rgba(108, 58, 166, .42); }
-
-.np-art-slot {
-  display: grid;
-  width: min(78vw, 18rem);
-  height: 8.5rem;
-  place-items: center;
-  background: radial-gradient(ellipse at 50% 72%, rgba(189, 67, 91, .13), transparent 66%);
-  pointer-events: none;
-}
-.np-art-slot img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 .65rem .9rem rgba(4, 3, 10, .82));
-  pointer-events: none;
-  user-select: none;
-}
 
 .np-actions,
 .np-form,
@@ -193,17 +217,6 @@
 .np-final h2 { color: var(--cosmic-ivory); }
 .np-final__abandoned { border-top-color: var(--color-border); color: var(--color-text-muted); }
 
-@media (min-width: 48rem) {
-  .np-heading { padding-right: 17rem; }
-  .np-art-slot {
-    position: absolute;
-    right: .75rem;
-    bottom: .6rem;
-    width: 16rem;
-    height: 11.5rem;
-  }
-}
-
 @media (max-width: 30rem) {
   .np-screen--entry {
     min-height: calc(100svh - var(--header-height));
@@ -215,10 +228,6 @@
       url('/images/cenario-nem-a-pato.webp');
     background-position: center, 61% center;
   }
-  .np-heading > :not(.np-art-slot) {
-    position: relative;
-    z-index: 1;
-  }
   .np-heading h1 {
     font-size: clamp(2rem, 9vw, 2.5rem);
     letter-spacing: .02em;
@@ -226,10 +235,5 @@
   .np-heading p {
     max-width: 100%;
     overflow-wrap: anywhere;
-  }
-  .np-art-slot {
-    width: min(68vw, 12.5rem);
-    height: 6rem;
-    margin-bottom: .25rem;
   }
 }

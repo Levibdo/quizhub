@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import AuthPanel from './AuthPanel'
 
-export default function TelaLogin({ entrar, criarConta, voltar, carregando, erro }) {
+export default function TelaLogin({ entrar, criarConta, voltar, carregando, erro, administrativo = false }) {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   return (
     <AuthPanel
-      eyebrow="Acesso"
-      title="Entrar no QuizHub"
-      description="Retome sua sessão e encare o próximo desafio."
+      eyebrow={administrativo ? 'Área restrita' : 'Acesso'}
+      title={administrativo ? 'Acesso administrativo' : 'Entrar no QuizHub'}
+      description={administrativo
+        ? 'Entre com uma conta autorizada como administrador.'
+        : 'Retome sua sessão e encare o próximo desafio.'}
       footer={(
         <>
           <p>Não tem uma conta?</p>

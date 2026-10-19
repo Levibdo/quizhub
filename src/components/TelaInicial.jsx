@@ -1,70 +1,32 @@
-import ModeCard from './ModeCard'
 import CosmicSigil from './CosmicSigil'
 
 function TelaInicial({
-  usuario, bloqueado, jogar, convidado, entrar, cadastrar, sair,
-  verRanking, nemAPato, meuConteudo,
+  usuario, bloqueado, convidado, entrar, continuarJogos,
 }) {
   return (
-    <section className="home-screen" aria-labelledby="home-title">
-      <div className="home-hero">
-        <div className="home-sigil" aria-hidden="true">
+    <section className="welcome-screen" aria-labelledby="welcome-title">
+      <div className="welcome-sigil" aria-hidden="true">
           <CosmicSigil />
-          <span className="home-sigil__monogram">QH</span>
-        </div>
-
-        <div className="home-copy">
-          <span className="home-eyebrow">QuizHub // Desafio clássico</span>
-          <h1 id="home-title">Você sabe a resposta?</h1>
-          <p>Prove antes que o tempo acabe.</p>
-          <span className="home-copy__omen" aria-hidden="true">✦ · ───── · ✦</span>
-        </div>
+          <span>QH</span>
       </div>
 
-      <div className="home-modes">
-        <ModeCard
-          indice={1}
-          eyebrow="Modo disponível"
-          title="Quiz Clássico"
-          description="Conhecimento, precisão e velocidade em uma sequência de dez desafios."
-          metadata={[
-            '10 perguntas',
-            '15 segundos por pergunta',
-            'Pontuação influenciada pelo tempo',
-          ]}
-          actionLabel="Jogar"
-          onAction={jogar}
-          disabled={bloqueado}
-        />
-        <ModeCard
-          indice={2}
-          eyebrow="Lobby multiplayer"
-          title="Nem a Pato!"
-          description="Crie uma sala ou entre com o código para reunir seus amigos."
-          metadata={['3 a 6 jogadores', 'Entre pelo notebook ou celular', 'Sala multiplayer em tempo real']}
-          actionLabel="Abrir Nem a Pato"
-          onAction={nemAPato}
-          disabled={bloqueado}
-        />
+      <div className="welcome-copy">
+        <span className="home-eyebrow">Conhecimento, estratégia e diversão</span>
+        <h1 id="welcome-title">Bem-vindo ao QuizHub!</h1>
+        <p>Teste seus conhecimentos, desafie seus amigos e descubra até onde você consegue chegar!</p>
       </div>
 
-      <nav className="home-actions" aria-label="Ações da página inicial">
+      <div className="welcome-actions" aria-label="Como deseja começar?">
         {usuario ? (
-          <>
-            <button className="button-secondary" disabled={bloqueado} onClick={sair}>Sair</button>
-            <button className="button-secondary" disabled={bloqueado} onClick={meuConteudo}>Meu Conteúdo</button>
-            <button className="button-ghost" disabled={bloqueado} onClick={convidado}>Sair e jogar como convidado</button>
-          </>
+          <button className="welcome-actions__primary" disabled={bloqueado} onClick={continuarJogos}>Continuar para os jogos</button>
         ) : (
           <>
-            <button className="button-secondary" disabled={bloqueado} onClick={entrar}>Entrar</button>
-            <button className="button-secondary" disabled={bloqueado} onClick={cadastrar}>Criar conta</button>
+            <button className="welcome-actions__primary" disabled={bloqueado} onClick={convidado}>Jogar como convidado</button>
+            <button className="button-secondary" disabled={bloqueado} onClick={entrar}>Fazer login</button>
           </>
         )}
-        <button className="button-ghost" disabled={bloqueado} onClick={verRanking}>Ver ranking</button>
-      </nav>
-
-      <p className="system-status">QuizHub // Pronto para jogar</p>
+      </div>
+      <p className="welcome-note">Dois modos. Uma pergunta inevitável: até onde você chega?</p>
     </section>
   )
 }

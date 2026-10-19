@@ -10,6 +10,16 @@ function ModeCard({
 }) {
   return (
     <article className={`mode-card mode-card--${indice}`}>
+      <button
+        className="mode-card__hit-area"
+        type="button"
+        onClick={onAction}
+        disabled={disabled}
+        aria-label={actionLabel}
+      >
+        <span className="mode-card__hit-label">{actionLabel}</span>
+      </button>
+
       <span className="mode-card__glyph" aria-hidden="true">
         {indice === 1 ? '◈' : '◉'}
       </span>
@@ -18,22 +28,20 @@ function ModeCard({
         <span className="mode-card__index" aria-hidden="true">{String(indice).padStart(2, '0')}</span>
       </div>
 
-      <h2>{title}</h2>
-      <p>{description}</p>
+      <div className="mode-card__body">
+        <h2>{title}</h2>
+        <p>{description}</p>
 
-      <ul className="mode-card__metadata" aria-label="Regras do modo">
-        {metadata.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
+        <ul className="mode-card__metadata" aria-label="Características do modo">
+          {metadata.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
 
-      <button
-        className="mode-card__action"
-        onClick={onAction}
-        disabled={disabled}
-      >
+      <span className="mode-card__action" aria-hidden="true">
         {actionLabel}
-      </button>
+      </span>
     </article>
   )
 }
