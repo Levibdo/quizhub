@@ -5,7 +5,6 @@
 node_modules
 dist
 backend
-tests
 relatorios
 relatorio_*
 auditoria_*

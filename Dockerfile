@@ -8,6 +8,7 @@ RUN npm ci
 COPY index.html vite.config.js eslint.config.js ./
 COPY public ./public
 COPY src ./src
+COPY tests ./tests
 
 RUN chown -R node:node /app
 
