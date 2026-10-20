@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv
+__pycache__
+*.pyc
+tests
+dados
+dados_oficiais/rascunhos
+*.xlsx
+*.zip
+*.log

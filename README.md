@@ -30,6 +30,139 @@ gerenciar catálogos privados.
   no `localStorage` do navegador. Ele agrupa resultados futuros no ranking,
   mas não autentica o visitante nem é vinculado automaticamente a uma conta.
 
+## Sistema de Ranking
+
+O ranking do Quiz Clássico é público e tem o PostgreSQL como fonte oficial.
+O frontend consulta a API ao abrir a classificação e ao trocar os filtros; a
+chave legada `quizhub-ranking` pode continuar no `localStorage`, mas não é
+usada como fallback quando a API falha.
+
+### Pontuação e elegibilidade
+
+- Cada partida possui 10 perguntas e cada resposta correta vale
+  `100 + (segundos restantes × 10)` pontos. O backend arredonda a diferença
+  positiva até o prazo para cima e limita o resultado ao intervalo de 0 a 15,
+  portanto cada questão vale de 100 a 250 pontos e uma partida pode chegar a
+  2.500 pontos.
+- Resposta incorreta ou timeout vale zero. Pontuação, acertos e erros são
+  calculados e persistidos pelo backend; o cliente não envia o resultado a
+  ser classificado.
+- Entram no ranking somente partidas com status `FINALIZADA`, pertencentes à
+  temporada consultada e a categorias de origem `OFICIAL`, modo
+  `QUIZ_CLASSICO` e não excluídas logicamente.
+- Categorias privadas e partidas do Nem a Pato nunca entram nesse ranking.
+  Uma categoria oficial posteriormente desativada continua elegível no
+  histórico; exclusão lógica, por outro lado, a remove das consultas.
+
+### Identidade, melhor partida e classificação
+
+Cada identidade aparece no máximo uma vez por consulta, representada por sua
+melhor partida na temporada e no filtro escolhidos:
+
+1. usuário autenticado: agrupamento por `usuarios.id`;
+2. visitante atual: agrupamento pelo `visitante_id` UUID persistido no perfil
+   do navegador;
+3. visitante histórico sem UUID: identidade individual por `jogadores.id`,
+   sem tentativa de agrupar retroativamente nomes iguais.
+
+O `visitante_id` não é autenticação, não concede acesso a partidas e não é
+vinculado automaticamente a uma conta criada depois. Dois navegadores com o
+mesmo nome continuam sendo identidades diferentes; apagar o armazenamento
+local cria outra identidade para partidas futuras.
+
+A melhor partida de cada identidade e a classificação final usam, nesta
+ordem:
+
+1. maior pontuação;
+2. maior quantidade de acertos;
+3. conclusão mais antiga;
+4. menor UUID da partida, como desempate determinístico.
+
+Partidas históricas `FINALIZADA` sem `finalizada_em` são aceitas para
+compatibilidade, mas ficam depois das partidas datadas quando os demais
+critérios empatam. As posições retornadas são sequenciais dentro do resultado
+limitado, sem compartilhar posição em empates.
+
+### Ranking global, categorias e temporadas
+
+`GET /api/v1/ranking` usa a temporada `ATIVA` por padrão. A migration `0013`
+criou a Temporada 1, associou as partidas históricas existentes a ela e
+adicionou proteção para existir no máximo uma temporada ativa. Novas partidas
+recebem a temporada ativa no servidor; o cliente não escolhe nem altera essa
+associação.
+
+Parâmetros públicos:
+
+| Parâmetro | Formato | Comportamento |
+| --- | --- | --- |
+| `categoria` | slug ou UUID | Restringe a uma categoria oficial elegível. |
+| `temporada` | número positivo ou UUID | Consulta uma temporada ativa ou encerrada. Temporadas planejadas não são públicas. |
+| `limit` | inteiro de 1 a 100 | Padrão `10`; o limite é aplicado na consulta SQL. |
+
+Exemplos:
+
+```http
+GET /api/v1/ranking?limit=10
+GET /api/v1/ranking?categoria=tecnologia&temporada=1&limit=20
+GET /api/v1/ranking/temporadas
+```
+
+Resposta ilustrativa, sem dados reais:
+
+```json
+[
+  {
+    "posicao": 1,
+    "jogador": "Jogador exemplo",
+    "categoria": {
+      "id": "11111111-2222-4333-8444-555555555555",
+      "slug": "tecnologia",
+      "nome": "Tecnologia"
+    },
+    "pontuacao": 2150,
+    "acertos": 9,
+    "erros": 1,
+    "finalizada_em": "2026-01-15T18:30:00Z"
+  }
+]
+```
+
+`GET /api/v1/ranking/temporadas` lista temporadas `ATIVA` e `ENCERRADA`, com
+a ativa primeiro, e expõe `id`, `numero`, `nome`, `status`, `inicia_em` e
+`encerra_em`:
+
+```json
+[
+  {
+    "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    "numero": 1,
+    "nome": "Temporada 1",
+    "status": "ATIVA",
+    "inicia_em": "2026-01-01T00:00:00Z",
+    "encerra_em": null
+  }
+]
+```
+
+Temporada inexistente ou planejada no filtro retorna `404`; limites fora do
+intervalo retornam `422`. Pela implementação atual, se não existir temporada
+ativa, a consulta sem filtro produz uma lista vazia. A criação de uma nova
+partida, em contraste, é recusada com `503` enquanto não houver temporada
+ativa.
+
+### Limitações atuais
+
+- Não existe ranking oficial do Nem a Pato; seu placar pertence à própria
+  partida e permanece separado do Quiz Clássico.
+- Não há paginação por cursor ou offset: a API retorna apenas os primeiros
+  `limit` registros.
+- Não há soma de pontos entre partidas, ranking acumulado entre temporadas ou
+  fusão automática de uma identidade visitante com uma conta.
+- Existe uma primitiva transacional interna para uma futura virada de
+  temporada, mas não há endpoint público nem comando CLI para ativá-la.
+- O endpoint não devolve a identidade interna do usuário ou visitante e não
+  oferece busca por jogador.
+
 ### Nem a Pato
 
 - Salas por código para 3 a 6 participantes ativos.
@@ -118,7 +251,10 @@ versões JavaScript ficam em `package.json` e `package-lock.json`.
 
 ```text
 quizhub/
+├── compose.yaml                 # ambiente local completo da equipe
+├── Dockerfile                   # frontend de desenvolvimento
 ├── backend/
+│   ├── Dockerfile               # API e inicialização local
 │   ├── alembic/                 # migrations incrementais (0001 a 0018)
 │   ├── app/
 │   │   ├── api/v1/              # endpoints HTTP
@@ -127,7 +263,7 @@ quizhub/
 │   │   ├── models/              # modelos SQLAlchemy
 │   │   ├── schemas/             # contratos Pydantic
 │   │   └── services/            # regras de negócio
-│   ├── dados/                   # catálogos versionados
+│   ├── dados_oficiais/          # catálogos oficiais canônicos e manifesto
 │   ├── tests/                   # testes unitários e de integração
 │   ├── .env.example
 │   ├── alembic.ini
@@ -144,6 +280,139 @@ quizhub/
 ├── vite.config.js
 └── README.md
 ```
+
+## Como executar o QuizHub localmente — Guia da equipe
+
+O caminho recomendado para uma instalação nova usa Docker Compose. Ele cria
+um PostgreSQL exclusivo, aplica as migrations até `0019`, prepara e ativa os
+dois catálogos canônicos versionados e inicia API e frontend. Nenhum acesso a
+banco ou arquivo privado é necessário.
+
+### Pré-requisitos
+
+- Git;
+- Docker Engine com o plugin Docker Compose;
+- portas locais 5173, 8001 e 5433 livres (ou valores alternativos no `.env`).
+
+### Primeira instalação
+
+```bash
+git clone https://github.com/Levibdo/quizhub.git
+cd quizhub
+cp .env.example .env
+```
+
+O `.env` da raiz contém somente configurações do Compose local. Antes de
+subir o ambiente, substitua `POSTGRES_PASSWORD` e `JWT_SECRET` por valores
+locais próprios; não versione esse arquivo.
+
+```bash
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+```
+
+Na primeira inicialização, o backend:
+
+1. aguarda o PostgreSQL ficar saudável;
+2. executa `alembic upgrade 0019`;
+3. valida, importa e ativa idempotentemente os catálogos canônicos;
+4. inicia o Uvicorn na porta interna 8001.
+
+O bootstrap possui duas travas: precisa das flags locais definidas pelo
+Compose e recusa bancos cujo nome não comece com `quizhub_local`. Ele não deve
+ser reutilizado como procedimento de produção.
+
+Endereços padrão:
+
+- aplicação: `http://localhost:5173`;
+- API: `http://localhost:8001`;
+- saúde: `http://localhost:8001/health`;
+- documentação HTTP: `http://localhost:8001/docs`;
+- PostgreSQL no host: `localhost:5433`.
+
+### Contas locais
+
+Jogadores podem usar **Criar conta** na interface. Não existe senha, usuário
+ou administrador padrão. Para criar o primeiro ADMIN no banco local, execute
+o comando abaixo e informe uma senha de teste de forma interativa:
+
+```bash
+docker compose exec backend \
+  python -m app.cli admin criar-inicial \
+  --nome "Administrador local" --email admin@example.test
+```
+
+O comando é recusado se já houver um ADMIN. Nunca use nesse ambiente uma
+senha real de outro serviço.
+
+### Dados disponíveis para testes
+
+O ambiente carrega a cópia versionada e homologada dos catálogos oficiais:
+
+- 400 perguntas do Quiz Clássico;
+- 100 perguntas do Nem a Pato;
+- suas 506 referências editoriais.
+
+Esses JSONs ficam em `backend/dados_oficiais/`; a inicialização não depende
+de planilhas ou arquivos privados. Ranking e histórico começam vazios e só
+recebem as partidas realizadas no banco local. **Meu Conteúdo** pode ser
+testado com a conta criada pelo próprio colega e arquivos sintéticos nos
+formatos documentados nesta página.
+
+### Parar, reiniciar e redefinir
+
+```bash
+# parar sem perder o banco local
+docker compose stop
+
+# reiniciar o mesmo ambiente
+docker compose start
+
+# remover contêineres e rede, preservando o volume do banco
+docker compose down
+
+# acompanhar os logs
+docker compose logs -f backend frontend
+```
+
+Para apagar **somente os dados locais deste Compose** e recomeçar, confirme
+antes que o projeto exibido por `docker compose ls` é `quizhub-local` e use:
+
+```bash
+docker compose down --volumes
+docker compose up --build -d
+```
+
+### Atualizar o código
+
+Com o workspace sem alterações locais que precisem ser preservadas:
+
+```bash
+git pull --ff-only
+docker compose up --build -d
+```
+
+As migrations e o bootstrap idempotente rodam novamente. O volume local é
+mantido.
+
+### Solução de problemas
+
+- **Porta ocupada:** altere `FRONTEND_PORT`, `BACKEND_PORT` ou
+  `POSTGRES_PORT` no `.env` e recrie os contêineres.
+- **Backend não fica saudável:** consulte `docker compose logs backend` e
+  `docker compose logs database`; confira se as credenciais do `.env` foram
+  alteradas depois que o volume foi criado.
+- **Credenciais do banco divergiram:** restaure os valores anteriores ou,
+  somente se os dados locais puderem ser descartados, redefina o volume pelo
+  procedimento acima.
+- **Login funciona em uma origem e falha em outra:** use consistentemente
+  `localhost` ou `127.0.0.1`; cookies pertencem ao host usado pelo navegador.
+- **Build desatualizado:** execute `docker compose up --build -d`.
+- **Verificação do schema:** `docker compose exec backend python -m alembic current`.
+
+O fluxo manual sem Docker continua documentado abaixo para desenvolvimento
+avancçado.
 
 ## Pré-requisitos
 
@@ -300,7 +569,7 @@ python -m alembic upgrade head
 python -m alembic check
 ```
 
-O head versionado é `0011` (`0011_fundacao_conteudo_usuario`). Antes de aplicar
+O head versionado é `0019` (`0019_operacoes_administrativas_idempotentes`). Antes de aplicar
 migrations:
 
 1. confira host e nome do banco;
@@ -308,8 +577,25 @@ migrations:
 3. não use um banco de produção em testes de integração;
 4. não execute downgrade sem revisar a migration e o conteúdo existente.
 
-As migrations criam a estrutura e as categorias oficiais de ambos os modos.
-Elas não carregam automaticamente todos os catálogos de perguntas.
+As migrations `0001` a `0019` formam uma única cadeia incremental:
+
+| Intervalo | Responsabilidade principal |
+| --- | --- |
+| `0001`–`0004` | Infraestrutura inicial, categorias, perguntas, jogadores, partidas, respostas e snapshots. |
+| `0005`–`0008` | Usuários, autenticação, explicações obrigatórias e categorias oficiais básicas. |
+| `0009`–`0010` | Fundação do Nem a Pato e desafios persistentes. |
+| `0011` | Conteúdo privado de usuários e snapshots imutáveis. |
+| `0012` | Identidade pseudônima `visitante_id` para o ranking. |
+| `0013` | Temporadas, backfill histórico e associação das partidas. |
+| `0014`–`0015` | Metadados editoriais, fontes e catálogos oficiais versionados. |
+| `0016`–`0017` | Categoria oficial Macabro e metadados editoriais completos do Nem a Pato. |
+| `0018` | Perfis `JOGADOR`/`ADMIN` e auditoria administrativa. |
+| `0019` | Registros persistentes de idempotência para futuras operações administrativas sensíveis. |
+
+As migrations criam e evoluem a estrutura, fazem os backfills declarados e
+garantem categorias fundamentais. Os catálogos canônicos não são carregados
+automaticamente apenas por executar `alembic upgrade head`; validação,
+importação e ativação são operações distintas e controladas.
 
 ### Seed opcional de demonstração
 
@@ -417,9 +703,19 @@ categoria_id,enunciado,resposta_numerica,explicacao,unidade,fonte,ativa
   formato; para inteiros muito grandes, prefira JSON ou CSV.
 - O JSON desse modo é um array de objetos na raiz.
 
-Os arquivos em `backend/dados/` são catálogos versionados. Não adicione
-planilhas pessoais, exportações ou arquivos com conteúdo privado sem uma
-decisão explícita de versionamento.
+Os catálogos oficiais canônicos ficam em `backend/dados_oficiais/`:
+
+- `quiz_classico_v2.json`: 400 perguntas, distribuídas entre quatro
+  categorias oficiais;
+- `nem_a_pato_macabro_v1.json`: 100 perguntas numéricas da categoria
+  Macabro;
+- `manifest.json`: associa cada arquivo ao `catalogo_id`, versão de schema,
+  SHA-256 e estado editorial `PRONTO`.
+
+O manifesto indica que o arquivo foi homologado para o fluxo editorial; ele
+não prova, isoladamente, que uma versão esteja importada ou ativa em um banco.
+Não adicione planilhas pessoais, exportações, rascunhos ou conteúdo privado ao
+diretório canônico.
 
 ## API resumida
 
@@ -432,9 +728,9 @@ Todas as rotas abaixo ficam sob `/api/v1`:
 | Quiz Clássico | `/partidas`, `/partidas/{id}/respostas`, `/partidas/{id}/proxima` |
 | Nem a Pato | `/nem-pato/salas/...` |
 | Meu Conteúdo | `/meu-conteudo/resumo`, categorias, perguntas e importações |
-| Administração | `/admin/resumo` (perfil `ADMIN`) |
+| Administração | `/admin/resumo` (perfil `ADMIN`; catálogos e auditorias recentes) |
 | Importação legada | `/perguntas/importar` (perfil `ADMIN`) |
-| Ranking | `/ranking` (público; aceita `categoria` e `limit`) |
+| Ranking | `/ranking` (público; aceita `categoria`, `temporada` e `limit`), `/ranking/temporadas` |
 
 Consulte `/docs` para os payloads exatos e os códigos de resposta.
 
@@ -465,7 +761,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 Os testes de integração em `backend/tests/integration/` possuem variáveis e
 proteções próprias para bancos PostgreSQL descartáveis, por exemplo
-`NEM_A_PATO_TEST_DATABASE_URL` nos cenários multiplayer.
+`NEM_A_PATO_TEST_DATABASE_URL` nos cenários multiplayer e
+`RANKING_TEST_DATABASE_URL`/`RANKING_TEST_DATABASE_NAME` no ranking real.
 
 Antes de executar uma integração PostgreSQL:
 
@@ -487,9 +784,9 @@ npm ci
 npm run build
 ```
 
-O repositório não inclui Dockerfile, Compose, configuração de Caddy/Nginx ou
-unidade systemd. Uma implantação de produção precisa definir esses elementos
-fora do projeto ou adicioná-los em uma etapa própria.
+Os Dockerfiles e o Compose versionados destinam-se ao desenvolvimento local
+da equipe. Eles não substituem configuração de Caddy/Nginx, unidade systemd ou
+outros controles necessários a uma implantação de produção.
 
 Requisitos mínimos para produção:
 
@@ -627,6 +924,13 @@ Windows, sem mudar a política global da máquina.
 - Operações administrativas feitas pela API exigem perfil `ADMIN`; os comandos
   locais continuam destinados apenas a operadores com acesso ao ambiente e ao
   banco explicitamente configurado.
+- O endpoint legado `POST /api/v1/perguntas/importar` não possui uma chave ou
+  autenticação exclusiva do importador, mas também não é anônimo: ele reutiliza
+  obrigatoriamente a sessão por cookie e a autorização `ADMIN`. Aceita apenas
+  XLSX, altera perguntas oficiais e registra sucesso ou rejeição na auditoria.
+  Por continuar sendo uma superfície de escrita legada, deve permanecer atrás
+  de HTTPS, cookie seguro e controle estrito das contas administrativas; não
+  substitui o fluxo versionado dos catálogos oficiais.
 - Não há configuração de infraestrutura de produção versionada.
 - Compatibilidade visual e de teclado em navegadores/dispositivos específicos
   ainda exige validação no ambiente alvo.

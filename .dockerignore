@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+backend
+tests
+relatorios
+relatorio_*
+auditoria_*
+design-assets
+*.zip
+*.xlsx
+*.tar
+*.tar.gz
+*.log
