@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import cadastrar, login, logout, me
+from app.api.v1.admin import emitir_token_csrf_administrativo
 from app.db.base import Base
 from app.models import Usuario
 from app.schemas.auth import CadastroUsuario, LoginUsuario, UsuarioPublico
@@ -119,6 +120,24 @@ class TestAutenticacao(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "JWT_SECRET"):
                 obter_segredo_jwt()
+
+    def test_cookie_csrf_administrativo_e_secure_em_https(self):
+        usuario = self.cadastrar_usuario()
+        usuario.perfil = "ADMIN"
+        token_sessao = criar_token_acesso(usuario.id)
+        with patch.dict(os.environ, {"JWT_COOKIE_SECURE": "true"}):
+            response = Response()
+            emissao = emitir_token_csrf_administrativo(
+                response, token_sessao, usuario
+            )
+        cookie = response.headers["set-cookie"]
+        self.assertTrue(emissao.token)
+        self.assertEqual(emissao.expira_em_segundos, 1800)
+        self.assertIn("quizhub_csrf_token=", cookie)
+        self.assertIn("Secure", cookie)
+        self.assertIn("SameSite=strict", cookie)
+        self.assertIn("Path=/api/v1", cookie)
+        self.assertNotIn("HttpOnly", cookie)
 
     def test_cadastro_endpoint_tambem_cria_cookie(self):
         response = Response()

@@ -1,9 +1,12 @@
+import hashlib
+import hmac
 import os
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import jwt
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
@@ -15,7 +18,11 @@ JWT_SECRET_ENV = "JWT_SECRET"
 JWT_COOKIE_SECURE_ENV = "JWT_COOKIE_SECURE"
 JWT_ALGORITHM = "HS256"
 JWT_COOKIE_NAME = "quizhub_access_token"
+CSRF_COOKIE_NAME = "quizhub_csrf_token"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+CSRF_TRUSTED_ORIGINS_ENV = "CSRF_TRUSTED_ORIGINS"
 SESSAO_DURACAO = timedelta(hours=8)
+CSRF_DURACAO = timedelta(minutes=30)
 
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("quizhub-dummy-password")
@@ -53,6 +60,99 @@ def criar_token_acesso(
         obter_segredo_jwt(),
         algorithm=JWT_ALGORITHM,
     )
+
+
+def _identificador_sessao(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def criar_token_csrf(
+    usuario_id: UUID,
+    token_sessao: str,
+    agora: datetime | None = None,
+    duracao: timedelta = CSRF_DURACAO,
+) -> str:
+    emitido_em = agora or datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": str(usuario_id),
+            "sid": _identificador_sessao(token_sessao),
+            "iat": emitido_em,
+            "exp": emitido_em + duracao,
+            "tipo": "csrf",
+        },
+        obter_segredo_jwt(),
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def _erro_csrf(codigo: str, mensagem: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"codigo": codigo, "mensagem": mensagem},
+    )
+
+
+def _origem_http(valor: str) -> str | None:
+    try:
+        partes = urlsplit(valor)
+    except ValueError:
+        return None
+    if partes.scheme not in {"http", "https"} or not partes.netloc:
+        return None
+    return f"{partes.scheme}://{partes.netloc}".lower()
+
+
+def _origens_csrf_permitidas(request: Request) -> set[str]:
+    configuradas = {
+        origem
+        for item in (
+            os.getenv(CSRF_TRUSTED_ORIGINS_ENV, ""),
+            os.getenv("CORS_ORIGINS", ""),
+        )
+        for valor in item.split(",")
+        if (origem := _origem_http(valor.strip())) is not None
+    }
+    origem_requisicao = _origem_http(str(request.base_url))
+    if origem_requisicao is not None:
+        configuradas.add(origem_requisicao)
+    return configuradas
+
+
+def validar_origem_csrf(request: Request) -> None:
+    origem = request.headers.get("origin")
+    if origem is None:
+        origem = request.headers.get("referer")
+    normalizada = _origem_http(origem) if origem else None
+    if normalizada is None:
+        raise _erro_csrf("CSRF_ORIGEM_AUSENTE", "origem da requisição ausente")
+    if normalizada not in _origens_csrf_permitidas(request):
+        raise _erro_csrf(
+            "CSRF_ORIGEM_INVALIDA", "origem da requisição não autorizada"
+        )
+
+
+def validar_token_csrf(
+    token_csrf: str,
+    token_sessao: str,
+    usuario: Usuario,
+) -> None:
+    try:
+        payload = jwt.decode(
+            token_csrf,
+            obter_segredo_jwt(),
+            algorithms=[JWT_ALGORITHM],
+        )
+        if payload.get("tipo") != "csrf":
+            raise ValueError
+        if not hmac.compare_digest(payload.get("sub", ""), str(usuario.id)):
+            raise ValueError
+        if not hmac.compare_digest(
+            payload.get("sid", ""), _identificador_sessao(token_sessao)
+        ):
+            raise ValueError
+    except (InvalidTokenError, KeyError, TypeError, ValueError):
+        raise _erro_csrf("CSRF_TOKEN_INVALIDO", "token CSRF inválido") from None
 
 
 def identificar_usuario(token: str, db: Session) -> Usuario:
@@ -104,4 +204,25 @@ def exigir_admin(usuario: Usuario = Depends(usuario_atual)) -> Usuario:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="acesso exclusivo para administradores",
         )
+    return usuario
+
+
+def exigir_csrf_admin(
+    request: Request,
+    usuario: Usuario = Depends(exigir_admin),
+    token_sessao: str | None = Cookie(default=None, alias=JWT_COOKIE_NAME),
+    token_cookie: str | None = Cookie(default=None, alias=CSRF_COOKIE_NAME),
+    token_header: str | None = Header(default=None, alias=CSRF_HEADER_NAME),
+) -> Usuario:
+    if token_sessao is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="não autenticado",
+        )
+    if token_cookie is None or token_header is None:
+        raise _erro_csrf("CSRF_TOKEN_AUSENTE", "token CSRF ausente")
+    if not hmac.compare_digest(token_cookie, token_header):
+        raise _erro_csrf("CSRF_TOKEN_DIVERGENTE", "token CSRF divergente")
+    validar_origem_csrf(request)
+    validar_token_csrf(token_header, token_sessao, usuario)
     return usuario

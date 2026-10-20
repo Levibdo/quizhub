@@ -41,7 +41,9 @@ function ambienteHistorico(caminhoInicial = '/') {
   return { location, history, addEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.add(fn) }, removeEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.delete(fn) }, setTimeout, clearTimeout }
 }
 
-async function montar(t, { autenticado = true, categorias = [], partida = null, caminhoInicial = '/' } = {}) {
+async function montar(t, {
+  autenticado = true, categorias = [], partida = null, caminhoInicial = '/',
+} = {}) {
   const windowOriginal = globalThis.window
   const fetchOriginal = globalThis.fetch
   const storageOriginal = globalThis.localStorage
@@ -62,6 +64,26 @@ async function montar(t, { autenticado = true, categorias = [], partida = null, 
     if (url.endsWith('/categorias/jogaveis')) return Response.json(categorias)
     if (url.includes('/ranking?')) return Response.json([])
     if (url.endsWith('/admin/resumo')) return Response.json({ catalogos: [], auditorias: [] })
+    if (url.endsWith('/admin/dashboard')) {
+      return Response.json({
+      indicadores: {
+        usuarios: { total: 2, ativos: 2 },
+        partidas: {
+          total: 7, concluidas: 5,
+          quiz_classico: { total: 4, concluidas: 3 },
+          nem_a_pato: { total: 3, concluidas: 2 },
+        },
+        perguntas: { total: 510, oficiais: 500, privadas: 10 },
+        categorias: { total: 7, oficiais: 5, privadas: 2 },
+        catalogos_oficiais_ativos: 2,
+      },
+      temporada_ativa: {
+        id: 'temporada-1', numero: 1, nome: 'Temporada 1', status: 'ATIVA',
+        inicia_em: '2026-01-01T00:00:00Z', encerra_em: null,
+      },
+        catalogos: [], auditorias: [],
+      })
+    }
     if (url.endsWith('/partidas') && partida) return Response.json(await partida)
     return Response.json({ detail: 'inesperado' }, { status: 500 })
   }
@@ -319,6 +341,14 @@ test('administrador vê menu e acessa painel restrito', async (t) => {
   await act(async () => ui.button('Administração').props.onClick())
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   assert.equal(window.location.pathname, '/admin')
+  assert.match(ui.texto(), /Visão geral/)
+  assert.match(ui.texto(), /Partidas75 concluídas/)
   assert.match(ui.texto(), /Catálogos oficiais/)
+  assert.ok(ui.button('Temporadas'))
+  await act(async () => ui.button('Temporadas').props.onClick())
+  assert.match(ui.texto(), /Temporada 1/)
+  await act(async () => ui.button('Usuários').props.onClick())
+  assert.match(ui.texto(), /Inativos/)
+  await act(async () => ui.button('Auditoria').props.onClick())
   assert.match(ui.texto(), /Auditoria recente/)
 })

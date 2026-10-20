@@ -35,3 +35,55 @@ class AuditoriaAdministrativaPublica(BaseModel):
 class ResumoAdministrativo(BaseModel):
     catalogos: list[CatalogoAdministrativo]
     auditorias: list[AuditoriaAdministrativaPublica]
+
+
+class ContagemAtivosAdministrativa(BaseModel):
+    total: int
+    ativos: int
+
+
+class ContagemOrigemAdministrativa(BaseModel):
+    total: int
+    oficiais: int
+    privadas: int
+
+
+class ContagemPartidasModoAdministrativa(BaseModel):
+    total: int
+    concluidas: int
+
+
+class ContagemPartidasAdministrativa(BaseModel):
+    total: int
+    concluidas: int
+    quiz_classico: ContagemPartidasModoAdministrativa
+    nem_a_pato: ContagemPartidasModoAdministrativa
+
+
+class IndicadoresAdministrativos(BaseModel):
+    usuarios: ContagemAtivosAdministrativa
+    partidas: ContagemPartidasAdministrativa
+    perguntas: ContagemOrigemAdministrativa
+    categorias: ContagemOrigemAdministrativa
+    catalogos_oficiais_ativos: int
+
+
+class TemporadaAdministrativa(BaseModel):
+    id: UUID
+    numero: int
+    nome: str
+    status: str
+    inicia_em: datetime
+    encerra_em: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class DashboardAdministrativo(ResumoAdministrativo):
+    indicadores: IndicadoresAdministrativos
+    temporada_ativa: TemporadaAdministrativa | None
+
+
+class TokenCsrfAdministrativo(BaseModel):
+    token: str
+    expira_em_segundos: int

@@ -20,6 +20,7 @@ from app.models.resposta import Resposta
 from app.models.temporada import Temporada
 from app.models.usuario import Usuario
 from app.models.auditoria_administrativa import AuditoriaAdministrativa
+from app.models.operacao_administrativa import OperacaoAdministrativa
 
 __all__ = [
     "DesafioNemPato",
@@ -42,4 +43,5 @@ __all__ = [
     "Temporada",
     "Usuario",
     "AuditoriaAdministrativa",
+    "OperacaoAdministrativa",
 ]

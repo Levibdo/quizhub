@@ -14,7 +14,13 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models import AuditoriaAdministrativa, Categoria, Pergunta, Usuario
-from app.security import JWT_COOKIE_NAME, criar_token_acesso, password_hash
+from app.security import (
+    CSRF_COOKIE_NAME,
+    JWT_COOKIE_NAME,
+    criar_token_acesso,
+    criar_token_csrf,
+    password_hash,
+)
 from app.services.auth import Autenticacao
 from app.services.importador_perguntas import COLUNAS_OBRIGATORIAS
 
@@ -83,23 +89,60 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
         )
         self.client.cookies.set(JWT_COOKIE_NAME, token)
 
+    def cabecalhos_csrf(self, cliente=None):
+        cliente = cliente or self.client
+        resposta = cliente.get("/api/v1/admin/csrf")
+        self.assertEqual(resposta.status_code, 200, resposta.text)
+        return {
+            "Origin": "http://testserver",
+            "X-CSRF-Token": resposta.json()["token"],
+        }
+
     def test_painel_retorna_401_ao_visitante_e_403_ao_jogador(self):
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/dashboard").status_code, 401)
 
         self.autenticar(self.jogador)
         resposta = self.client.get("/api/v1/admin/resumo")
         self.assertEqual(resposta.status_code, 403)
         self.assertEqual(resposta.json()["detail"], "acesso exclusivo para administradores")
+        dashboard = self.client.get("/api/v1/admin/dashboard")
+        self.assertEqual(dashboard.status_code, 403)
+        self.assertEqual(
+            dashboard.json()["detail"], "acesso exclusivo para administradores"
+        )
 
     def test_admin_acessa_painel_e_sessao_expirada_e_rejeitada(self):
         self.autenticar(self.admin)
         resposta = self.client.get("/api/v1/admin/resumo")
         self.assertEqual(resposta.status_code, 200)
         self.assertEqual(resposta.json(), {"catalogos": [], "auditorias": []})
+        dashboard = self.client.get("/api/v1/admin/dashboard")
+        self.assertEqual(dashboard.status_code, 200, dashboard.text)
+        corpo = dashboard.json()
+        self.assertEqual(corpo["indicadores"]["usuarios"], {
+            "total": 2, "ativos": 2,
+        })
+        self.assertEqual(corpo["indicadores"]["partidas"]["total"], 0)
+        self.assertEqual(corpo["indicadores"]["perguntas"]["total"], 0)
+        self.assertIsNone(corpo["temporada_ativa"])
+        serializado = str(corpo).lower()
+        self.assertNotIn("senha_hash", serializado)
+        self.assertNotIn("email", serializado)
+        self.assertNotIn("token", serializado)
 
         self.client.cookies.clear()
         self.autenticar(self.admin, expirado=True)
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 401)
+        escrita = self.client.post(
+            "/api/v1/perguntas/importar",
+            files={"arquivo": ("perguntas.xlsx", xlsx_valido())},
+            headers={
+                "Origin": "http://testserver",
+                "X-CSRF-Token": "token-inutil",
+            },
+        )
+        self.assertEqual(escrita.status_code, 401)
 
     def test_logout_invalida_cookie_no_cliente(self):
         resposta_login = self.client.post("/api/v1/auth/login", json={
@@ -134,9 +177,11 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
             ))
             db.commit()
         self.autenticar(self.admin)
+        cabecalhos = self.cabecalhos_csrf()
         resposta = self.client.post(
             "/api/v1/perguntas/importar",
             files={"arquivo": ("perguntas.xlsx", xlsx_valido(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=cabecalhos,
         )
         self.assertEqual(resposta.status_code, 200, resposta.text)
         self.assertEqual(resposta.json()["criadas"], 1)
@@ -147,6 +192,149 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
             self.assertEqual(auditoria.administrador_id, self.admin.id)
             self.assertEqual(auditoria.resultado, "SUCESSO")
             self.assertNotIn("senha", str(auditoria.detalhes).lower())
+
+    def test_importacao_admin_rejeita_csrf_ausente_invalido_e_divergente(self):
+        self.autenticar(self.admin)
+        arquivo = {"arquivo": ("perguntas.xlsx", xlsx_valido())}
+        ausente = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={"Origin": "http://testserver"},
+        )
+        self.assertEqual(ausente.status_code, 403)
+        self.assertEqual(ausente.json()["detail"]["codigo"], "CSRF_TOKEN_AUSENTE")
+
+        cabecalhos = self.cabecalhos_csrf()
+        token_valido = cabecalhos["X-CSRF-Token"]
+        self.client.cookies.set(
+            CSRF_COOKIE_NAME,
+            "invalido",
+            domain="testserver.local",
+            path="/api/v1",
+        )
+        invalido = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={**cabecalhos, "X-CSRF-Token": "invalido"},
+        )
+        self.assertEqual(invalido.status_code, 403)
+        self.assertEqual(
+            invalido.json()["detail"]["codigo"], "CSRF_TOKEN_INVALIDO"
+        )
+
+        self.client.cookies.set(
+            CSRF_COOKIE_NAME,
+            "outro-token",
+            domain="testserver.local",
+            path="/api/v1",
+        )
+        divergente = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={**cabecalhos, "X-CSRF-Token": token_valido},
+        )
+        self.assertEqual(divergente.status_code, 403)
+        self.assertEqual(
+            divergente.json()["detail"]["codigo"], "CSRF_TOKEN_DIVERGENTE"
+        )
+
+    def test_importacao_admin_rejeita_token_expirado_e_origem_alheia(self):
+        self.autenticar(self.admin)
+        sessao = self.client.cookies.get(JWT_COOKIE_NAME)
+        expirado = criar_token_csrf(
+            self.admin.id,
+            sessao,
+            agora=datetime.now(timezone.utc) - timedelta(hours=1),
+            duracao=timedelta(minutes=1),
+        )
+        self.client.cookies.set(
+            CSRF_COOKIE_NAME,
+            expirado,
+            domain="testserver.local",
+            path="/api/v1",
+        )
+        arquivo = {"arquivo": ("perguntas.xlsx", xlsx_valido())}
+        resposta = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={
+                "Origin": "http://testserver",
+                "X-CSRF-Token": expirado,
+            },
+        )
+        self.assertEqual(resposta.status_code, 403)
+        self.assertEqual(
+            resposta.json()["detail"]["codigo"], "CSRF_TOKEN_INVALIDO"
+        )
+
+        self.client.cookies.delete(
+            CSRF_COOKIE_NAME, domain="testserver.local", path="/api/v1"
+        )
+        cabecalhos = self.cabecalhos_csrf()
+        origem = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={**cabecalhos, "Origin": "https://hostil.example"},
+        )
+        self.assertEqual(origem.status_code, 403)
+        self.assertEqual(
+            origem.json()["detail"]["codigo"], "CSRF_ORIGEM_INVALIDA"
+        )
+        self.assertNotIn(
+            cabecalhos["X-CSRF-Token"], origem.text
+        )
+
+        with patch.dict(os.environ, {
+            "CSRF_TRUSTED_ORIGINS": "https://quizhub.tailef8ba8.ts.net",
+            "LEGACY_ADMIN_IMPORT_ENABLED": "false",
+        }):
+            publica = self.client.post(
+                "/api/v1/perguntas/importar",
+                files=arquivo,
+                headers={
+                    **cabecalhos,
+                    "Origin": "https://quizhub.tailef8ba8.ts.net",
+                    "X-Forwarded-Host": "interno.invalid",
+                    "X-Forwarded-Proto": "http",
+                },
+            )
+        self.assertEqual(publica.status_code, 410)
+
+        manipulada = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={
+                **cabecalhos,
+                "Origin": "https://hostil.example",
+                "X-Forwarded-Host": "quizhub.tailef8ba8.ts.net",
+                "X-Forwarded-Proto": "https",
+            },
+        )
+        self.assertEqual(manipulada.status_code, 403)
+        self.assertEqual(
+            manipulada.json()["detail"]["codigo"], "CSRF_ORIGEM_INVALIDA"
+        )
+
+        sem_origem = self.client.post(
+            "/api/v1/perguntas/importar",
+            files=arquivo,
+            headers={"X-CSRF-Token": cabecalhos["X-CSRF-Token"]},
+        )
+        self.assertEqual(sem_origem.status_code, 403)
+        self.assertEqual(
+            sem_origem.json()["detail"]["codigo"], "CSRF_ORIGEM_AUSENTE"
+        )
+
+        with patch.dict(os.environ, {"LEGACY_ADMIN_IMPORT_ENABLED": "false"}):
+            referer = self.client.post(
+                "/api/v1/perguntas/importar",
+                files=arquivo,
+                headers={
+                    "Referer": "http://testserver/admin",
+                    "X-CSRF-Token": cabecalhos["X-CSRF-Token"],
+                },
+            )
+        self.assertEqual(referer.status_code, 410)
 
     def test_cadastro_comum_nao_concede_admin_e_bootstrap_e_unico(self):
         with self.factory() as db:

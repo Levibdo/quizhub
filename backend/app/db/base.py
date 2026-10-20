@@ -25,4 +25,5 @@ from app.models import (  # noqa: E402, F401
     SalaNemPato,
     Temporada,
     Usuario,
+    OperacaoAdministrativa,
 )

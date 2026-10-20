@@ -195,6 +195,35 @@ class TestMeuConteudoImportacoes(unittest.TestCase):
                     self.assertEqual(resposta.json()["criadas"], 1)
                     self.assertEqual(self.quantidade(modelo), antes + 1)
 
+    def test_admin_mantem_importacao_privada_propria_e_nao_acessa_alheia(self):
+        with self.sessions() as db:
+            usuario = db.get(Usuario, self.usuario.id)
+            usuario.perfil = "ADMIN"
+            db.commit()
+        self.usuario.perfil = "ADMIN"
+
+        registro = self.classic_dict(enunciado="Conteúdo privado do admin")
+        conteudo = self.conteudo(MODO_QUIZ_CLASSICO, "json", [registro])
+        preview = self.validar(
+            MODO_QUIZ_CLASSICO, "json", [registro], conteudo=conteudo
+        )
+        self.assertEqual(preview.status_code, 200, preview.text)
+        resposta = self.confirmar(
+            preview.json()["token_preview"], "json", conteudo
+        )
+        self.assertEqual(resposta.status_code, 200, resposta.text)
+
+        alheia = self.categoria(
+            "Privada alheia", MODO_QUIZ_CLASSICO, usuario=self.outro
+        )
+        negada = self.validar(
+            MODO_QUIZ_CLASSICO,
+            "json",
+            [self.classic_dict(categoria_id=str(alheia.id))],
+        )
+        self.assertEqual(negada.status_code, 200)
+        self.assertFalse(negada.json()["pode_confirmar"])
+
     def test_preview_erros_categoria_duplicidade_e_quota_nao_emite_token(self):
         alheia = self.categoria("Alheia", MODO_QUIZ_CLASSICO, usuario=self.outro)
         casos = (

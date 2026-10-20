@@ -29,9 +29,23 @@ const API_URL = resolverApiUrl({
   desenvolvimento: import.meta.env?.PROD === true ? undefined : 'http://127.0.0.1:8001',
 })
 
+function exigeCsrfAdministrativo(caminho, metodo) {
+  const escrita = !['GET', 'HEAD', 'OPTIONS'].includes(metodo.toUpperCase())
+  return escrita && (
+    caminho.startsWith('/api/v1/admin/') ||
+    caminho === '/api/v1/perguntas/importar'
+  )
+}
+
 export async function requisitar(caminho, opcoes) {
   const { preservarBigInt = false, ...opcoesFetch } = opcoes ?? {}
+  const metodo = opcoesFetch.method ?? 'GET'
   const corpoEhFormData = typeof FormData !== 'undefined' && opcoesFetch.body instanceof FormData
+  let tokenCsrf
+  if (exigeCsrfAdministrativo(caminho, metodo)) {
+    const emissao = await requisitar('/api/v1/admin/csrf', { method: 'GET' })
+    tokenCsrf = emissao.token
+  }
   let resposta
   try {
     resposta = await fetch(`${API_URL}${caminho}`, {
@@ -39,6 +53,7 @@ export async function requisitar(caminho, opcoes) {
       credentials: 'include',
       headers: {
         ...(corpoEhFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(tokenCsrf ? { 'X-CSRF-Token': tokenCsrf } : {}),
         ...opcoesFetch.headers,
       },
     })
@@ -207,6 +222,18 @@ export function obterUsuarioAtual() {
 
 export function obterResumoAdministrativo() {
   return requisitar('/api/v1/admin/resumo', { method: 'GET' })
+}
+
+export function obterDashboardAdministrativo() {
+  return requisitar('/api/v1/admin/dashboard', { method: 'GET' })
+}
+
+export function importarPerguntasOficiaisLegado(arquivo) {
+  const formulario = new FormData()
+  formulario.append('arquivo', arquivo)
+  return requisitar('/api/v1/perguntas/importar', {
+    method: 'POST', body: formulario,
+  })
 }
 
 export function listarCategorias() {

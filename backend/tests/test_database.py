@@ -45,6 +45,7 @@ class TestDatabaseConfiguration(unittest.TestCase):
                 "fontes_perguntas_oficiais",
                 "fontes_perguntas_nem_pato_oficiais",
                 "auditorias_administrativas",
+                "operacoes_administrativas",
             },
         )
 
@@ -116,12 +117,12 @@ class TestAlembicConfiguration(unittest.TestCase):
         self.assertEqual(
             [revision.revision for revision in revisions],
             [
-                "0018", "0017", "0016", "0015", "0014", "0013", "0012", "0011", "0010",
+                "0019", "0018", "0017", "0016", "0015", "0014", "0013", "0012", "0011", "0010",
                 "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002",
                 "0001",
             ],
         )
-        self.assertEqual(scripts.get_current_head(), "0018")
+        self.assertEqual(scripts.get_current_head(), "0019")
 
 
 if __name__ == "__main__":

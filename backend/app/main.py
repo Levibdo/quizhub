@@ -25,7 +25,7 @@ app.add_middleware(
         r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?):5173$"
     ),
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Nem-Pato-Token"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "X-Nem-Pato-Token"],
     allow_credentials=True,
 )
 

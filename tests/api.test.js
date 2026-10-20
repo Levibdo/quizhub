@@ -82,6 +82,56 @@ test('resumo administrativo usa endpoint protegido com cookie', async () => {
   })
 })
 
+test('dashboard administrativo usa endpoint somente de leitura com cookie', async () => {
+  const dashboard = {
+    indicadores: {
+      usuarios: { total: 2, ativos: 1 },
+      partidas: {
+        total: 3, concluidas: 2,
+        quiz_classico: { total: 2, concluidas: 1 },
+        nem_a_pato: { total: 1, concluidas: 1 },
+      },
+      perguntas: { total: 500, oficiais: 500, privadas: 0 },
+      categorias: { total: 5, oficiais: 5, privadas: 0 },
+      catalogos_oficiais_ativos: 2,
+    },
+    temporada_ativa: null,
+    catalogos: [],
+    auditorias: [],
+  }
+  globalThis.fetch = async (url, opcoes) => {
+    assert.equal(url, 'http://127.0.0.1:8001/api/v1/admin/dashboard')
+    assert.equal(opcoes.method, 'GET')
+    assert.equal(opcoes.credentials, 'include')
+    assert.equal(opcoes.headers['X-CSRF-Token'], undefined)
+    return Response.json(dashboard)
+  }
+  assert.deepEqual(await api.obterDashboardAdministrativo(), dashboard)
+})
+
+test('importador administrativo obtém e envia CSRF sem afetar importação privada', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) {
+      return Response.json({ token: 'csrf-assinado', expira_em_segundos: 1800 })
+    }
+    return Response.json({ total: 1, criadas: 1, falhas: 0, erros: [] })
+  }
+  const oficial = new File(['xlsx'], 'oficial.xlsx')
+  await api.importarPerguntasOficiaisLegado(oficial)
+  assert.equal(chamadas.length, 2)
+  assert.equal(chamadas[0].opcoes.method, 'GET')
+  assert.equal(chamadas[0].opcoes.headers['X-CSRF-Token'], undefined)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-assinado')
+  assert.equal(chamadas[1].opcoes.headers['Content-Type'], undefined)
+
+  chamadas.length = 0
+  await api.validarImportacaoMeuConteudo('QUIZ_CLASSICO', oficial)
+  assert.equal(chamadas.length, 1)
+  assert.equal(chamadas[0].opcoes.headers['X-CSRF-Token'], undefined)
+})
+
 test('Meu Conteúdo usa contratos reais, cookies e aceita 204', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {

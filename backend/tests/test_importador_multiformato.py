@@ -18,7 +18,7 @@ from app.db.base import Base
 from app.db.seed import seed_database
 from app.db.session import get_db
 from app.main import app
-from app.models import Pergunta, Usuario
+from app.models import AuditoriaAdministrativa, Pergunta, Usuario
 from app.security import password_hash
 from app.services.importador_perguntas import (
     ArquivoImportacaoInvalido,
@@ -352,12 +352,22 @@ class TestApiImportacaoXlsx(unittest.TestCase):
             "senha": "senha-administrativa",
         })
         self.assertEqual(resposta.status_code, 200)
+        csrf = self.client.get("/api/v1/admin/csrf")
+        self.assertEqual(csrf.status_code, 200)
+        self.cabecalhos_csrf = {
+            "Origin": "http://testserver",
+            "X-CSRF-Token": csrf.json()["token"],
+        }
 
     def tearDown(self):
         self.client.close()
         app.dependency_overrides.clear()
         self.engine.dispose()
         self.env.stop()
+
+    def quantidade(self):
+        with self.sessions() as session:
+            return session.scalar(select(func.count()).select_from(Pergunta))
 
     def test_endpoint_continua_exclusivo_para_xlsx(self):
         resposta = self.client.post(
@@ -368,17 +378,82 @@ class TestApiImportacaoXlsx(unittest.TestCase):
                     criar_xlsx([linha("Importada pela API")]),
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
-            },
+            }, headers=self.cabecalhos_csrf,
         )
         self.assertEqual(resposta.status_code, 200, resposta.text)
         self.assertEqual(resposta.json()["criadas"], 1)
+        self.assertEqual(resposta.headers["deprecation"], "true")
 
         csv = self.client.post(
             "/api/v1/perguntas/importar",
             files={"arquivo": ("perguntas.csv", criar_csv([linha()]), "text/csv")},
+            headers=self.cabecalhos_csrf,
         )
         self.assertEqual(csv.status_code, 422, csv.text)
         self.assertEqual(csv.json()["detail"], "envie um arquivo XLSX")
+        self.assertEqual(csv.headers["deprecation"], "true")
+
+    def test_limite_rejeita_upload_sem_persistir_e_audita(self):
+        with patch.dict(os.environ, {"LEGACY_ADMIN_IMPORT_MAX_BYTES": "16"}):
+            resposta = self.client.post(
+                "/api/v1/perguntas/importar",
+                files={"arquivo": ("perguntas.xlsx", b"x" * 17)},
+                headers=self.cabecalhos_csrf,
+            )
+        self.assertEqual(resposta.status_code, 413)
+        with self.sessions() as session:
+            auditoria = session.scalar(
+                select(AuditoriaAdministrativa).order_by(
+                    AuditoriaAdministrativa.ocorrida_em.desc()
+                )
+            )
+            self.assertEqual(auditoria.resultado, "REJEITADA")
+            self.assertEqual(auditoria.detalhes["motivo"], "ARQUIVO_MUITO_GRANDE")
+
+    def test_flag_desabilita_legado_sem_persistir(self):
+        antes = self.quantidade()
+        with patch.dict(os.environ, {"LEGACY_ADMIN_IMPORT_ENABLED": "false"}):
+            resposta = self.client.post(
+                "/api/v1/perguntas/importar",
+                files={"arquivo": ("perguntas.xlsx", criar_xlsx([linha()]))},
+                headers=self.cabecalhos_csrf,
+            )
+        self.assertEqual(resposta.status_code, 410)
+        self.assertEqual(self.quantidade(), antes)
+        self.assertEqual(resposta.headers["deprecation"], "true")
+
+    def test_falha_na_auditoria_desfaz_perguntas_preparadas(self):
+        antes = self.quantidade()
+        cliente = TestClient(app, raise_server_exceptions=False)
+        try:
+            login = cliente.post("/api/v1/auth/login", json={
+                "email": "admin-importacao@example.com",
+                "senha": "senha-administrativa",
+            })
+            self.assertEqual(login.status_code, 200)
+            csrf = cliente.get("/api/v1/admin/csrf")
+            self.assertEqual(csrf.status_code, 200)
+            with patch(
+                "app.api.v1.perguntas.registrar_auditoria_administrativa",
+                side_effect=RuntimeError("falha artificial na auditoria"),
+            ):
+                resposta = cliente.post(
+                    "/api/v1/perguntas/importar",
+                    files={
+                        "arquivo": (
+                            "perguntas.xlsx",
+                            criar_xlsx([linha("Atomicidade administrativa")]),
+                        )
+                    },
+                    headers={
+                        "Origin": "http://testserver",
+                        "X-CSRF-Token": csrf.json()["token"],
+                    },
+                )
+            self.assertEqual(resposta.status_code, 500)
+            self.assertEqual(self.quantidade(), antes)
+        finally:
+            cliente.close()
 
 
 if __name__ == "__main__":

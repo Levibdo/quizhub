@@ -189,31 +189,40 @@ class ImportadorPerguntas:
         return self._auditar(db, candidatas, formato).relatorio()
 
     def importar_arquivo(
-        self, db: Session, conteudo: bytes, formato: str
+        self, db: Session, conteudo: bytes, formato: str, *, confirmar: bool = True
     ) -> RelatorioImportacaoPerguntas:
-        candidatas = self.ler(conteudo, formato)
         try:
+            candidatas = self.ler(conteudo, formato)
             if db.bind is not None and db.bind.dialect.name == "postgresql":
-                db.execute(text("LOCK TABLE perguntas IN SHARE ROW EXCLUSIVE MODE"))
+                db.execute(text(
+                    "LOCK TABLE perguntas IN SHARE ROW EXCLUSIVE MODE"
+                ))
             auditoria = self._auditar(db, candidatas, formato)
             proximo_id = (db.scalar(select(func.max(Pergunta.id))) or 0) + 1
             for dados in auditoria.validas:
                 db.add(Pergunta(id=proximo_id, **dados))
                 proximo_id += 1
             db.flush()
-            db.commit()
-            return RelatorioImportacaoPerguntas(
+            resultado = RelatorioImportacaoPerguntas(
                 total=auditoria.total, criadas=len(auditoria.validas),
                 falhas=auditoria.duplicadas + auditoria.invalidas,
                 erros=auditoria.erros,
             )
+            if confirmar:
+                db.commit()
+            return resultado
         except Exception:
-            db.rollback()
+            if confirmar:
+                db.rollback()
             raise
 
-    def importar(self, db: Session, conteudo: bytes) -> RelatorioImportacaoPerguntas:
+    def importar(
+        self, db: Session, conteudo: bytes, *, confirmar: bool = True
+    ) -> RelatorioImportacaoPerguntas:
         """Compatibilidade da API existente, que continua aceitando somente XLSX."""
-        return self.importar_arquivo(db, conteudo, "xlsx")
+        return self.importar_arquivo(
+            db, conteudo, "xlsx", confirmar=confirmar
+        )
 
     def _auditar(
         self, db: Session, candidatas: list[PerguntaCandidata], formato: str

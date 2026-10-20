@@ -5,6 +5,7 @@ from app.db.session import get_db
 from app.models import Usuario
 from app.schemas.auth import CadastroUsuario, LoginUsuario, UsuarioPublico
 from app.security import (
+    CSRF_COOKIE_NAME,
     JWT_COOKIE_NAME,
     SESSAO_DURACAO,
     cookie_secure,
@@ -67,6 +68,13 @@ def logout(response: Response):
         secure=cookie_secure(),
         samesite="lax",
         path="/",
+    )
+    response.delete_cookie(
+        key=CSRF_COOKIE_NAME,
+        httponly=False,
+        secure=cookie_secure(),
+        samesite="strict",
+        path="/api/v1",
     )
 
 

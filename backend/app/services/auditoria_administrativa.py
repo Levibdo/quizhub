@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models import AuditoriaAdministrativa, Usuario
+from app.services.seguranca_administrativa import sanitizar_detalhes_auditoria
 
 
 def registrar_auditoria_administrativa(
@@ -26,7 +27,7 @@ def registrar_auditoria_administrativa(
         resultado=resultado,
         catalogo_id=catalogo_id,
         catalogo_versao=catalogo_versao,
-        detalhes=detalhes,
+        detalhes=sanitizar_detalhes_auditoria(detalhes),
     )
     db.add(registro)
     return registro
