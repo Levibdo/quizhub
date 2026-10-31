@@ -606,3 +606,22 @@ test('publicação incremental envia justificativa, CSRF, revisão e idempotênc
   assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'publicar-15')
   assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), { justificativa: 'Quinze perguntas novas revisadas.' })
 })
+
+test('reativação de catálogo envia versão ativa, CSRF e idempotência', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-reativacao' })
+    return Response.json({ status: 'ATIVO', versao: 1, perguntas_elegiveis: 15 })
+  }
+  const resposta = await api.reativarCatalogoOficial(
+    'catalogo-arquivado', 'Retorno editorial da versão anterior.',
+    'catalogo-ativo', 'reativar-chave',
+  )
+  assert.equal(resposta.perguntas_elegiveis, 15)
+  assert.match(chamadas[1].url, /catalogos\/catalogo-arquivado\/reativar$/)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-reativacao')
+  assert.equal(chamadas[1].opcoes.headers['If-Match'], '"catalogo-ativo"')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'reativar-chave')
+  assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), { justificativa: 'Retorno editorial da versão anterior.' })
+})
