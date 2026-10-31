@@ -19,6 +19,8 @@ from app.schemas.admin import (
     PaginaPerguntasOficiais,
     PerguntaOficialDetalhe,
     PaginaAuditoriaAdministrativa,
+    ReativarCatalogoEntrada,
+    ReativacaoCatalogoPublica,
     ResumoAdministrativo,
     TokenCsrfAdministrativo,
 )
@@ -52,6 +54,7 @@ from app.services.rascunhos_catalogos_oficiais import (
 )
 from app.services.validacao_rascunhos_oficiais import validar_rascunho_oficial
 from app.services.publicacao_incremental_catalogos import publicar_rascunho
+from app.services.reativacao_catalogos_oficiais import reativar_catalogo_oficial
 from app.services.revisao_editorial_rascunhos import (
     aprovar, decidir_aviso, decidir_pergunta, devolver_edicao,
     encaminhar_revisao, listar_avisos, listar_itens, obter_revisao, reabrir,
@@ -215,6 +218,32 @@ def criar_catalogo_inicial(
         )
 
 
+@router.post("/catalogos/{catalogo_id}/reativar", response_model=ReativacaoCatalogoPublica)
+def reativar_catalogo_admin(
+    catalogo_id: UUID,
+    dados: ReativarCatalogoEntrada,
+    if_match: str | None = Header(None, alias="If-Match"),
+    chave: str | None = Header(None, alias="Idempotency-Key"),
+    admin: Usuario = Depends(exigir_csrf_admin),
+):
+    ativo_esperado_id = _catalogo_ativo_if_match(if_match)
+    pedido = dados.model_dump(mode="json") | {"ativo_esperado_id": str(ativo_esperado_id)}
+
+    def executar(db: Session):
+        resposta = reativar_catalogo_oficial(
+            db, catalogo_id, ativo_esperado_id,
+            db.get(Usuario, admin.id), dados.justificativa,
+        )
+        return 200, resposta
+
+    resultado = _executar_idempotente(
+        admin=admin, tipo="REATIVAR_CATALOGO_OFICIAL",
+        recurso_tipo="CATALOGO_OFICIAL", recurso_id=catalogo_id,
+        chave=chave, pedido=pedido, executar=executar,
+    )
+    return ReativacaoCatalogoPublica(**resultado.resposta)
+
+
 @router.get("/perguntas/opcoes", response_model=OpcoesPerguntasOficiais)
 def listar_opcoes_perguntas_oficiais(
     db: Session = Depends(get_db),
@@ -318,6 +347,15 @@ def _revisao_if_match(valor: str | None) -> int:
         return int(valor.strip().strip('"'))
     except ValueError:
         raise HTTPException(status_code=422, detail={"codigo": "REVISAO_INVALIDA", "mensagem": "If-Match deve conter uma revisão inteira"}) from None
+
+
+def _catalogo_ativo_if_match(valor: str | None) -> UUID:
+    if valor is None:
+        raise HTTPException(status_code=428, detail={"codigo": "VERSAO_ATIVA_OBRIGATORIA", "mensagem": "If-Match é obrigatório"})
+    try:
+        return UUID(valor.strip().strip('"'))
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail={"codigo": "VERSAO_ATIVA_INVALIDA", "mensagem": "If-Match deve conter o UUID da versão ativa"}) from None
 
 
 def _executar_idempotente(*, admin, tipo, recurso_tipo, recurso_id, chave, pedido, executar):
