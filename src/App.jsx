@@ -66,6 +66,7 @@ function App() {
   const [loginAdministrativo, setLoginAdministrativo] = useState(tela === 'admin')
   const acaoMarcaNemPatoRef = useRef(null)
   const acaoMarcaMeuConteudoRef = useRef(null)
+  const protecaoNavegacaoAdminRef = useRef(null)
   const ignorarProximoPopRef = useRef(false)
   const posicaoHistoricoRef = useRef(Number.isInteger(window.history.state?.quizhubPosicao) ? window.history.state.quizhubPosicao : 0)
   const versaoNavegacaoRef = useRef(0)
@@ -150,6 +151,15 @@ function App() {
     acaoMarcaMeuConteudoRef.current = acao
   }, [])
 
+  const registrarProtecaoNavegacaoAdmin = useCallback((acao) => {
+    protecaoNavegacaoAdminRef.current = acao
+  }, [])
+
+  const executarNavegacao = useCallback((acao) => {
+    if (tela === 'admin' && protecaoNavegacaoAdminRef.current) protecaoNavegacaoAdminRef.current(acao)
+    else acao()
+  }, [tela])
+
   function clicarMarca(event) {
     event.preventDefault()
     if (tela === 'nem-pato' && acaoMarcaNemPatoRef.current) {
@@ -158,6 +168,10 @@ function App() {
     }
     if (tela === 'meu-conteudo' && acaoMarcaMeuConteudoRef.current) {
       acaoMarcaMeuConteudoRef.current(() => navegar('inicio'), event)
+      return
+    }
+    if (tela === 'admin' && protecaoNavegacaoAdminRef.current) {
+      protecaoNavegacaoAdminRef.current(() => navegar('inicio'))
       return
     }
     if (tela === 'jogando' && partida) {
@@ -235,6 +249,8 @@ function App() {
         setConfirmarSaidaQuiz({ aoConfirmar: () => { setPartida(null); setResultadoResposta(null); aplicar() }, aoCancelar: cancelar })
       } else if (tela === 'meu-conteudo' && acaoMarcaMeuConteudoRef.current) {
         acaoMarcaMeuConteudoRef.current(aplicar, null, cancelar)
+      } else if (tela === 'admin' && protecaoNavegacaoAdminRef.current) {
+        protecaoNavegacaoAdminRef.current(aplicar)
       } else aplicar()
     }
     window.addEventListener?.('popstate', aoVoltarAvancar)
@@ -475,14 +491,14 @@ function App() {
       navegacao={{
         tela,
         bloqueado: authCarregando || statusSessao === 'carregando',
-        inicio: () => navegar('inicio'),
-        jogos: () => navegar('jogos'),
-        ranking: abrirRanking,
-        entrar: () => navegar('login'),
-        cadastrar: () => navegar('cadastro'),
-        meuConteudo: abrirMeuConteudo,
-        administrar: abrirAdministracao,
-        sair: () => sair(),
+        inicio: () => executarNavegacao(() => navegar('inicio')),
+        jogos: () => executarNavegacao(() => navegar('jogos')),
+        ranking: () => executarNavegacao(abrirRanking),
+        entrar: () => executarNavegacao(() => navegar('login')),
+        cadastrar: () => executarNavegacao(() => navegar('cadastro')),
+        meuConteudo: () => executarNavegacao(abrirMeuConteudo),
+        administrar: () => executarNavegacao(abrirAdministracao),
+        sair: () => executarNavegacao(() => sair()),
       }}
     >
       {erro && <p className="mensagem-erro" role="alert">{erro}</p>}
@@ -519,7 +535,7 @@ function App() {
         <TelaMeuConteudo voltar={() => navegar('inicio')} aoExpirarSessao={expirarSessaoMeuConteudo} registrarAcaoMarca={registrarAcaoMarcaMeuConteudo} />
       )}
       {tela === 'admin' && usuario?.perfil === 'ADMIN' && (
-        <TelaAdmin voltar={() => { setLoginAdministrativo(false); navegar('inicio') }} aoExpirarSessao={expirarSessaoMeuConteudo} />
+        <TelaAdmin voltar={() => { setLoginAdministrativo(false); navegar('inicio') }} aoExpirarSessao={expirarSessaoMeuConteudo} registrarProtecaoNavegacao={registrarProtecaoNavegacaoAdmin} />
       )}
       {tela === 'admin' && usuario && usuario.perfil !== 'ADMIN' && (
         <section className="admin-screen" aria-labelledby="admin-negado-title">
