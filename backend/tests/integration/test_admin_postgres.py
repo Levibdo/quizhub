@@ -1,6 +1,8 @@
 import os
 import unittest
+from datetime import datetime, timezone
 from io import BytesIO
+from uuid import UUID
 from urllib.parse import urlparse
 from unittest.mock import patch
 
@@ -15,7 +17,10 @@ from app.models import (
     AuditoriaAdministrativa,
     CatalogoOficial,
     Categoria,
+    FontePerguntaNemPatoOficial,
+    FontePerguntaOficial,
     Pergunta,
+    PerguntaNemPato,
     OperacaoAdministrativa,
     Usuario,
 )
@@ -66,6 +71,7 @@ class TestAdminPostgreSQL(unittest.TestCase):
         with self.factory() as db:
             db.execute(text("DELETE FROM operacoes_administrativas"))
             db.execute(text("DELETE FROM auditorias_administrativas"))
+            db.execute(text("DELETE FROM perguntas_nem_pato"))
             db.execute(text("DELETE FROM perguntas"))
             db.execute(text("DELETE FROM categorias"))
             db.execute(text("DELETE FROM catalogos_oficiais"))
@@ -118,8 +124,12 @@ class TestAdminPostgreSQL(unittest.TestCase):
 
     def test_401_403_admin_importacao_auditoria_e_rotas_publicas(self):
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/auditorias").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 401)
         self._login("jogador-pg@example.com", "senha-segura")
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/auditorias").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 403)
         self.assertEqual(
             self.client.post(
                 "/api/v1/perguntas/importar",
@@ -152,6 +162,168 @@ class TestAdminPostgreSQL(unittest.TestCase):
         self.assertNotIn(
             self.client.get("/api/v1/ranking").status_code, {401, 403}
         )
+
+    def test_consulta_catalogos_conta_perguntas_no_postgresql(self):
+        categoria_id = self._criar_categoria()
+        with self.factory() as db:
+            ativo = CatalogoOficial(
+                catalogo_id="quiz-c1-postgres", versao=2,
+                modo="QUIZ_CLASSICO", status="ATIVO", sha256="c" * 64,
+            )
+            preparado = CatalogoOficial(
+                catalogo_id="quiz-c1-postgres", versao=1,
+                modo="QUIZ_CLASSICO", status="PREPARADO", sha256="d" * 64,
+            )
+            db.add_all([ativo, preparado])
+            db.flush()
+            db.add_all([
+                Pergunta(
+                    id=99201 + indice, categoria_id=categoria_id,
+                    enunciado=f"Pergunta C1 {indice}?", alternativa_a="A",
+                    alternativa_b="B", alternativa_c="C", alternativa_d="D",
+                    alternativa_correta=0, explicacao="Teste C1", origem="OFICIAL",
+                    catalogo_oficial_id=ativo.id, id_editorial=f"C1-{indice}",
+                )
+                for indice in range(2)
+            ])
+            db.commit()
+
+        self._login("admin-pg@example.com", "senha-administrativa")
+        resposta = self.client.get("/api/v1/admin/catalogos")
+        self.assertEqual(resposta.status_code, 200, resposta.text)
+        catalogos = resposta.json()["catalogos"]
+        self.assertEqual(len(catalogos), 2)
+        self.assertEqual(catalogos[0]["versao"], 2)
+        self.assertEqual(catalogos[0]["quantidade_perguntas"], 2)
+        self.assertEqual(catalogos[0]["situacao_ativacao"], "ATIVO")
+        self.assertEqual(catalogos[1]["quantidade_perguntas"], 0)
+        self.assertEqual(catalogos[1]["situacao_ativacao"], "INATIVO")
+        self.assertIsNone(catalogos[0]["estado_editorial"])
+        serializado = str(catalogos).lower()
+        self.assertNotIn("sha256", serializado)
+        self.assertNotIn("senha", serializado)
+
+    def test_consulta_perguntas_oficiais_pagina_filtra_e_detalha_no_postgresql(self):
+        with self.factory() as db:
+            categoria_quiz = Categoria(
+                slug="quiz-c2-pg", nome="Quiz C2 PG", modo="QUIZ_CLASSICO",
+                origem="OFICIAL", ativa=True,
+            )
+            categoria_nem = Categoria(
+                slug="nem-c2-pg", nome="Nem C2 PG", modo="NEM_A_PATO",
+                origem="OFICIAL", ativa=True,
+            )
+            catalogo_quiz = CatalogoOficial(
+                catalogo_id="quiz-c2-pg", versao=2, modo="QUIZ_CLASSICO",
+                status="ATIVO", sha256="e" * 64,
+            )
+            catalogo_nem = CatalogoOficial(
+                catalogo_id="nem-c2-pg", versao=1, modo="NEM_A_PATO",
+                status="ATIVO", sha256="f" * 64,
+            )
+            db.add_all([categoria_quiz, categoria_nem, catalogo_quiz, catalogo_nem])
+            db.flush()
+            quiz = Pergunta(
+                id=99401, categoria_id=categoria_quiz.id,
+                enunciado="Enunciado pesquisável PostgreSQL?",
+                alternativa_a="A", alternativa_b="B", alternativa_c="C",
+                alternativa_d="D", alternativa_correta=1,
+                explicacao="Explicação C2 PostgreSQL", dificuldade="DIFICIL",
+                origem="OFICIAL", ativa=True,
+                catalogo_oficial_id=catalogo_quiz.id, id_editorial="C2-PG-QUIZ",
+            )
+            nem = PerguntaNemPato(
+                categoria_id=categoria_nem.id,
+                enunciado="Quantos casos perturbadores?", resposta_numerica=42,
+                unidade="casos", explicacao="Explicação C2 Nem a Pato",
+                origem="OFICIAL", ativa=False,
+                catalogo_oficial_id=catalogo_nem.id, id_editorial="C2-PG-NEM",
+                natureza_resposta="EXATA",
+            )
+            db.add_all([quiz, nem])
+            db.flush()
+            db.add_all([
+                FontePerguntaOficial(
+                    pergunta_id=quiz.id, ordem=1, titulo="Fonte Quiz C2",
+                    url="https://example.org/c2-quiz", acessada_em=datetime.now(timezone.utc).date(),
+                ),
+                FontePerguntaNemPatoOficial(
+                    pergunta_id=nem.id, ordem=1, titulo="Fonte Nem C2",
+                    url="https://example.org/c2-nem", acessada_em=datetime.now(timezone.utc).date(),
+                ),
+            ])
+            db.commit()
+            quiz_id, nem_id = quiz.id, nem.id
+
+        self._login("admin-pg@example.com", "senha-administrativa")
+        pagina = self.client.get("/api/v1/admin/perguntas", params={"limite": 1})
+        self.assertEqual(pagina.status_code, 200, pagina.text)
+        self.assertEqual(pagina.json()["total"], 2)
+        self.assertEqual(pagina.json()["total_paginas"], 2)
+        filtrada = self.client.get("/api/v1/admin/perguntas", params={
+            "modo": "QUIZ_CLASSICO", "busca": "PESQUISÁVEL",
+            "dificuldade": "DIFICIL", "ativa": True,
+        })
+        self.assertEqual(filtrada.status_code, 200, filtrada.text)
+        self.assertEqual(filtrada.json()["total"], 1)
+        detalhe_quiz = self.client.get(
+            f"/api/v1/admin/perguntas/QUIZ_CLASSICO/{quiz_id}"
+        )
+        self.assertEqual(detalhe_quiz.status_code, 200, detalhe_quiz.text)
+        self.assertEqual(detalhe_quiz.json()["alternativas"], ["A", "B", "C", "D"])
+        self.assertEqual(detalhe_quiz.json()["alternativa_correta"], 1)
+        self.assertEqual(detalhe_quiz.json()["referencias"][0]["titulo"], "Fonte Quiz C2")
+        detalhe_nem = self.client.get(
+            f"/api/v1/admin/perguntas/NEM_A_PATO/{nem_id}"
+        )
+        self.assertEqual(detalhe_nem.status_code, 200, detalhe_nem.text)
+        self.assertEqual(detalhe_nem.json()["resposta_numerica"], "42")
+        self.assertEqual(detalhe_nem.json()["referencias"][0]["titulo"], "Fonte Nem C2")
+        self.assertEqual(
+            self.client.get("/api/v1/admin/perguntas/QUIZ_CLASSICO/999999").status_code,
+            404,
+        )
+
+    def test_consulta_auditoria_pagina_filtra_e_sanitiza_no_postgresql(self):
+        instante = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
+        with self.factory() as db:
+            db.add_all([
+                AuditoriaAdministrativa(
+                    id=UUID("00000000-0000-0000-0000-000000000001"),
+                    administrador_id=self.admin.id, ocorrida_em=instante,
+                    operacao="IMPORTAR_PERGUNTAS", recurso_tipo="CATALOGO",
+                    recurso_id="lote-alpha", resultado="SUCESSO",
+                    detalhes={"quantidade": 400, "token": "segredo"},
+                ),
+                AuditoriaAdministrativa(
+                    id=UUID("00000000-0000-0000-0000-000000000002"),
+                    administrador_id=self.admin.id, ocorrida_em=instante,
+                    operacao="IMPORTAR_PERGUNTAS", recurso_tipo="CATALOGO",
+                    recurso_id="lote-beta", resultado="REJEITADA",
+                ),
+            ])
+            db.commit()
+            total_sql = db.scalar(select(func.count(AuditoriaAdministrativa.id)))
+
+        self._login("admin-pg@example.com", "senha-administrativa")
+        pagina = self.client.get(
+            "/api/v1/admin/auditorias",
+            params={"limite": 1, "pagina": 1, "ordem": "desc"},
+        )
+        self.assertEqual(pagina.status_code, 200, pagina.text)
+        self.assertEqual(pagina.json()["total"], total_sql)
+        self.assertEqual(pagina.json()["total_paginas"], 2)
+        self.assertEqual(pagina.json()["itens"][0]["recurso_id"], "lote-beta")
+
+        filtrada = self.client.get(
+            "/api/v1/admin/auditorias",
+            params={"busca": "ALPHA", "resultado": "SUCESSO"},
+        )
+        self.assertEqual(filtrada.status_code, 200, filtrada.text)
+        self.assertEqual(filtrada.json()["total"], 1)
+        detalhes = filtrada.json()["itens"][0]["detalhes"]
+        self.assertEqual(detalhes["quantidade"], 400)
+        self.assertEqual(detalhes["token"], "[REMOVIDO]")
 
     def test_importacao_e_auditoria_sao_atomicas_e_preservam_catalogo_ativo(self):
         categoria_id = self._criar_categoria()

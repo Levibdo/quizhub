@@ -24,8 +24,11 @@ app.add_middleware(
         r"100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}|"
         r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?):5173$"
     ),
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "X-Nem-Pato-Token"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type", "X-CSRF-Token", "X-Nem-Pato-Token",
+        "Idempotency-Key", "If-Match", "X-Editorial-Revision",
+    ],
     allow_credentials=True,
 )
 

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { obterDashboardAdministrativo } from '../services/api'
+import AdminAuditoria from './AdminAuditoria'
+import AdminCatalogos from './AdminCatalogos'
+import AdminPerguntas from './AdminPerguntas'
 
 const SECOES = [
   ['visao-geral', 'Visão geral'],
@@ -10,8 +13,6 @@ const SECOES = [
   ['auditoria', 'Auditoria'],
 ]
 
-const rotuloModo = (modo) => modo === 'NEM_A_PATO' ? 'Nem a Pato' : 'Quiz Clássico'
-const rotuloStatus = (status) => status.charAt(0) + status.slice(1).toLowerCase()
 const formatarData = (data) => new Date(data).toLocaleString('pt-BR')
 
 function CartaoIndicador({ rotulo, valor, detalhe }) {
@@ -28,12 +29,22 @@ function EstadoVazio({ children }) {
   return <p className="admin-empty">{children}</p>
 }
 
-export default function TelaAdmin({ voltar, aoExpirarSessao }) {
+export default function TelaAdmin({ voltar, aoExpirarSessao, registrarProtecaoNavegacao }) {
   const [dashboard, setDashboard] = useState(null)
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [secao, setSecao] = useState('visao-geral')
   const [tentativa, setTentativa] = useState(0)
+  const [formularioSujo, setFormularioSujo] = useState(false)
+
+  const executarOuConfirmar = useCallback((acao) => {
+    if (!formularioSujo || window.confirm('Descartar as alterações não salvas?')) acao()
+  }, [formularioSujo])
+
+  useEffect(() => {
+    registrarProtecaoNavegacao?.((acao) => executarOuConfirmar(acao))
+    return () => registrarProtecaoNavegacao?.(null)
+  }, [executarOuConfirmar, registrarProtecaoNavegacao])
 
   const atualizar = useCallback(() => {
     setErro('')
@@ -74,7 +85,7 @@ export default function TelaAdmin({ voltar, aoExpirarSessao }) {
       <nav className="admin-navigation" aria-label="Seções administrativas">
         {SECOES.map(([id, rotulo]) => (
           <button key={id} type="button" aria-current={secao === id ? 'page' : undefined}
-            onClick={() => setSecao(id)}>{rotulo}</button>
+            onClick={() => executarOuConfirmar(() => setSecao(id))}>{rotulo}</button>
         ))}
       </nav>
 
@@ -117,35 +128,11 @@ export default function TelaAdmin({ voltar, aoExpirarSessao }) {
       )}
 
       {dashboard && !erro && secao === 'catalogos' && (
-        <section className="admin-panel" aria-labelledby="admin-catalogos">
-          <div className="admin-section-heading"><div><span className="home-eyebrow">Versionados</span><h2 id="admin-catalogos">Catálogos oficiais</h2></div><span>{dashboard.catalogos.length} versões</span></div>
-          <div className="admin-grid">
-            {dashboard.catalogos.map((catalogo) => (
-              <article key={catalogo.id} className="admin-catalog-card">
-                <span className="admin-card-kicker">{rotuloModo(catalogo.modo)}</span>
-                <strong>{catalogo.catalogo_id.replaceAll('_', ' ')}</strong>
-                <span>Versão {catalogo.versao}</span>
-                <span className={`admin-status admin-status--${catalogo.status.toLowerCase()}`}>
-                  {rotuloStatus(catalogo.status)}
-                </span>
-              </article>
-            ))}
-          </div>
-          {!dashboard.catalogos.length && <EstadoVazio>Nenhum catálogo oficial cadastrado.</EstadoVazio>}
-        </section>
+        <AdminCatalogos aoExpirarSessao={aoExpirarSessao} aoAlterarFormulario={setFormularioSujo} />
       )}
 
       {dashboard && !erro && secao === 'perguntas' && (
-        <section className="admin-panel" aria-labelledby="admin-perguntas">
-          <span className="home-eyebrow">Inventário</span><h2 id="admin-perguntas">Perguntas oficiais</h2>
-          <p>Este resumo apresenta somente quantidades. O conteúdo privado dos jogadores não é exibido.</p>
-          <div className="admin-metrics admin-metrics--compact">
-            <CartaoIndicador rotulo="Oficiais" valor={indicadores.perguntas.oficiais} />
-            <CartaoIndicador rotulo="Privadas" valor={indicadores.perguntas.privadas} detalhe="Não excluídas" />
-            <CartaoIndicador rotulo="Total atual" valor={indicadores.perguntas.total} />
-          </div>
-          <p className="admin-note">A edição e publicação versionada serão disponibilizadas em uma etapa futura.</p>
-        </section>
+        <AdminPerguntas aoExpirarSessao={aoExpirarSessao} />
       )}
 
       {dashboard && !erro && secao === 'temporadas' && (
@@ -176,26 +163,10 @@ export default function TelaAdmin({ voltar, aoExpirarSessao }) {
       )}
 
       {dashboard && !erro && secao === 'auditoria' && (
-        <section className="admin-panel" aria-labelledby="admin-auditoria">
-          <span className="home-eyebrow">Rastreabilidade</span>
-          <h2 id="admin-auditoria">Auditoria recente</h2>
-          <div className="admin-audit-list">
-            {dashboard.auditorias.map((item) => (
-              <article key={item.id}>
-                <strong>{item.operacao.replaceAll('_', ' ')}</strong>
-                <span>{item.administrador_nome}</span>
-                <span className={`admin-status admin-status--${item.resultado.toLowerCase()}`}>
-                  {rotuloStatus(item.resultado)}
-                </span>
-                <time dateTime={item.ocorrida_em}>{formatarData(item.ocorrida_em)}</time>
-              </article>
-            ))}
-            {!dashboard.auditorias.length && <EstadoVazio>Nenhuma operação administrativa registrada.</EstadoVazio>}
-          </div>
-        </section>
+        <AdminAuditoria aoExpirarSessao={aoExpirarSessao} />
       )}
 
-      <button className="button-secondary admin-back" onClick={voltar}>Voltar ao início</button>
+      <button className="button-secondary admin-back" onClick={() => executarOuConfirmar(voltar)}>Voltar ao início</button>
     </section>
   )
 }

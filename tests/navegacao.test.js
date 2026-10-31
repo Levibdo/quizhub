@@ -38,11 +38,12 @@ function ambienteHistorico(caminhoInicial = '/') {
     forward() { if (indice + 1 < entradas.length) { indice += 1; this.state = entradas[indice].state; location.pathname = entradas[indice].path; emitir() } },
     go(delta) { const destino = Math.max(0, Math.min(entradas.length - 1, indice + delta)); if (destino !== indice) { indice = destino; this.state = entradas[indice].state; location.pathname = entradas[indice].path; emitir() } },
   }
-  return { location, history, addEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.add(fn) }, removeEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.delete(fn) }, setTimeout, clearTimeout }
+  return { location, history, addEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.add(fn) }, removeEventListener(tipo, fn) { if (tipo === 'popstate') ouvintes.delete(fn) }, confirm: () => true, prompt: () => 'Rascunho editorial', setTimeout, clearTimeout }
 }
 
 async function montar(t, {
   autenticado = true, categorias = [], partida = null, caminhoInicial = '/',
+  auditoria = null, catalogosAdmin = null, perguntasAdmin = null, rascunhoStatus = 'EM_EDICAO',
 } = {}) {
   const windowOriginal = globalThis.window
   const fetchOriginal = globalThis.fetch
@@ -50,10 +51,12 @@ async function montar(t, {
   const documentOriginal = globalThis.document
   const focos = []
   const atributosTitulo = []
+  const requisicoes = []
   globalThis.window = ambienteHistorico(caminhoInicial)
   globalThis.document = { querySelector: () => ({ setAttribute(nome, valor) { atributosTitulo.push([nome, valor]) }, focus() { focos.push(globalThis.window.location.pathname) } }), getElementById: () => null }
   globalThis.localStorage = { getItem: () => null, setItem() {} }
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, opcoes = {}) => {
+    requisicoes.push({ url, opcoes })
     if (url.endsWith('/auth/me')) return autenticado
       ? Response.json(typeof autenticado === 'object' ? autenticado : { id: 'u1', nome: 'Levi', perfil: 'JOGADOR' })
       : Response.json({ detail: 'Não autenticado' }, { status: 401 })
@@ -64,6 +67,7 @@ async function montar(t, {
     if (url.endsWith('/categorias/jogaveis')) return Response.json(categorias)
     if (url.includes('/ranking?')) return Response.json([])
     if (url.endsWith('/admin/resumo')) return Response.json({ catalogos: [], auditorias: [] })
+    if (url.endsWith('/admin/csrf')) return Response.json({ token: 'csrf-teste-administrativo' })
     if (url.endsWith('/admin/dashboard')) {
       return Response.json({
       indicadores: {
@@ -84,6 +88,113 @@ async function montar(t, {
         catalogos: [], auditorias: [],
       })
     }
+    if (url.endsWith('/admin/catalogos')) {
+      if (catalogosAdmin === 'pendente') return new Promise(() => {})
+      if (catalogosAdmin instanceof Error) {
+        return Response.json({ detail: catalogosAdmin.message }, { status: 503 })
+      }
+      return Response.json(catalogosAdmin || {
+        catalogos: [{
+          id: 'catalogo-1', catalogo_id: 'quiz_classico_v2',
+          modo: 'QUIZ_CLASSICO', versao: 2, status_registro: 'ATIVO',
+          estado_editorial: null, situacao_ativacao: 'ATIVO',
+          quantidade_perguntas: 400, criado_em: '2026-10-01T12:00:00Z',
+          ativado_em: '2026-10-02T12:00:00Z', arquivado_em: null,
+        }],
+      })
+    }
+    if (url.includes('/admin/catalogos/rascunhos?')) {
+      return Response.json({
+        itens: [{
+          id: 'draft-1', catalogo_origem_id: 'catalogo-1', catalogo_id: 'quiz_classico_v2',
+          modo: 'QUIZ_CLASSICO', versao_base: 2, numero_rascunho: 1,
+          nome: 'Revisão editorial', status: rascunhoStatus, revisao: 4,
+          criado_por_id: 'a1', modificado_por_id: 'a1',
+          criado_em: '2026-10-21T12:00:00Z', atualizado_em: '2026-10-22T12:00:00Z',
+          descartado_em: null, motivo_descarte: null, total_perguntas: 400,
+          adicionadas: 1, modificadas: 2, removidas: 1,
+        }], pagina: 1, limite: 100, total: 1, total_paginas: 1,
+      })
+    }
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1/validacao')) {
+      return Response.json({
+        rascunho_id: 'draft-1', catalogo_origem_id: 'catalogo-1', catalogo_id: 'quiz_classico_v2',
+        versao_base: 2, modo: 'QUIZ_CLASSICO', revisao_validada: 4,
+        resumo: rascunhoStatus === 'APROVADO' ? { perguntas_examinadas: 30, perguntas_publicaveis: 30, perguntas_validas_estruturalmente: 30, perguntas_com_problemas: 0, erros: 0, avisos: 0, informacoes: 0 } : { perguntas_examinadas: 400, perguntas_publicaveis: 399, perguntas_validas_estruturalmente: 398, perguntas_com_problemas: 1, erros: 1, avisos: 1, informacoes: 1 },
+        achados: [
+          { codigo: 'ALTERNATIVAS_EQUIVALENTES', nivel: 'ERRO', pergunta_id: 'draft-question-1', id_editorial: 'GER-001', campo: 'alternativas', mensagem: 'As alternativas devem ser distintas.', recomendacao: 'Revisar alternativas.' },
+          { codigo: 'EXPLICACAO_CURTA', nivel: 'AVISO', pergunta_id: 'draft-question-1', id_editorial: 'GER-001', campo: 'explicacao', mensagem: 'A explicação deve ser revisada.', recomendacao: 'Complementar a explicação.' },
+          { codigo: 'PERGUNTA_REMOVIDA', nivel: 'INFORMACAO', pergunta_id: null, id_editorial: null, campo: null, mensagem: 'Uma pergunta foi removida.' },
+        ],
+      })
+    }
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1')) {
+      return Response.json({
+        id: 'draft-1', catalogo_origem_id: 'catalogo-1', catalogo_id: 'quiz_classico_v2',
+        modo: 'QUIZ_CLASSICO', versao_base: 2, numero_rascunho: 1,
+        nome: 'Revisão editorial', status: rascunhoStatus, revisao: 4,
+        criado_por_id: 'a1', modificado_por_id: 'a1', criado_em: '2026-10-21T12:00:00Z',
+        atualizado_em: '2026-10-22T12:00:00Z', descartado_em: null, motivo_descarte: null,
+        total_perguntas: 400, adicionadas: 1, modificadas: 2, removidas: 1,
+      })
+    }
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1/revisao')) return Response.json({ rascunho_id: 'draft-1', status: rascunhoStatus, revisao_conteudo: 4, ciclo_id: 'cycle-1', estado_ciclo: 'CONCLUIDO', revisao_editorial: 31, hash_validacao: 'a'.repeat(64), contagens: { APROVADA: 15 }, elegivel_aprovacao: true, impedimentos_aprovacao: [], exige_justificativa_autorrevisao: false })
+    if (url.includes('/admin/catalogos/rascunhos/draft-1/revisao/perguntas?')) return Response.json({ ciclo_id: 'cycle-1', revisao_editorial: 31, itens: [], pagina: 1, limite: 20, total: 15 })
+    if (url.includes('/admin/catalogos/rascunhos/draft-1/revisao/avisos?')) return Response.json({ ciclo_id: 'cycle-1', revisao_editorial: 31, itens: [], pagina: 1, limite: 100, total: 0, total_paginas: 0, total_pendencias: 0 })
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1/publicar')) return Response.json({ rascunho_id: 'draft-1', status: 'PUBLICADO', catalogo_publicado_id: 'catalogo-3', catalogo_id: 'quiz_classico_v2', modo: 'QUIZ_CLASSICO', versao: 3, total_perguntas: 30 })
+    if (url.includes('/admin/catalogos/rascunhos/draft-1/perguntas?')) {
+      return Response.json({ itens: [{ id: 'draft-question-1', id_editorial: 'GER-001', categoria_id: 'cat-quiz', categoria_slug: 'geral', categoria_nome: 'Conhecimentos Gerais', ordem: 1, enunciado: 'Qual é a resposta clássica?', ativa: true, tipo_alteracao: 'MODIFICADA', revisao: 2, dificuldade: 'MEDIA' }], pagina: 1, limite: 20, total: 1, total_paginas: 1 })
+    }
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1/perguntas/draft-question-1')) {
+      return Response.json({ id: 'draft-question-1', id_editorial: 'GER-001', categoria_id: 'cat-quiz', categoria_slug: 'geral', categoria_nome: 'Conhecimentos Gerais', ordem: 1, enunciado: 'Qual é a resposta clássica?', ativa: true, tipo_alteracao: 'MODIFICADA', revisao: 2, dificuldade: 'MEDIA', explicacao: 'Explicação verificável.', alternativas: ['A', 'B', 'C', 'D'], alternativa_correta: 2, referencias: [{ titulo: 'Fonte acadêmica', url: 'https://example.org/fonte', acessada_em: '2026-10-21' }] })
+    }
+    if (url.includes('/admin/catalogos/rascunhos/draft-1/alteracoes?')) {
+      return Response.json({ itens: [{ id: 'change-1', tipo: 'EDICAO', id_editorial: 'GER-001', revisao_anterior: 3, revisao_nova: 4, ocorrida_em: '2026-10-22T12:00:00Z' }], pagina: 1, limite: 20, total: 1, total_paginas: 1 })
+    }
+    if (url.endsWith('/admin/perguntas/opcoes')) {
+      return Response.json({
+        catalogos: [
+          { id: 'c-quiz', catalogo_id: 'quiz_classico_v2', versao: 2, status: 'ATIVO', modo: 'QUIZ_CLASSICO' },
+          { id: 'c-nem', catalogo_id: 'nem_a_pato_v1', versao: 1, status: 'ATIVO', modo: 'NEM_A_PATO' },
+        ],
+        categorias: [
+          { id: 'cat-quiz', slug: 'geral', nome: 'Conhecimentos Gerais', modo: 'QUIZ_CLASSICO' },
+          { id: 'cat-nem', slug: 'macabro', nome: 'Macabro', modo: 'NEM_A_PATO' },
+        ],
+      })
+    }
+    if (url.includes('/admin/perguntas?')) {
+      if (perguntasAdmin instanceof Error) return Response.json({ detail: perguntasAdmin.message }, { status: 503 })
+      if (perguntasAdmin === 'pendente') return new Promise(() => {})
+      return Response.json(perguntasAdmin || {
+        itens: [
+          { id: 1, id_editorial: 'GER-001', modo: 'QUIZ_CLASSICO', enunciado: 'Qual é a resposta clássica?', ativa: true, dificuldade: 'MEDIA', categoria: { id: 'cat-quiz', slug: 'geral', nome: 'Conhecimentos Gerais' }, catalogo: { id: 'c-quiz', catalogo_id: 'quiz_classico_v2', versao: 2, status: 'ATIVO' } },
+          { id: 1, id_editorial: 'MAC-001', modo: 'NEM_A_PATO', enunciado: 'Quantos casos foram registrados?', ativa: true, dificuldade: null, categoria: { id: 'cat-nem', slug: 'macabro', nome: 'Macabro' }, catalogo: { id: 'c-nem', catalogo_id: 'nem_a_pato_v1', versao: 1, status: 'ATIVO' } },
+        ],
+        pagina: 1, limite: 20, total: 2, total_paginas: 1,
+      })
+    }
+    if (url.endsWith('/admin/perguntas/QUIZ_CLASSICO/1')) {
+      return Response.json({ id: 1, id_editorial: 'GER-001', modo: 'QUIZ_CLASSICO', enunciado: 'Qual é a resposta clássica?', ativa: true, dificuldade: 'MEDIA', categoria: { id: 'cat-quiz', slug: 'geral', nome: 'Conhecimentos Gerais' }, catalogo: { id: 'c-quiz', catalogo_id: 'quiz_classico_v2', versao: 2, status: 'ATIVO' }, explicacao: 'Explicação verificável.', alternativas: ['A', 'B', 'C', 'D'], alternativa_correta: 2, resposta_numerica: null, unidade: null, tema_editorial: null, natureza_resposta: null, qualificacao_estimativa: null, fonte_legada: null, referencias: [{ titulo: 'Fonte acadêmica', url: 'https://example.org/fonte', acessada_em: '2026-10-21' }] })
+    }
+    if (url.endsWith('/admin/perguntas/NEM_A_PATO/1')) {
+      return Response.json({ id: 1, id_editorial: 'MAC-001', modo: 'NEM_A_PATO', enunciado: 'Quantos casos foram registrados?', ativa: true, dificuldade: null, categoria: { id: 'cat-nem', slug: 'macabro', nome: 'Macabro' }, catalogo: { id: 'c-nem', catalogo_id: 'nem_a_pato_v1', versao: 1, status: 'ATIVO' }, explicacao: 'Explicação numérica.', alternativas: null, alternativa_correta: null, resposta_numerica: '9007199254740993', unidade: 'casos', tema_editorial: 'História', natureza_resposta: 'EXATA', qualificacao_estimativa: null, fonte_legada: null, referencias: [] })
+    }
+    if (url.includes('/admin/auditorias?')) {
+      if (auditoria instanceof Error) {
+        return Response.json({ detail: auditoria.message }, { status: 503 })
+      }
+      return Response.json(auditoria || {
+        itens: [{
+          id: 'audit-1', administrador_id: 'a1', administrador_nome: 'Admin',
+          ocorrida_em: '2026-10-20T12:00:00Z', operacao: 'IMPORTAR_PERGUNTAS',
+          recurso_tipo: 'CATALOGO', recurso_id: 'quiz-v2', resultado: 'SUCESSO',
+          catalogo_id: 'quiz_classico_v2', catalogo_versao: 2,
+          detalhes: { criadas: 400 },
+        }],
+        pagina: 1, limite: 20, total: 1, total_paginas: 1,
+      })
+    }
     if (url.endsWith('/partidas') && partida) return Response.json(await partida)
     return Response.json({ detail: 'inesperado' }, { status: 500 })
   }
@@ -91,7 +202,7 @@ async function montar(t, {
   await act(async () => { renderer = create(createElement(App)) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   t.after(async () => { await act(async () => renderer.unmount()); globalThis.window = windowOriginal; globalThis.fetch = fetchOriginal; globalThis.localStorage = storageOriginal; globalThis.document = documentOriginal })
-  return { renderer, focos, atributosTitulo, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
+  return { renderer, focos, atributosTitulo, requisicoes, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
 }
 
 test('cabeçalho mostra a sessão autenticada sem duplicar o indicador na home', async (t) => {
@@ -344,11 +455,205 @@ test('administrador vê menu e acessa painel restrito', async (t) => {
   assert.match(ui.texto(), /Visão geral/)
   assert.match(ui.texto(), /Partidas75 concluídas/)
   assert.match(ui.texto(), /Catálogos oficiais/)
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(ui.texto(), /quiz classico v2/)
+  assert.match(ui.texto(), /Perguntas400/)
+  assert.match(ui.texto(), /Não registrado separadamente/)
+  assert.ok(ui.button('Atualizar catálogos'))
   assert.ok(ui.button('Temporadas'))
   await act(async () => ui.button('Temporadas').props.onClick())
   assert.match(ui.texto(), /Temporada 1/)
   await act(async () => ui.button('Usuários').props.onClick())
   assert.match(ui.texto(), /Inativos/)
   await act(async () => ui.button('Auditoria').props.onClick())
-  assert.match(ui.texto(), /Auditoria recente/)
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(ui.texto(), /Auditoria administrativa/)
+  assert.match(ui.texto(), /IMPORTAR PERGUNTAS/)
+  assert.ok(ui.button('Aplicar filtros'))
+  assert.ok(ui.button('Limpar filtros'))
+  assert.equal(ui.button('Anterior').props.disabled, true)
+  assert.equal(ui.button('Próxima').props.disabled, true)
+})
+
+test('catálogos administrativos apresentam estado vazio e erro recuperável', async (t) => {
+  const vazio = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin', catalogosAdmin: { catalogos: [] },
+  })
+  await act(async () => vazio.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(vazio.texto(), /Nenhum catálogo oficial cadastrado/)
+
+  const falha = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin', catalogosAdmin: new Error('indisponível'),
+  })
+  await act(async () => falha.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(falha.texto(), /Não foi possível carregar os catálogos/)
+  assert.ok(falha.button('Tentar novamente'))
+})
+
+test('catálogos administrativos anunciam o carregamento', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin', catalogosAdmin: 'pendente',
+  })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  assert.match(ui.texto(), /Carregando catálogos oficiais/)
+})
+
+test('administrador consulta rascunho, abre editor e histórico sem ação de publicação', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin',
+  })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /RASCUNHOS — NÃO PUBLICADOS/)
+  assert.match(ui.texto(), /Revisão editorial/)
+  assert.ok(ui.button('Gerenciar rascunho'))
+  await act(async () => ui.button('Gerenciar rascunho').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /RASCUNHO — NÃO PUBLICADO/)
+  assert.match(ui.texto(), /Qual é a resposta clássica/)
+  await act(async () => ui.button('Editar').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /Editar pergunta/)
+  assert.equal(ui.renderer.root.findByProps({ id: 'draft-id_editorial' }).props.disabled, true)
+  assert.ok(ui.button('Adicionar referência'))
+  assert.equal(ui.button('Publicar'), undefined)
+  await act(async () => ui.button('Cancelar').props.onClick())
+  await act(async () => ui.button('Histórico editorial').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /Revisão 3 → 4/)
+})
+
+test('formulário de rascunho sujo protege troca de seção administrativa', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin',
+  })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  await act(async () => ui.button('Gerenciar rascunho').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  await act(async () => ui.button('Editar').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  const enunciado = ui.renderer.root.findByProps({ id: 'draft-enunciado' })
+  await act(async () => enunciado.props.onChange({ target: { value: 'Alteração ainda não salva' } }))
+
+  globalThis.window.confirm = () => false
+  await act(async () => ui.button('Perguntas oficiais').props.onClick())
+  assert.match(ui.texto(), /Alterações não salvas/)
+  assert.match(ui.texto(), /Editar pergunta/)
+
+  globalThis.window.confirm = () => true
+  await act(async () => ui.button('Perguntas oficiais').props.onClick())
+  assert.match(ui.texto(), /Consulta somente leitura\. Nenhuma pergunta ou catálogo é alterado/)
+})
+
+test('administrador valida rascunho, filtra achados e abre pergunta afetada', async (t) => {
+  const ui = await montar(t, { autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin' })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  await act(async () => ui.button('Gerenciar rascunho').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  await act(async () => ui.button('Validar rascunho').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /Relatório da revisão 4/)
+  assert.match(ui.texto(), /ALTERNATIVAS_EQUIVALENTES/)
+  assert.match(ui.texto(), /não confirma a exatidão factual/)
+  await act(async () => ui.button('Avisos').props.onClick())
+  assert.doesNotMatch(ui.texto(), /ALTERNATIVAS_EQUIVALENTES/)
+  assert.match(ui.texto(), /EXPLICACAO_CURTA/)
+  await act(async () => ui.button('Abrir pergunta').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /Editar pergunta/)
+})
+
+test('administrador aprovado confirma publicação incremental antes de ativar', async (t) => {
+  const ui = await montar(t, { autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin', rascunhoStatus: 'APROVADO' })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  await act(async () => ui.button('Consultar rascunho').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  assert.match(ui.texto(), /Publicar nova versão oficial/)
+  assert.match(ui.texto(), /Revisadas neste ciclo15/)
+  const painel = ui.renderer.root.findByProps({ className: 'admin-publication' })
+  const justificativa = painel.findByType('textarea')
+  const confirmacao = painel.findAllByType('input').find((item) => item.props.type === 'checkbox')
+  assert.equal(ui.button('Publicar e ativar nova versão').props.disabled, true)
+  await act(async () => justificativa.props.onChange({ target: { value: 'Quinze perguntas novas revisadas e aprovadas.' } }))
+  await act(async () => confirmacao.props.onChange({ target: { checked: true } }))
+  assert.equal(ui.button('Publicar e ativar nova versão').props.disabled, false)
+  await act(async () => ui.button('Publicar e ativar nova versão').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+  const chamada = ui.requisicoes.find(({ url }) => url.endsWith('/admin/catalogos/rascunhos/draft-1/publicar'))
+  assert.ok(chamada)
+  assert.deepEqual(JSON.parse(chamada.opcoes.body), { justificativa: 'Quinze perguntas novas revisadas e aprovadas.' })
+})
+
+test('perguntas oficiais listam os dois modos, filtram e abrem detalhes', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin',
+  })
+  await act(async () => ui.button('Perguntas oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(ui.texto(), /Qual é a resposta clássica/)
+  assert.match(ui.texto(), /Quantos casos foram registrados/)
+  assert.match(ui.texto(), /2 resultados/)
+  const botoesDetalhe = ui.renderer.root.findAllByType('button').filter((item) => texto(item) === 'Visualizar detalhes')
+  assert.equal(botoesDetalhe.length, 2)
+  await act(async () => botoesDetalhe[0].props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(ui.texto(), /Explicação verificável/)
+  assert.match(ui.texto(), /Resposta correta/)
+  assert.match(ui.texto(), /Fonte acadêmica/)
+  assert.ok(ui.button('Fechar detalhes'))
+
+  const modo = ui.renderer.root.findByProps({ name: 'modo' })
+  await act(async () => modo.props.onChange({ target: { name: 'modo', value: 'NEM_A_PATO' } }))
+  const formulario = ui.renderer.root.findByProps({ 'aria-label': 'Filtros de perguntas oficiais' })
+  await act(async () => formulario.props.onSubmit({ preventDefault() {} }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.ok(ui.button('Limpar filtros'))
+})
+
+test('perguntas oficiais apresentam carregamento, vazio e erro', async (t) => {
+  const pendente = await montar(t, { autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin', perguntasAdmin: 'pendente' })
+  await act(async () => pendente.button('Perguntas oficiais').props.onClick())
+  assert.match(pendente.texto(), /Carregando perguntas oficiais/)
+
+  const vazio = await montar(t, { autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin', perguntasAdmin: { itens: [], pagina: 1, limite: 20, total: 0, total_paginas: 0 } })
+  await act(async () => vazio.button('Perguntas oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(vazio.texto(), /Nenhuma pergunta oficial corresponde/)
+
+  const falha = await montar(t, { autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin', perguntasAdmin: new Error('indisponível') })
+  await act(async () => falha.button('Perguntas oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(falha.texto(), /Não foi possível carregar as perguntas/)
+  assert.ok(falha.button('Tentar novamente'))
+})
+
+test('auditoria administrativa apresenta estado vazio', async (t) => {
+  const vazio = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin',
+    auditoria: { itens: [], pagina: 1, limite: 20, total: 0, total_paginas: 0 },
+  })
+  await act(async () => vazio.button('Auditoria').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(vazio.texto(), /Nenhum evento corresponde aos filtros informados/)
+})
+
+test('auditoria administrativa apresenta erro e nova tentativa', async (t) => {
+  const falha = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin', auditoria: new Error('indisponível'),
+  })
+  await act(async () => falha.button('Auditoria').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(falha.texto(), /Não foi possível carregar a auditoria/)
+  assert.ok(falha.button('Tentar novamente'))
 })

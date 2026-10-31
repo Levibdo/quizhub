@@ -228,6 +228,173 @@ export function obterDashboardAdministrativo() {
   return requisitar('/api/v1/admin/dashboard', { method: 'GET' })
 }
 
+export function listarCatalogosOficiaisAdministrativos() {
+  return requisitar('/api/v1/admin/catalogos', { method: 'GET' })
+}
+
+export function criarCatalogoInicialOficial(dados, chave) {
+  return requisitar('/api/v1/admin/catalogos', {
+    method: 'POST', headers: { 'Idempotency-Key': chave || chaveIdempotencia() },
+    body: JSON.stringify(dados),
+  })
+}
+
+function chaveIdempotencia() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `quizhub-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function cabecalhosEscritaRascunho(revisao, chave) {
+  return {
+    ...(revisao === undefined ? {} : { 'If-Match': `"${revisao}"` }),
+    'Idempotency-Key': chave || chaveIdempotencia(),
+  }
+}
+
+function cabecalhosRevisaoEditorial(revisaoConteudo, revisaoEditorial, chave) {
+  return {
+    ...cabecalhosEscritaRascunho(revisaoConteudo, chave),
+    ...(revisaoEditorial === undefined || revisaoEditorial === null
+      ? {}
+      : { 'X-Editorial-Revision': String(revisaoEditorial) }),
+  }
+}
+
+export function listarRascunhosOficiais(filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [campo, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) parametros.set(campo, String(valor))
+  }
+  return requisitar(`/api/v1/admin/catalogos/rascunhos?${parametros}`, { method: 'GET' })
+}
+
+export function obterRascunhoOficial(id) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${id}`, { method: 'GET' })
+}
+
+export function validarRascunhoOficial(id) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${id}/validacao`, { method: 'GET' })
+}
+
+export function criarRascunhoOficial(catalogoId, nome, chave) {
+  return requisitar(`/api/v1/admin/catalogos/${catalogoId}/rascunhos`, {
+    method: 'POST', headers: cabecalhosEscritaRascunho(undefined, chave),
+    body: JSON.stringify({ nome }),
+  })
+}
+
+export function listarPerguntasRascunho(rascunhoId, filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [campo, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) parametros.set(campo, String(valor))
+  }
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas?${parametros}`, { method: 'GET' })
+}
+
+export function obterPerguntaRascunho(rascunhoId, perguntaId) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas/${perguntaId}`, { method: 'GET' })
+}
+
+export function salvarPerguntaRascunho(rascunhoId, perguntaId, dados, revisao, chave) {
+  const sufixo = perguntaId ? `/${perguntaId}` : ''
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas${sufixo}`, {
+    method: perguntaId ? 'PUT' : 'POST', headers: cabecalhosEscritaRascunho(revisao, chave),
+    body: JSON.stringify(dados),
+  })
+}
+
+export function removerPerguntaRascunho(rascunhoId, perguntaId, revisao, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas/${perguntaId}`, {
+    method: 'DELETE', headers: cabecalhosEscritaRascunho(revisao, chave),
+  })
+}
+
+export function restaurarPerguntaRascunho(rascunhoId, perguntaId, revisao, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas/${perguntaId}/restaurar`, {
+    method: 'POST', headers: cabecalhosEscritaRascunho(revisao, chave),
+  })
+}
+
+export function listarHistoricoRascunho(rascunhoId, pagina = 1) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/alteracoes?pagina=${pagina}&limite=20`, { method: 'GET' })
+}
+
+export function descartarRascunhoOficial(rascunhoId, motivo, revisao, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/descartar`, {
+    method: 'POST', headers: cabecalhosEscritaRascunho(revisao, chave),
+    body: JSON.stringify({ motivo }),
+  })
+}
+
+export function obterRevisaoRascunho(rascunhoId) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/revisao`, { method: 'GET' })
+}
+
+export function listarPerguntasRevisao(rascunhoId, filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [campo, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) parametros.set(campo, String(valor))
+  }
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/revisao/perguntas?${parametros}`, { method: 'GET' })
+}
+
+export function listarAvisosRevisao(rascunhoId, filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [campo, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) parametros.set(campo, String(valor))
+  }
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/revisao/avisos?${parametros}`, { method: 'GET' })
+}
+
+export function obterHistoricoRevisaoPergunta(rascunhoId, perguntaId) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/revisao/perguntas/${perguntaId}/historico`, { method: 'GET' })
+}
+
+function escreverRevisao(rascunhoId, caminho, dados, revisaoConteudo, revisaoEditorial, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}${caminho}`, {
+    method: 'POST', headers: cabecalhosRevisaoEditorial(revisaoConteudo, revisaoEditorial, chave),
+    body: JSON.stringify(dados ?? {}),
+  })
+}
+
+export const encaminharRascunhoRevisao = (id, revisao, chave) => escreverRevisao(id, '/encaminhar-revisao', {}, revisao, undefined, chave)
+export const decidirPerguntaRevisao = (id, perguntaId, dados, revisao, editorial, chave) => escreverRevisao(id, `/revisao/perguntas/${perguntaId}/decisoes`, dados, revisao, editorial, chave)
+export const verificarFonteRevisao = (id, perguntaId, fonteId, dados, revisao, editorial, chave) => escreverRevisao(id, `/revisao/perguntas/${perguntaId}/fontes/${fonteId}/verificacoes`, dados, revisao, editorial, chave)
+export const decidirAvisoRevisao = (id, achadoId, dados, revisao, editorial, chave) => escreverRevisao(id, `/revisao/avisos/${achadoId}/decisao`, dados, revisao, editorial, chave)
+export const solicitarCorrecaoRascunho = (id, dados, revisao, editorial, chave) => escreverRevisao(id, '/solicitar-correcao', dados, revisao, editorial, chave)
+export const devolverRascunhoEdicao = (id, dados, revisao, editorial, chave) => escreverRevisao(id, '/devolver-edicao', dados, revisao, editorial, chave)
+export const aprovarRascunhoEditorial = (id, dados, revisao, editorial, chave) => escreverRevisao(id, '/aprovar', dados, revisao, editorial, chave)
+export const reabrirRascunhoEditorial = (id, dados, revisao, chave) => escreverRevisao(id, '/reabrir', dados, revisao, undefined, chave)
+export const publicarRascunhoEditorial = (id, justificativa, revisao, chave) => escreverRevisao(id, '/publicar', { justificativa }, revisao, undefined, chave)
+
+export function obterOpcoesPerguntasOficiais() {
+  return requisitar('/api/v1/admin/perguntas/opcoes', { method: 'GET' })
+}
+
+export function listarPerguntasOficiais(filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [chave, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) {
+      parametros.set(chave, String(valor))
+    }
+  }
+  return requisitar(`/api/v1/admin/perguntas?${parametros}`, { method: 'GET' })
+}
+
+export function obterPerguntaOficial(modo, id) {
+  return requisitar(`/api/v1/admin/perguntas/${modo}/${id}`, { method: 'GET' })
+}
+
+export function listarAuditoriasAdministrativas(filtros = {}) {
+  const parametros = new URLSearchParams()
+  for (const [chave, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) {
+      parametros.set(chave, String(valor))
+    }
+  }
+  return requisitar(`/api/v1/admin/auditorias?${parametros}`, { method: 'GET' })
+}
+
 export function importarPerguntasOficiaisLegado(arquivo) {
   const formulario = new FormData()
   formulario.append('arquivo', arquivo)
