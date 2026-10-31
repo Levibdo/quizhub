@@ -239,6 +239,17 @@ export function criarCatalogoInicialOficial(dados, chave) {
   })
 }
 
+export function reativarCatalogoOficial(id, justificativa, catalogoAtivoId, chave) {
+  return requisitar(`/api/v1/admin/catalogos/${id}/reativar`, {
+    method: 'POST',
+    headers: {
+      'If-Match': `"${catalogoAtivoId}"`,
+      'Idempotency-Key': chave || chaveIdempotencia(),
+    },
+    body: JSON.stringify({ justificativa }),
+  })
+}
+
 function chaveIdempotencia() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
   return `quizhub-${Date.now()}-${Math.random().toString(16).slice(2)}`
