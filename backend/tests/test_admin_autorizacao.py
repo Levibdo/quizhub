@@ -101,6 +101,11 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
     def test_painel_retorna_401_ao_visitante_e_403_ao_jogador(self):
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/dashboard").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/perguntas").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/perguntas/opcoes").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos/00000000-0000-0000-0000-000000000001/validacao").status_code, 401)
 
         self.autenticar(self.jogador)
         resposta = self.client.get("/api/v1/admin/resumo")
@@ -111,6 +116,10 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
         self.assertEqual(
             dashboard.json()["detail"], "acesso exclusivo para administradores"
         )
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/perguntas").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos/00000000-0000-0000-0000-000000000001/validacao").status_code, 403)
 
     def test_admin_acessa_painel_e_sessao_expirada_e_rejeitada(self):
         self.autenticar(self.admin)
@@ -130,6 +139,25 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
         self.assertNotIn("senha_hash", serializado)
         self.assertNotIn("email", serializado)
         self.assertNotIn("token", serializado)
+        catalogos = self.client.get("/api/v1/admin/catalogos")
+        self.assertEqual(catalogos.status_code, 200, catalogos.text)
+        self.assertEqual(catalogos.json(), {"catalogos": []})
+        perguntas = self.client.get("/api/v1/admin/perguntas")
+        self.assertEqual(perguntas.status_code, 200, perguntas.text)
+        self.assertEqual(perguntas.json()["total"], 0)
+        inexistente = self.client.get("/api/v1/admin/perguntas/QUIZ_CLASSICO/999999")
+        self.assertEqual(inexistente.status_code, 404)
+        rascunhos = self.client.get("/api/v1/admin/catalogos/rascunhos")
+        self.assertEqual(rascunhos.status_code, 200, rascunhos.text)
+        self.assertEqual(rascunhos.json()["total"], 0)
+        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos/00000000-0000-0000-0000-000000000001/validacao").status_code, 404)
+        sem_csrf = self.client.post(
+            "/api/v1/admin/catalogos/00000000-0000-0000-0000-000000000001/rascunhos",
+            json={"nome": "Não deve criar"},
+            headers={"Idempotency-Key": "sem-csrf"},
+        )
+        self.assertEqual(sem_csrf.status_code, 403)
+        self.assertEqual(sem_csrf.json()["detail"]["codigo"], "CSRF_TOKEN_AUSENTE")
 
         self.client.cookies.clear()
         self.autenticar(self.admin, expirado=True)

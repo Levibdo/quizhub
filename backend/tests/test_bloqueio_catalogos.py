@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.models import (
-    Categoria, Jogador, Partida, PartidaNemPato, Pergunta, PerguntaNemPato,
-    RodadaNemPato, SalaNemPato,
+    CatalogoOficial, Categoria, Jogador, Partida, PartidaNemPato, Pergunta,
+    PerguntaNemPato, RodadaNemPato, SalaNemPato,
 )
 from app.services.partidas import PartidasPersistentes
 from app.services.salas_nem_a_pato import SalasNemAPatoService
@@ -81,6 +81,46 @@ class TestBloqueioSemCatalogoAtivo(unittest.TestCase):
             with self.assertRaises(HTTPException) as contexto:
                 self.nem.iniciar(db, host.sala.codigo, tokens[0])
             self.assert_bloqueio(contexto)
+        with self.sessions() as db:
+            sala = db.scalar(select(SalaNemPato).where(SalaNemPato.codigo == "SEMATO"))
+            self.assertEqual(sala.status.value, "AGUARDANDO")
+            self.assertEqual(db.scalar(select(func.count(PartidaNemPato.id))), 0)
+            self.assertEqual(db.scalar(select(func.count(RodadaNemPato.id))), 0)
+
+    def test_classico_bloqueia_catalogo_ativo_vazio_sem_criar_registros(self):
+        with self.sessions() as db:
+            db.add(CatalogoOficial(
+                catalogo_id="quiz_vazio", versao=1, modo="QUIZ_CLASSICO",
+                status="ATIVO", sha256="0" * 64,
+            ))
+            db.commit()
+            with self.assertRaises(HTTPException) as contexto:
+                PartidasPersistentes().criar(db, "Visitante", "geral")
+            self.assertEqual(contexto.exception.status_code, 422)
+            self.assertIn("sem perguntas suficientes", contexto.exception.detail)
+        with self.sessions() as db:
+            self.assertEqual(db.scalar(select(func.count(Jogador.id))), 0)
+            self.assertEqual(db.scalar(select(func.count(Partida.id))), 0)
+
+    def test_nem_pato_bloqueia_catalogo_ativo_vazio_sem_estado_parcial(self):
+        with self.sessions() as db:
+            db.add(CatalogoOficial(
+                catalogo_id="nem_vazio", versao=1, modo="NEM_A_PATO",
+                status="ATIVO", sha256="0" * 64,
+            ))
+            db.commit()
+            host = self.nem.criar(db, "A")
+        tokens = [host.credencial_participante]
+        for nome in ("B", "C"):
+            with self.sessions() as db:
+                tokens.append(self.nem.entrar(
+                    db, host.sala.codigo, nome
+                ).credencial_participante)
+        with self.sessions() as db:
+            with self.assertRaises(HTTPException) as contexto:
+                self.nem.iniciar(db, host.sala.codigo, tokens[0])
+            self.assertEqual(contexto.exception.status_code, 409)
+            self.assertIn("não há 10 perguntas", contexto.exception.detail)
         with self.sessions() as db:
             sala = db.scalar(select(SalaNemPato).where(SalaNemPato.codigo == "SEMATO"))
             self.assertEqual(sala.status.value, "AGUARDANDO")
