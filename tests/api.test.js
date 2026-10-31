@@ -109,6 +109,95 @@ test('dashboard administrativo usa endpoint somente de leitura com cookie', asyn
   assert.deepEqual(await api.obterDashboardAdministrativo(), dashboard)
 })
 
+test('catálogos administrativos usam endpoint somente de leitura com cookie', async () => {
+  const catalogos = { catalogos: [{ id: 'c1', catalogo_id: 'quiz_v2' }] }
+  globalThis.fetch = async (url, opcoes) => {
+    assert.equal(url, 'http://127.0.0.1:8001/api/v1/admin/catalogos')
+    assert.equal(opcoes.method, 'GET')
+    assert.equal(opcoes.credentials, 'include')
+    assert.equal(opcoes.headers['X-CSRF-Token'], undefined)
+    return Response.json(catalogos)
+  }
+  assert.deepEqual(await api.listarCatalogosOficiaisAdministrativos(), catalogos)
+})
+
+test('rascunhos oficiais integram revisão, idempotência, CSRF e preservam BIGINT como string', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) {
+      return Response.json({ token: 'csrf-rascunho', expira_em_segundos: 1800 })
+    }
+    if (opcoes.method === 'GET') return Response.json({ itens: [], total: 0 })
+    return Response.json({ id: 'p1', revisao: 3 })
+  }
+  await api.listarRascunhosOficiais({ modo: 'NEM_A_PATO', limite: 20 })
+  await api.validarRascunhoOficial('r1')
+  await api.salvarPerguntaRascunho('r1', 'p1', {
+    id_editorial: 'MAC-999', categoria_id: 'cat-1', enunciado: 'Quantos?',
+    explicacao: 'Explicação.', ativa: true, resposta_numerica: '9007199254740993',
+    natureza_resposta: 'EXATA', referencias: [{ titulo: 'Fonte', url: 'https://example.org', acessada_em: '2026-10-22' }],
+  }, 2, 'chave-idempotente')
+
+  const consulta = new URL(chamadas[0].url)
+  assert.equal(consulta.searchParams.get('modo'), 'NEM_A_PATO')
+  assert.equal(chamadas[1].url, 'http://127.0.0.1:8001/api/v1/admin/catalogos/rascunhos/r1/validacao')
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], undefined)
+  const escrita = chamadas[3]
+  assert.equal(escrita.opcoes.method, 'PUT')
+  assert.equal(escrita.opcoes.headers['If-Match'], '"2"')
+  assert.equal(escrita.opcoes.headers['Idempotency-Key'], 'chave-idempotente')
+  assert.equal(escrita.opcoes.headers['X-CSRF-Token'], 'csrf-rascunho')
+  assert.equal(JSON.parse(escrita.opcoes.body).resposta_numerica, '9007199254740993')
+})
+
+test('perguntas oficiais serializam filtros e consultam detalhe pelo modo', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/perguntas/opcoes')) {
+      return Response.json({ catalogos: [], categorias: [] })
+    }
+    if (url.includes('/api/v1/admin/perguntas?')) {
+      return Response.json({ itens: [], pagina: 2, limite: 20, total: 0, total_paginas: 0 })
+    }
+    return Response.json({ id: 7, modo: 'NEM_A_PATO' })
+  }
+  await api.obterOpcoesPerguntasOficiais()
+  await api.listarPerguntasOficiais({ pagina: 2, modo: 'NEM_A_PATO', busca: 'morte', ativa: false, dificuldade: '' })
+  await api.obterPerguntaOficial('NEM_A_PATO', 7)
+  const lista = new URL(chamadas[1].url)
+  assert.equal(lista.searchParams.get('pagina'), '2')
+  assert.equal(lista.searchParams.get('modo'), 'NEM_A_PATO')
+  assert.equal(lista.searchParams.get('busca'), 'morte')
+  assert.equal(lista.searchParams.get('ativa'), 'false')
+  assert.equal(lista.searchParams.has('dificuldade'), false)
+  assert.equal(chamadas[2].url, 'http://127.0.0.1:8001/api/v1/admin/perguntas/NEM_A_PATO/7')
+  assert.ok(chamadas.every(({ opcoes }) => opcoes.method === 'GET' && opcoes.credentials === 'include'))
+})
+
+test('auditoria administrativa serializa filtros e paginação em consulta GET', async () => {
+  globalThis.fetch = async (url, opcoes) => {
+    const recebida = new URL(url)
+    assert.equal(recebida.pathname, '/api/v1/admin/auditorias')
+    assert.equal(recebida.searchParams.get('pagina'), '2')
+    assert.equal(recebida.searchParams.get('limite'), '50')
+    assert.equal(recebida.searchParams.get('resultado'), 'SUCESSO')
+    assert.equal(recebida.searchParams.get('busca'), 'catalogo-2')
+    assert.equal(recebida.searchParams.has('operacao'), false)
+    assert.equal(opcoes.method, 'GET')
+    assert.equal(opcoes.credentials, 'include')
+    assert.equal(opcoes.headers['X-CSRF-Token'], undefined)
+    return Response.json({
+      itens: [], pagina: 2, limite: 50, total: 0, total_paginas: 0,
+    })
+  }
+  const resposta = await api.listarAuditoriasAdministrativas({
+    pagina: 2, limite: 50, resultado: 'SUCESSO', busca: 'catalogo-2', operacao: '',
+  })
+  assert.equal(resposta.pagina, 2)
+})
+
 test('importador administrativo obtém e envia CSRF sem afetar importação privada', async () => {
   const chamadas = []
   globalThis.fetch = async (url, opcoes) => {
@@ -456,4 +545,64 @@ test('jogar novamente usa endpoint NP9 e credencial do host', async () => {
   assert.equal(chamada.opcoes.headers['X-Nem-Pato-Token'], 'token-host')
   assert.equal(chamada.opcoes.body, undefined)
   assert.equal(resposta.partida.numero, 2)
+})
+
+test('decisão editorial envia CSRF, idempotência e as duas revisões', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-editorial' })
+    return Response.json({ estado: 'APROVADA', revisao_editorial: 8 })
+  }
+  await api.decidirPerguntaRevisao(
+    'draft-1', 'question-1',
+    { decisao: 'APROVADA', justificativa: 'Evidência documental suficiente.' },
+    4, 7, 'idem-editorial',
+  )
+  assert.equal(chamadas.length, 2)
+  assert.match(chamadas[1].url, /\/revisao\/perguntas\/question-1\/decisoes$/)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-editorial')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'idem-editorial')
+  assert.equal(chamadas[1].opcoes.headers['If-Match'], '"4"')
+  assert.equal(chamadas[1].opcoes.headers['X-Editorial-Revision'], '7')
+})
+
+test('consulta avisos do ciclo e registra decisões e fontes pelos IDs persistidos', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf' })
+    if (opcoes.method === 'GET') return Response.json({ itens: [{ id: 'warning-1' }], total: 1 })
+    return Response.json({ revisao_editorial: 3 })
+  }
+  const avisos = await api.listarAvisosRevisao('draft-1', { estado: 'PENDENTE', severidade: 'AVISO' })
+  assert.equal(avisos.itens[0].id, 'warning-1')
+  await api.verificarFonteRevisao('draft-1', 'question-1', 47, {
+    resultado: 'SUFICIENTE', evidencia_documental: 'Documento consultado.',
+    relacao_com_resposta: 'Relação direta.', justificativa: null,
+  }, 4, 1, 'fonte-idem')
+  await api.decidirAvisoRevisao('draft-1', 'warning-1', {
+    decisao: 'ACEITO', justificativa: 'Aviso analisado e aceito.',
+  }, 4, 2, 'aviso-idem')
+  assert.match(chamadas[0].url, /revisao\/avisos\?estado=PENDENTE&severidade=AVISO$/)
+  assert.match(chamadas[2].url, /fontes\/47\/verificacoes$/)
+  assert.match(chamadas[4].url, /avisos\/warning-1\/decisao$/)
+  assert.equal(chamadas[2].opcoes.headers['X-Editorial-Revision'], '1')
+  assert.equal(chamadas[4].opcoes.headers['X-Editorial-Revision'], '2')
+})
+
+test('publicação incremental envia justificativa, CSRF, revisão e idempotência', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-publicacao' })
+    return Response.json({ status: 'PUBLICADO', versao: 3, total_perguntas: 30 })
+  }
+  const resposta = await api.publicarRascunhoEditorial('draft-15', 'Quinze perguntas novas revisadas.', 7, 'publicar-15')
+  assert.equal(resposta.total_perguntas, 30)
+  assert.match(chamadas[1].url, /catalogos\/rascunhos\/draft-15\/publicar$/)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-publicacao')
+  assert.equal(chamadas[1].opcoes.headers['If-Match'], '"7"')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'publicar-15')
+  assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), { justificativa: 'Quinze perguntas novas revisadas.' })
 })
