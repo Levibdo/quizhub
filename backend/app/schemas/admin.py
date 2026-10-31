@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CriarCatalogoInicial(BaseModel):
@@ -32,6 +32,8 @@ class CatalogoOficialConsulta(BaseModel):
     estado_editorial: str | None
     situacao_ativacao: str
     quantidade_perguntas: int
+    quantidade_elegivel_reativacao: int
+    elegivel_reativacao: bool
     criado_em: datetime
     ativado_em: datetime | None
     arquivado_em: datetime | None
@@ -39,6 +41,22 @@ class CatalogoOficialConsulta(BaseModel):
 
 class ListaCatalogosOficiais(BaseModel):
     catalogos: list[CatalogoOficialConsulta]
+
+
+class ReativarCatalogoEntrada(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    justificativa: str = Field(min_length=10, max_length=2000)
+
+
+class ReativacaoCatalogoPublica(BaseModel):
+    catalogo_id: UUID
+    identificador: str
+    modo: str
+    versao: int
+    status: str
+    versao_anterior_id: UUID
+    versao_anterior: int
+    perguntas_elegiveis: int
 
 
 class ReferenciaEditorialAdministrativa(BaseModel):

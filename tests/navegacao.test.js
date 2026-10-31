@@ -68,6 +68,7 @@ async function montar(t, {
     if (url.includes('/ranking?')) return Response.json([])
     if (url.endsWith('/admin/resumo')) return Response.json({ catalogos: [], auditorias: [] })
     if (url.endsWith('/admin/csrf')) return Response.json({ token: 'csrf-teste-administrativo' })
+    if (/\/admin\/catalogos\/[^/]+\/reativar$/.test(url)) return Response.json({ status: 'ATIVO', versao: 1, perguntas_elegiveis: 15 })
     if (url.endsWith('/admin/dashboard')) {
       return Response.json({
       indicadores: {
@@ -502,6 +503,24 @@ test('catálogos administrativos anunciam o carregamento', async (t) => {
   })
   await act(async () => ui.button('Catálogos oficiais').props.onClick())
   assert.match(ui.texto(), /Carregando catálogos oficiais/)
+})
+
+test('administrador confirma reativação apenas de versão arquivada elegível', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' }, caminhoInicial: '/admin',
+    catalogosAdmin: { catalogos: [
+      { id: 'catalogo-ativo', catalogo_id: 'nem_incremental', modo: 'NEM_A_PATO', versao: 2, status_registro: 'ATIVO', estado_editorial: null, situacao_ativacao: 'ATIVO', quantidade_perguntas: 30, criado_em: '2026-10-02T00:00:00Z', ativado_em: '2026-10-02T00:00:00Z', arquivado_em: null },
+      { id: 'catalogo-arquivado', catalogo_id: 'nem_incremental', modo: 'NEM_A_PATO', versao: 1, status_registro: 'ARQUIVADO', estado_editorial: null, situacao_ativacao: 'INATIVO', quantidade_perguntas: 15, quantidade_elegivel_reativacao: 15, elegivel_reativacao: true, criado_em: '2026-10-01T00:00:00Z', ativado_em: '2026-10-01T00:00:00Z', arquivado_em: '2026-10-02T00:00:00Z' },
+    ] },
+  })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.ok(ui.button('Reativar esta versão'))
+  await act(async () => ui.button('Reativar esta versão').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  const chamada = ui.requisicoes.find(({ url }) => url.endsWith('/admin/catalogos/catalogo-arquivado/reativar'))
+  assert.equal(chamada.opcoes.headers['If-Match'], '"catalogo-ativo"')
+  assert.equal(chamada.opcoes.headers['X-CSRF-Token'], 'csrf-teste-administrativo')
 })
 
 test('administrador consulta rascunho, abre editor e histórico sem ação de publicação', async (t) => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { criarCatalogoInicialOficial, listarCatalogosOficiaisAdministrativos } from '../services/api'
+import { criarCatalogoInicialOficial, listarCatalogosOficiaisAdministrativos, reativarCatalogoOficial } from '../services/api'
 import AdminRascunhos from './AdminRascunhos'
 
 const rotuloModo = (modo) => modo === 'NEM_A_PATO' ? 'Nem a Pato' : 'Quiz Clássico'
@@ -14,6 +14,7 @@ export default function AdminCatalogos({ aoExpirarSessao, aoAlterarFormulario })
   const [erro, setErro] = useState('')
   const [tentativa, setTentativa] = useState(0)
   const [criando, setCriando] = useState(false)
+  const [reativando, setReativando] = useState('')
 
   const atualizar = useCallback(() => {
     setErro('')
@@ -51,6 +52,25 @@ export default function AdminCatalogos({ aoExpirarSessao, aoAlterarFormulario })
       if (error.status === 401) aoExpirarSessao()
       else setErro(error.status === 409 ? 'Já existe um catálogo oficial para este modo.' : error.message)
     } finally { setCriando(false) }
+  }
+
+  const reativar = async (catalogo) => {
+    const ativo = catalogos.find((item) => item.modo === catalogo.modo && item.status_registro === 'ATIVO')
+    if (!ativo || !catalogo.elegivel_reativacao) return
+    const justificativa = window.prompt(
+      `${rotuloModo(catalogo.modo)}: reativar a versão ${catalogo.versao} (${catalogo.quantidade_perguntas} perguntas) no lugar da versão ${ativo.versao}.\n\nInforme a justificativa administrativa:`,
+    )
+    if (!justificativa?.trim() || justificativa.trim().length < 10) return
+    if (!window.confirm(`Confirmar a reativação da versão ${catalogo.versao}? A versão ${ativo.versao} será arquivada.`)) return
+    setReativando(catalogo.id); setErro('')
+    try {
+      await reativarCatalogoOficial(catalogo.id, justificativa.trim(), ativo.id)
+      atualizar()
+    } catch (error) {
+      if (error.status === 401) aoExpirarSessao()
+      else if (error.status === 412) setErro('A versão ativa mudou. Atualize os catálogos e tente novamente.')
+      else setErro(`Não foi possível reativar a versão. ${error.message}`)
+    } finally { setReativando('') }
   }
 
   return (
@@ -103,6 +123,11 @@ export default function AdminCatalogos({ aoExpirarSessao, aoAlterarFormulario })
                 <div><dt>Criado em</dt><dd>{formatarData(catalogo.criado_em)}</dd></div>
                 <div><dt>Ativado em</dt><dd>{formatarData(catalogo.ativado_em)}</dd></div>
               </dl>
+              {catalogo.elegivel_reativacao && catalogos.some((item) => item.modo === catalogo.modo && item.status_registro === 'ATIVO') && (
+                <button className="button-secondary" type="button" disabled={Boolean(reativando)} onClick={() => reativar(catalogo)}>
+                  {reativando === catalogo.id ? 'Reativando…' : 'Reativar esta versão'}
+                </button>
+              )}
             </article>
           ))}
         </div>
