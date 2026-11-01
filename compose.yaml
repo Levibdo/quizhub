@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-quizhub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copie .env.example para .env e defina POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - quizhub_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +17,21 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-quizhub}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-quizhub_local}
+      QUIZHUB_SCHEMA_REVISION: "0022"
+      QUIZHUB_MIGRATION_MODE: local
+      QUIZHUB_LOCAL_ENVIRONMENT: development
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
 
   backend:
     build:
@@ -28,13 +43,14 @@ services:
       JWT_COOKIE_SECURE: "false"
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
       CSRF_TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
+      QUIZHUB_SCHEMA_REVISION: "0022"
       QUIZHUB_LOCAL_ENVIRONMENT: development
       QUIZHUB_BOOTSTRAP_OFFICIAL_CATALOGS: "true"
     ports:
-      - "${BACKEND_PORT:-8001}:8001"
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8001"
     depends_on:
-      database:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
