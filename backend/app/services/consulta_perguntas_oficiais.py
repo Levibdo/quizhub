@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import String, cast, func, literal, select, union_all
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models import CatalogoOficial, Categoria, Pergunta, PerguntaNemPato
+from app.models import CatalogoOficial, Categoria, CategoriaOficialVersao, Pergunta, PerguntaNemPato
 
 
 def _selecao_quiz():
@@ -17,14 +17,15 @@ def _selecao_quiz():
             Pergunta.ativa.label("ativa"),
             Pergunta.dificuldade.label("dificuldade"),
             Categoria.id.label("categoria_id"),
-            Categoria.slug.label("categoria_slug"),
-            Categoria.nome.label("categoria_nome"),
+            func.coalesce(CategoriaOficialVersao.slug, Categoria.slug).label("categoria_slug"),
+            func.coalesce(CategoriaOficialVersao.nome, Categoria.nome).label("categoria_nome"),
             CatalogoOficial.id.label("catalogo_uuid"),
             CatalogoOficial.catalogo_id.label("catalogo_id"),
             CatalogoOficial.versao.label("catalogo_versao"),
             CatalogoOficial.status.label("catalogo_status"),
         )
         .join(Categoria, Categoria.id == Pergunta.categoria_id)
+        .outerjoin(CategoriaOficialVersao, CategoriaOficialVersao.id == Pergunta.categoria_versao_id)
         .join(CatalogoOficial, CatalogoOficial.id == Pergunta.catalogo_oficial_id)
         .where(
             Pergunta.origem == "OFICIAL",
@@ -44,14 +45,15 @@ def _selecao_nem_pato():
             PerguntaNemPato.ativa.label("ativa"),
             cast(literal(None), String(8)).label("dificuldade"),
             Categoria.id.label("categoria_id"),
-            Categoria.slug.label("categoria_slug"),
-            Categoria.nome.label("categoria_nome"),
+            func.coalesce(CategoriaOficialVersao.slug, Categoria.slug).label("categoria_slug"),
+            func.coalesce(CategoriaOficialVersao.nome, Categoria.nome).label("categoria_nome"),
             CatalogoOficial.id.label("catalogo_uuid"),
             CatalogoOficial.catalogo_id.label("catalogo_id"),
             CatalogoOficial.versao.label("catalogo_versao"),
             CatalogoOficial.status.label("catalogo_status"),
         )
         .join(Categoria, Categoria.id == PerguntaNemPato.categoria_id)
+        .outerjoin(CategoriaOficialVersao, CategoriaOficialVersao.id == PerguntaNemPato.categoria_versao_id)
         .join(
             CatalogoOficial,
             CatalogoOficial.id == PerguntaNemPato.catalogo_oficial_id,
@@ -189,6 +191,7 @@ def obter_pergunta_oficial(db: Session, *, modo: str, pergunta_id: int) -> dict 
             .join(Pergunta.catalogo_oficial)
             .options(
                 joinedload(Pergunta.categoria),
+                joinedload(Pergunta.categoria_versao),
                 joinedload(Pergunta.catalogo_oficial),
                 selectinload(Pergunta.fontes_editoriais),
             )
@@ -213,6 +216,7 @@ def obter_pergunta_oficial(db: Session, *, modo: str, pergunta_id: int) -> dict 
             .join(PerguntaNemPato.catalogo_oficial)
             .options(
                 joinedload(PerguntaNemPato.categoria),
+                joinedload(PerguntaNemPato.categoria_versao),
                 joinedload(PerguntaNemPato.catalogo_oficial),
                 selectinload(PerguntaNemPato.fontes_editoriais),
             )
@@ -246,8 +250,8 @@ def obter_pergunta_oficial(db: Session, *, modo: str, pergunta_id: int) -> dict 
         "dificuldade": getattr(pergunta, "dificuldade", None),
         "categoria": {
             "id": pergunta.categoria.id,
-            "slug": pergunta.categoria.slug,
-            "nome": pergunta.categoria.nome,
+            "slug": (pergunta.categoria_versao.slug if pergunta.categoria_versao else pergunta.categoria.slug),
+            "nome": (pergunta.categoria_versao.nome if pergunta.categoria_versao else pergunta.categoria.nome),
         },
         "catalogo": {
             "id": catalogo.id,

@@ -1,4 +1,7 @@
 from app.models.categoria import Categoria
+from app.models.categoria_oficial_versionada import (
+    CategoriaOficialRascunho, CategoriaOficialVersao,
+)
 from app.models.catalogo_oficial import (
     CatalogoOficial, FontePerguntaNemPatoOficial, FontePerguntaOficial,
 )
@@ -38,6 +41,8 @@ from app.models.revisao_rascunho_oficial import (
 __all__ = [
     "DesafioNemPato",
     "Categoria",
+    "CategoriaOficialRascunho",
+    "CategoriaOficialVersao",
     "CatalogoOficial",
     "FontePerguntaNemPatoOficial",
     "FontePerguntaOficial",

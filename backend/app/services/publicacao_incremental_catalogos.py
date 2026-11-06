@@ -8,7 +8,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
-    AprovacaoRascunho, CatalogoOficial, CatalogoOficialRascunho,
+    AprovacaoRascunho, CatalogoOficial, CatalogoOficialRascunho, Categoria,
+    CategoriaOficialRascunho, CategoriaOficialVersao,
     FontePerguntaNemPatoOficial, FontePerguntaOficial, Pergunta,
     PerguntaNemPato, PerguntaNemPatoRascunho, PerguntaQuizRascunho,
     TransicaoRascunhoEditorial, Usuario,
@@ -53,14 +54,58 @@ def publicar_rascunho(db: Session, rascunho_id: UUID, revisao: int, admin: Usuar
     agora = datetime.now(timezone.utc)
     novo = CatalogoOficial(catalogo_id=r.catalogo_id, versao=versao, modo=r.modo, status="PREPARADO", sha256=hashlib.sha256(json.dumps(_conteudo(perguntas), sort_keys=True, ensure_ascii=False).encode()).hexdigest())
     db.add(novo); db.flush()
+    categorias = list(db.scalars(select(CategoriaOficialRascunho).where(
+        CategoriaOficialRascunho.rascunho_id == r.id,
+        CategoriaOficialRascunho.tipo_alteracao != "REMOVIDA",
+        CategoriaOficialRascunho.ativa.is_(True),
+    ).order_by(CategoriaOficialRascunho.slug, CategoriaOficialRascunho.id)))
+    if not categorias:
+        # Compatibilidade com rascunhos legados criados antes da 0023. A
+        # identidade e os rótulos já preservados nas perguntas são usados sem
+        # inferir qualquer dado adicional.
+        por_id = {}
+        for pergunta in perguntas:
+            atual = por_id.get(pergunta.categoria_id)
+            rotulo = (pergunta.categoria_slug_snapshot, pergunta.categoria_nome_snapshot)
+            if atual is not None and (atual.slug, atual.nome) != rotulo:
+                _falhar(409, "SNAPSHOTS_CATEGORIA_DIVERGENTES", "o rascunho legado possui rótulos conflitantes")
+            if atual is None:
+                identidade = db.get(Categoria, pergunta.categoria_id)
+                if identidade is None or identidade.modo != r.modo or identidade.origem != "OFICIAL":
+                    _falhar(409, "IDENTIDADE_CATEGORIA_INVALIDA", "a identidade lógica da categoria é inválida")
+                atual = CategoriaOficialRascunho(
+                    rascunho_id=r.id, categoria_id=identidade.id, modo=r.modo,
+                    slug=rotulo[0], nome=rotulo[1], descricao=identidade.descricao,
+                    ativa=True, tipo_alteracao="INALTERADA", modificado_por_id=admin.id,
+                )
+                db.add(atual); por_id[identidade.id] = atual
+        db.flush(); categorias = list(por_id.values())
+    if not categorias: _falhar(422, "CATALOGO_SEM_CATEGORIAS", "o catálogo exige ao menos uma categoria publicável")
+    versoes_categoria = {}
+    for categoria_rascunho in categorias:
+        identidade = db.get(Categoria, categoria_rascunho.categoria_id)
+        if (identidade is None or identidade.origem != "OFICIAL"
+                or identidade.modo != r.modo or categoria_rascunho.modo != r.modo):
+            _falhar(409, "IDENTIDADE_CATEGORIA_INVALIDA", "a identidade lógica da categoria é inválida")
+        representacao = CategoriaOficialVersao(
+            categoria_id=identidade.id, catalogo_oficial_id=novo.id, modo=r.modo,
+            slug=categoria_rascunho.slug, nome=categoria_rascunho.nome,
+            descricao=categoria_rascunho.descricao, ativa=True, origem_backfill=False,
+        )
+        db.add(representacao); db.flush()
+        versoes_categoria[identidade.id] = representacao
+        identidade.slug, identidade.nome = categoria_rascunho.slug, categoria_rascunho.nome
+        identidade.descricao, identidade.ativa = categoria_rascunho.descricao, True
     if r.modo == "QUIZ_CLASSICO":
         proximo = (db.scalar(select(func.max(Pergunta.id))) or 0) + 1
         for p in perguntas:
-            q = Pergunta(id=proximo, categoria_id=p.categoria_id, enunciado=p.enunciado, alternativa_a=p.alternativa_a, alternativa_b=p.alternativa_b, alternativa_c=p.alternativa_c, alternativa_d=p.alternativa_d, alternativa_correta=p.alternativa_correta, explicacao=p.explicacao, dificuldade=p.dificuldade, ativa=True, origem="OFICIAL", catalogo_oficial_id=novo.id, id_editorial=p.id_editorial); proximo += 1
+            if p.categoria_id not in versoes_categoria: _falhar(422, "CATEGORIA_NAO_PUBLICAVEL", "a pergunta referencia categoria removida")
+            q = Pergunta(id=proximo, categoria_id=p.categoria_id, categoria_versao_id=versoes_categoria[p.categoria_id].id, enunciado=p.enunciado, alternativa_a=p.alternativa_a, alternativa_b=p.alternativa_b, alternativa_c=p.alternativa_c, alternativa_d=p.alternativa_d, alternativa_correta=p.alternativa_correta, explicacao=p.explicacao, dificuldade=p.dificuldade, ativa=True, origem="OFICIAL", catalogo_oficial_id=novo.id, id_editorial=p.id_editorial); proximo += 1
             q.fontes_editoriais = [FontePerguntaOficial(ordem=f.ordem, titulo=f.titulo, url=f.url, acessada_em=f.acessada_em) for f in p.fontes]; db.add(q)
     else:
         for p in perguntas:
-            q = PerguntaNemPato(categoria_id=p.categoria_id, enunciado=p.enunciado, resposta_numerica=p.resposta_numerica, unidade=p.unidade, explicacao=p.explicacao, fonte=p.fonte, fonte_url=p.fonte_url, fonte_acessada_em=p.fonte_acessada_em, ativa=True, origem="OFICIAL", catalogo_oficial_id=novo.id, id_editorial=p.id_editorial, tema_editorial=p.tema_editorial, natureza_resposta=p.natureza_resposta, qualificacao_estimativa=p.qualificacao_estimativa)
+            if p.categoria_id not in versoes_categoria: _falhar(422, "CATEGORIA_NAO_PUBLICAVEL", "a pergunta referencia categoria removida")
+            q = PerguntaNemPato(categoria_id=p.categoria_id, categoria_versao_id=versoes_categoria[p.categoria_id].id, enunciado=p.enunciado, resposta_numerica=p.resposta_numerica, unidade=p.unidade, explicacao=p.explicacao, fonte=p.fonte, fonte_url=p.fonte_url, fonte_acessada_em=p.fonte_acessada_em, ativa=True, origem="OFICIAL", catalogo_oficial_id=novo.id, id_editorial=p.id_editorial, tema_editorial=p.tema_editorial, natureza_resposta=p.natureza_resposta, qualificacao_estimativa=p.qualificacao_estimativa)
             q.fontes_editoriais = [FontePerguntaNemPatoOficial(ordem=f.ordem, titulo=f.titulo, url=f.url, acessada_em=f.acessada_em) for f in p.fontes]; db.add(q)
     _antes_de_ativar(db, novo)
     if ativo:

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -62,6 +63,9 @@ class PartidaPergunta(Base):
         DateTime(timezone=True), nullable=True
     )
     categoria_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    categoria_slug_snapshot: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    categoria_nome_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    categoria_snapshot_backfill: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enunciado_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     alternativa_a_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     alternativa_b_snapshot: Mapped[str] = mapped_column(Text, nullable=False)

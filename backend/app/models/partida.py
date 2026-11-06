@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -49,6 +50,11 @@ class Partida(Base):
     categoria_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("categorias.id"), nullable=False
     )
+    # Nullable no metadata portátil para manter fixtures pré-0023; a migration
+    # PostgreSQL faz backfill e aplica NOT NULL no schema operacional.
+    categoria_slug_snapshot: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    categoria_nome_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    categoria_snapshot_backfill: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     temporada_id: Mapped[UUID | None] = mapped_column(
         Uuid,
         ForeignKey("temporadas.id", ondelete="RESTRICT"),

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import (
     AlteracaoRascunhoOficial, CatalogoOficial, CatalogoOficialRascunho,
-    Categoria, FontePerguntaNemPatoRascunho, FontePerguntaQuizRascunho,
+    Categoria, CategoriaOficialRascunho, CategoriaOficialVersao,
+    FontePerguntaNemPatoRascunho, FontePerguntaQuizRascunho,
     Pergunta, PerguntaNemPato, PerguntaNemPatoRascunho, PerguntaQuizRascunho,
     Usuario,
 )
@@ -89,16 +90,27 @@ def criar_rascunho(db: Session, catalogo_id: UUID, nome: str, admin: Usuario):
     )
     db.add(rascunho)
     db.flush()
+    for categoria in db.scalars(select(CategoriaOficialVersao).where(
+        CategoriaOficialVersao.catalogo_oficial_id == origem.id
+    ).order_by(CategoriaOficialVersao.slug, CategoriaOficialVersao.id)):
+        db.add(CategoriaOficialRascunho(
+            rascunho_id=rascunho.id, categoria_id=categoria.categoria_id,
+            categoria_versao_origem_id=categoria.id, modo=categoria.modo,
+            slug=categoria.slug, nome=categoria.nome, descricao=categoria.descricao,
+            ativa=categoria.ativa, tipo_alteracao="INALTERADA",
+            modificado_por_id=admin.id,
+        ))
     if origem.modo == "QUIZ_CLASSICO":
         perguntas = list(db.scalars(select(Pergunta).options(
-            joinedload(Pergunta.categoria), selectinload(Pergunta.fontes_editoriais)
+            joinedload(Pergunta.categoria), joinedload(Pergunta.categoria_versao),
+            selectinload(Pergunta.fontes_editoriais)
         ).where(Pergunta.catalogo_oficial_id == origem.id).order_by(Pergunta.id)))
         for ordem, item in enumerate(perguntas, 1):
             copia = PerguntaQuizRascunho(
                 rascunho_id=rascunho.id, pergunta_origem_id=item.id,
                 id_editorial=item.id_editorial, categoria_id=item.categoria_id,
-                categoria_slug_snapshot=item.categoria.slug,
-                categoria_nome_snapshot=item.categoria.nome, ordem=ordem,
+                categoria_slug_snapshot=(item.categoria_versao.slug if item.categoria_versao else item.categoria.slug),
+                categoria_nome_snapshot=(item.categoria_versao.nome if item.categoria_versao else item.categoria.nome), ordem=ordem,
                 enunciado=item.enunciado, alternativa_a=item.alternativa_a,
                 alternativa_b=item.alternativa_b, alternativa_c=item.alternativa_c,
                 alternativa_d=item.alternativa_d,
@@ -112,14 +124,15 @@ def criar_rascunho(db: Session, catalogo_id: UUID, nome: str, admin: Usuario):
             db.add(copia)
     else:
         perguntas = list(db.scalars(select(PerguntaNemPato).options(
-            joinedload(PerguntaNemPato.categoria), selectinload(PerguntaNemPato.fontes_editoriais)
+            joinedload(PerguntaNemPato.categoria), joinedload(PerguntaNemPato.categoria_versao),
+            selectinload(PerguntaNemPato.fontes_editoriais)
         ).where(PerguntaNemPato.catalogo_oficial_id == origem.id).order_by(PerguntaNemPato.id)))
         for ordem, item in enumerate(perguntas, 1):
             copia = PerguntaNemPatoRascunho(
                 rascunho_id=rascunho.id, pergunta_origem_id=item.id,
                 id_editorial=item.id_editorial, categoria_id=item.categoria_id,
-                categoria_slug_snapshot=item.categoria.slug,
-                categoria_nome_snapshot=item.categoria.nome, ordem=ordem,
+                categoria_slug_snapshot=(item.categoria_versao.slug if item.categoria_versao else item.categoria.slug),
+                categoria_nome_snapshot=(item.categoria_versao.nome if item.categoria_versao else item.categoria.nome), ordem=ordem,
                 enunciado=item.enunciado, resposta_numerica=item.resposta_numerica,
                 unidade=item.unidade, explicacao=item.explicacao, fonte=item.fonte,
                 fonte_url=item.fonte_url, fonte_acessada_em=item.fonte_acessada_em,

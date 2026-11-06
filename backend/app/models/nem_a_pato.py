@@ -132,6 +132,10 @@ class PerguntaNemPato(Base):
     catalogo_oficial_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("catalogos_oficiais.id", ondelete="RESTRICT"), nullable=True
     )
+    categoria_versao_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("categorias_oficiais_versoes.id", ondelete="RESTRICT"), nullable=True
+    )
+    categoria_versao = relationship("CategoriaOficialVersao")
     id_editorial: Mapped[str | None] = mapped_column(String(80), nullable=True)
     tema_editorial: Mapped[str | None] = mapped_column(String(100), nullable=True)
     natureza_resposta: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -465,6 +469,9 @@ class RodadaNemPato(Base):
         _enum_string(TipoFinalizacaoRodadaNemPato, 24), nullable=True
     )
     categoria_id_snapshot: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    categoria_slug_snapshot: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    categoria_nome_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    categoria_snapshot_backfill: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enunciado_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     resposta_numerica_snapshot: Mapped[int] = mapped_column(
         BigInteger, nullable=False

@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import CatalogoOficial, Categoria, Pergunta, PerguntaNemPato, Usuario
+from app.models import CatalogoOficial, Categoria, CategoriaOficialVersao, Pergunta, PerguntaNemPato, Usuario
 from app.services.auditoria_administrativa import registrar_auditoria_administrativa
 
 MINIMO_OPERACIONAL = 10
@@ -20,30 +20,49 @@ def _antes_de_reativar(_db: Session, _alvo: CatalogoOficial) -> None:
 
 
 def _perguntas_elegiveis(db: Session, catalogo: CatalogoOficial) -> int:
+    versionado = (db.scalar(select(func.count(CategoriaOficialVersao.id)).where(
+        CategoriaOficialVersao.catalogo_oficial_id == catalogo.id
+    )) or 0) > 0
+    if not versionado:
+        modelo = PerguntaNemPato if catalogo.modo == "NEM_A_PATO" else Pergunta
+        contagens = list(db.execute(select(Categoria.id, func.count(modelo.id)).join(
+            modelo, modelo.categoria_id == Categoria.id
+        ).where(
+            modelo.catalogo_oficial_id == catalogo.id, modelo.origem == "OFICIAL",
+            modelo.ativa.is_(True), modelo.excluida_em.is_(None),
+            Categoria.modo == catalogo.modo, Categoria.origem == "OFICIAL",
+            Categoria.ativa.is_(True), modelo.fontes_editoriais.any(),
+        ).group_by(Categoria.id)))
+        total = sum(quantidade for _, quantidade in contagens)
+        if catalogo.modo == "NEM_A_PATO" and total < MINIMO_OPERACIONAL:
+            _falhar(422, "CATALOGO_SEM_MINIMO_OPERACIONAL", "a versão exige ao menos 10 perguntas Nem a Pato elegíveis e com fontes")
+        if catalogo.modo == "QUIZ_CLASSICO" and not any(quantidade >= MINIMO_OPERACIONAL for _, quantidade in contagens):
+            _falhar(422, "CATALOGO_SEM_MINIMO_OPERACIONAL", "a versão exige ao menos uma categoria oficial ativa com 10 perguntas elegíveis e com fontes")
+        return total
     if catalogo.modo == "NEM_A_PATO":
-        total = db.scalar(select(func.count(PerguntaNemPato.id)).join(Categoria).where(
+        total = db.scalar(select(func.count(PerguntaNemPato.id)).join(
+            CategoriaOficialVersao, CategoriaOficialVersao.id == PerguntaNemPato.categoria_versao_id
+        ).where(
             PerguntaNemPato.catalogo_oficial_id == catalogo.id,
             PerguntaNemPato.origem == "OFICIAL", PerguntaNemPato.usuario_id.is_(None),
             PerguntaNemPato.ativa.is_(True), PerguntaNemPato.excluida_em.is_(None),
-            Categoria.modo == "NEM_A_PATO", Categoria.origem == "OFICIAL",
-            Categoria.usuario_id.is_(None), Categoria.ativa.is_(True),
-            Categoria.excluida_em.is_(None), PerguntaNemPato.fontes_editoriais.any(),
+            CategoriaOficialVersao.modo == "NEM_A_PATO", CategoriaOficialVersao.ativa.is_(True),
+            PerguntaNemPato.fontes_editoriais.any(),
         )) or 0
         if total < MINIMO_OPERACIONAL:
             _falhar(422, "CATALOGO_SEM_MINIMO_OPERACIONAL", "a versão exige ao menos 10 perguntas Nem a Pato elegíveis e com fontes")
         return total
     if catalogo.modo != "QUIZ_CLASSICO":
         _falhar(409, "MODO_CATALOGO_INVALIDO", "o modo da versão é inválido")
-    contagens = list(db.execute(select(Categoria.id, func.count(Pergunta.id)).join(
-        Pergunta, Pergunta.categoria_id == Categoria.id
+    contagens = list(db.execute(select(CategoriaOficialVersao.categoria_id, func.count(Pergunta.id)).join(
+        Pergunta, Pergunta.categoria_versao_id == CategoriaOficialVersao.id
     ).where(
         Pergunta.catalogo_oficial_id == catalogo.id,
         Pergunta.origem == "OFICIAL", Pergunta.usuario_id.is_(None),
         Pergunta.ativa.is_(True), Pergunta.excluida_em.is_(None),
-        Pergunta.fontes_editoriais.any(), Categoria.modo == "QUIZ_CLASSICO",
-        Categoria.origem == "OFICIAL", Categoria.usuario_id.is_(None),
-        Categoria.ativa.is_(True), Categoria.excluida_em.is_(None),
-    ).group_by(Categoria.id)))
+        Pergunta.fontes_editoriais.any(), CategoriaOficialVersao.modo == "QUIZ_CLASSICO",
+        CategoriaOficialVersao.ativa.is_(True),
+    ).group_by(CategoriaOficialVersao.categoria_id)))
     total = sum(quantidade for _, quantidade in contagens)
     if not any(quantidade >= MINIMO_OPERACIONAL for _, quantidade in contagens):
         _falhar(422, "CATALOGO_SEM_MINIMO_OPERACIONAL", "a versão exige ao menos uma categoria oficial ativa com 10 perguntas elegíveis e com fontes")
@@ -71,6 +90,18 @@ def reativar_catalogo_oficial(db: Session, catalogo_id: UUID, ativo_esperado_id:
     ativo.status, ativo.arquivado_em = "ARQUIVADO", agora
     db.flush()
     alvo.status, alvo.ativado_em, alvo.arquivado_em = "ATIVO", agora, None
+    versoes_categoria = list(db.scalars(select(CategoriaOficialVersao).where(
+        CategoriaOficialVersao.catalogo_oficial_id == alvo.id
+    )))
+    if versoes_categoria:
+        for identidade in db.scalars(select(Categoria).where(
+            Categoria.origem == "OFICIAL", Categoria.modo == alvo.modo
+        ).with_for_update()):
+            identidade.ativa = False
+        for versao_categoria in versoes_categoria:
+            identidade = db.get(Categoria, versao_categoria.categoria_id)
+            identidade.slug, identidade.nome = versao_categoria.slug, versao_categoria.nome
+            identidade.descricao, identidade.ativa = versao_categoria.descricao, versao_categoria.ativa
     registrar_auditoria_administrativa(
         db, admin, operacao="REATIVAR_CATALOGO_OFICIAL", recurso_tipo="CATALOGO_OFICIAL",
         recurso_id=alvo.id, resultado="SUCESSO", catalogo_id=alvo.catalogo_id,

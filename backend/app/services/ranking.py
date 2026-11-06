@@ -67,9 +67,9 @@ class RankingService:
             select(
                 Partida.id.label("partida_id"),
                 Jogador.nome.label("jogador"),
-                Categoria.id.label("categoria_id"),
-                Categoria.slug.label("categoria_slug"),
-                Categoria.nome.label("categoria_nome"),
+                Partida.categoria_id.label("categoria_id"),
+                func.coalesce(Partida.categoria_slug_snapshot, Categoria.slug).label("categoria_slug"),
+                func.coalesce(Partida.categoria_nome_snapshot, Categoria.nome).label("categoria_nome"),
                 Partida.pontuacao,
                 Partida.acertos,
                 Partida.erros,

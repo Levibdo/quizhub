@@ -91,6 +91,9 @@ class Pergunta(Base):
     catalogo_oficial_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("catalogos_oficiais.id", ondelete="RESTRICT"), nullable=True
     )
+    categoria_versao_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("categorias_oficiais_versoes.id", ondelete="RESTRICT"), nullable=True
+    )
     id_editorial: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     categoria: Mapped["Categoria"] = relationship(back_populates="perguntas")
@@ -100,6 +103,7 @@ class Pergunta(Base):
     catalogo_oficial: Mapped["CatalogoOficial | None"] = relationship(
         back_populates="perguntas_quiz"
     )
+    categoria_versao = relationship("CategoriaOficialVersao")
     fontes_editoriais: Mapped[list["FontePerguntaOficial"]] = relationship(
         back_populates="pergunta", cascade="all, delete-orphan", order_by="FontePerguntaOficial.ordem"
     )

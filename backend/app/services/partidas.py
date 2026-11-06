@@ -182,6 +182,9 @@ class PartidasPersistentes:
             partida = Partida(
                 jogador=jogador_db,
                 categoria=categoria,
+                categoria_slug_snapshot=categoria.slug,
+                categoria_nome_snapshot=categoria.nome,
+                categoria_snapshot_backfill=False,
                 temporada=temporada,
                 status="EM_ANDAMENTO",
                 iniciada_em=agora,
@@ -202,6 +205,9 @@ class PartidasPersistentes:
                         else None
                     ),
                     categoria_id_snapshot=pergunta.categoria_id,
+                    categoria_slug_snapshot=categoria.slug,
+                    categoria_nome_snapshot=categoria.nome,
+                    categoria_snapshot_backfill=False,
                     enunciado_snapshot=pergunta.enunciado,
                     alternativa_a_snapshot=pergunta.alternativa_a,
                     alternativa_b_snapshot=pergunta.alternativa_b,

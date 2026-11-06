@@ -25,7 +25,7 @@ services:
     command: ["migrate"]
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-quizhub}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-quizhub_local}
-      QUIZHUB_SCHEMA_REVISION: "0022"
+      QUIZHUB_SCHEMA_REVISION: "0023"
       QUIZHUB_MIGRATION_MODE: local
       QUIZHUB_LOCAL_ENVIRONMENT: development
     depends_on:
@@ -43,7 +43,7 @@ services:
       JWT_COOKIE_SECURE: "false"
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
       CSRF_TRUSTED_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
-      QUIZHUB_SCHEMA_REVISION: "0022"
+      QUIZHUB_SCHEMA_REVISION: "0023"
       QUIZHUB_LOCAL_ENVIRONMENT: development
       QUIZHUB_BOOTSTRAP_OFFICIAL_CATALOGS: "true"
     ports:

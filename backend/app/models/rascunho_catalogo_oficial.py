@@ -171,6 +171,7 @@ class AlteracaoRascunhoOficial(Base):
     rascunho_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("catalogos_oficiais_rascunhos.id", ondelete="CASCADE"), nullable=False)
     pergunta_quiz_rascunho_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("perguntas_quiz_rascunhos.id", ondelete="CASCADE"))
     pergunta_nem_pato_rascunho_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("perguntas_nem_pato_rascunhos.id", ondelete="CASCADE"))
+    categoria_rascunho_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("categorias_oficiais_rascunhos.id", ondelete="CASCADE"))
     administrador_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
     tipo: Mapped[str] = mapped_column(String(16), nullable=False)
     id_editorial: Mapped[str | None] = mapped_column(String(80))
