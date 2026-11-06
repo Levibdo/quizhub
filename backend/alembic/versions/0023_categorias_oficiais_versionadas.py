@@ -32,6 +32,10 @@ def upgrade():
         sa.ForeignKeyConstraint(["categoria_id"], ["categorias.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["catalogo_oficial_id"], ["catalogos_oficiais.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "id", "catalogo_oficial_id", "categoria_id",
+            name="uq_cat_of_versoes_vinculo_pergunta",
+        ),
         sa.UniqueConstraint("catalogo_oficial_id", "categoria_id", name="uq_cat_of_versoes_catalogo_categoria"),
         sa.UniqueConstraint("catalogo_oficial_id", "slug", name="uq_cat_of_versoes_catalogo_slug"),
     )
@@ -72,8 +76,40 @@ def upgrade():
 
     op.add_column("perguntas", sa.Column("categoria_versao_id", sa.Uuid(), nullable=True))
     op.add_column("perguntas_nem_pato", sa.Column("categoria_versao_id", sa.Uuid(), nullable=True))
+    op.add_column(
+        "perguntas",
+        sa.Column(
+            "proveniencia_legada",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
+    )
+    op.add_column(
+        "perguntas_nem_pato",
+        sa.Column(
+            "proveniencia_legada",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
+    )
     op.create_foreign_key("fk_perguntas_categoria_versao", "perguntas", "categorias_oficiais_versoes", ["categoria_versao_id"], ["id"], ondelete="RESTRICT")
     op.create_foreign_key("fk_perguntas_np_categoria_versao", "perguntas_nem_pato", "categorias_oficiais_versoes", ["categoria_versao_id"], ["id"], ondelete="RESTRICT")
+    op.create_foreign_key(
+        "fk_perguntas_categoria_versao_catalogo",
+        "perguntas", "categorias_oficiais_versoes",
+        ["categoria_versao_id", "catalogo_oficial_id", "categoria_id"],
+        ["id", "catalogo_oficial_id", "categoria_id"],
+        ondelete="RESTRICT",
+    )
+    op.create_foreign_key(
+        "fk_perguntas_np_categoria_versao_catalogo",
+        "perguntas_nem_pato", "categorias_oficiais_versoes",
+        ["categoria_versao_id", "catalogo_oficial_id", "categoria_id"],
+        ["id", "catalogo_oficial_id", "categoria_id"],
+        ondelete="RESTRICT",
+    )
     op.create_index("ix_perguntas_categoria_versao", "perguntas", ["categoria_versao_id"])
     op.create_index("ix_perguntas_np_categoria_versao", "perguntas_nem_pato", ["categoria_versao_id"])
 
@@ -98,16 +134,77 @@ def upgrade():
     """)
     op.execute("""UPDATE perguntas p SET categoria_versao_id = cv.id FROM categorias_oficiais_versoes cv WHERE p.origem='OFICIAL' AND cv.catalogo_oficial_id=p.catalogo_oficial_id AND cv.categoria_id=p.categoria_id""")
     op.execute("""UPDATE perguntas_nem_pato p SET categoria_versao_id = cv.id FROM categorias_oficiais_versoes cv WHERE p.origem='OFICIAL' AND cv.catalogo_oficial_id=p.catalogo_oficial_id AND cv.categoria_id=p.categoria_id""")
+    # Conteúdo oficial anterior ao versionamento não possui proveniência de
+    # catálogo demonstrável. Ele é preservado como legado, sem inferir ou criar
+    # vínculos. O marcador é preenchido apenas pela migração; novas escritas
+    # recebem false e precisam satisfazer o ramo versionado da constraint.
+    op.execute("""
+        UPDATE perguntas
+           SET proveniencia_legada = true
+         WHERE origem = 'OFICIAL' AND catalogo_oficial_id IS NULL
+    """)
+    op.execute("""
+        UPDATE perguntas_nem_pato
+           SET proveniencia_legada = true
+         WHERE origem = 'OFICIAL' AND catalogo_oficial_id IS NULL
+    """)
     op.execute("""
         DO $$ BEGIN
-          IF EXISTS (SELECT 1 FROM perguntas WHERE origem='OFICIAL' AND categoria_versao_id IS NULL)
-             OR EXISTS (SELECT 1 FROM perguntas_nem_pato WHERE origem='OFICIAL' AND categoria_versao_id IS NULL) THEN
-            RAISE EXCEPTION '0023: pergunta oficial sem catálogo/categoria versionável';
+          IF EXISTS (
+                SELECT 1 FROM perguntas
+                 WHERE origem='OFICIAL' AND catalogo_oficial_id IS NOT NULL
+                   AND categoria_versao_id IS NULL
+             ) OR EXISTS (
+                SELECT 1 FROM perguntas_nem_pato
+                 WHERE origem='OFICIAL' AND catalogo_oficial_id IS NOT NULL
+                   AND categoria_versao_id IS NULL
+             ) THEN
+            RAISE EXCEPTION '0023: pergunta oficial catalogada sem categoria versionável';
           END IF;
         END $$
     """)
-    op.create_check_constraint("ck_perguntas_categoria_versao_origem", "perguntas", "(origem = 'OFICIAL' AND categoria_versao_id IS NOT NULL) OR (origem = 'USUARIO' AND categoria_versao_id IS NULL)")
-    op.create_check_constraint("ck_perguntas_np_categoria_versao_origem", "perguntas_nem_pato", "(origem = 'OFICIAL' AND categoria_versao_id IS NOT NULL) OR (origem = 'USUARIO' AND categoria_versao_id IS NULL)")
+    op.create_check_constraint(
+        "ck_perguntas_proveniencia_versionamento",
+        "perguntas",
+        "(origem = 'OFICIAL' AND proveniencia_legada IS TRUE "
+        "AND catalogo_oficial_id IS NULL AND categoria_versao_id IS NULL) OR "
+        "(origem = 'OFICIAL' AND proveniencia_legada IS FALSE "
+        "AND catalogo_oficial_id IS NOT NULL AND categoria_versao_id IS NOT NULL) OR "
+        "(origem = 'USUARIO' AND proveniencia_legada IS FALSE "
+        "AND catalogo_oficial_id IS NULL AND categoria_versao_id IS NULL)",
+    )
+    op.create_check_constraint(
+        "ck_perguntas_np_proveniencia_versionamento",
+        "perguntas_nem_pato",
+        "(origem = 'OFICIAL' AND proveniencia_legada IS TRUE "
+        "AND catalogo_oficial_id IS NULL AND categoria_versao_id IS NULL) OR "
+        "(origem = 'OFICIAL' AND proveniencia_legada IS FALSE "
+        "AND catalogo_oficial_id IS NOT NULL AND categoria_versao_id IS NOT NULL) OR "
+        "(origem = 'USUARIO' AND proveniencia_legada IS FALSE "
+        "AND catalogo_oficial_id IS NULL AND categoria_versao_id IS NULL)",
+    )
+    op.execute("""
+        CREATE FUNCTION proteger_proveniencia_legada_0023()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' AND NEW.proveniencia_legada IS TRUE THEN
+            RAISE EXCEPTION 'proveniencia legada somente pode ser criada pelo backfill 0023'
+              USING ERRCODE = '23514';
+          END IF;
+          IF TG_OP = 'UPDATE'
+             AND OLD.proveniencia_legada IS DISTINCT FROM NEW.proveniencia_legada THEN
+            RAISE EXCEPTION 'proveniencia legada historica e imutavel'
+              USING ERRCODE = '23514';
+          END IF;
+          RETURN NEW;
+        END $$
+    """)
+    for tabela in ("perguntas", "perguntas_nem_pato"):
+        op.execute(f"""
+            CREATE TRIGGER trg_{tabela}_proteger_proveniencia_legada
+            BEFORE INSERT OR UPDATE OF proveniencia_legada ON {tabela}
+            FOR EACH ROW EXECUTE FUNCTION proteger_proveniencia_legada_0023()
+        """)
 
     op.execute("""
         INSERT INTO categorias_oficiais_rascunhos
@@ -136,18 +233,27 @@ def upgrade():
 
 
 def downgrade():
+    for tabela in ("perguntas_nem_pato", "perguntas"):
+        op.execute(
+            f"DROP TRIGGER trg_{tabela}_proteger_proveniencia_legada ON {tabela}"
+        )
+    op.execute("DROP FUNCTION proteger_proveniencia_legada_0023()")
     for tabela in ("rodadas_nem_pato", "partida_perguntas", "partidas"):
         op.drop_column(tabela, "categoria_snapshot_backfill")
         op.drop_column(tabela, "categoria_nome_snapshot")
         op.drop_column(tabela, "categoria_slug_snapshot")
-    op.drop_constraint("ck_perguntas_np_categoria_versao_origem", "perguntas_nem_pato", type_="check")
-    op.drop_constraint("ck_perguntas_categoria_versao_origem", "perguntas", type_="check")
+    op.drop_constraint("ck_perguntas_np_proveniencia_versionamento", "perguntas_nem_pato", type_="check")
+    op.drop_constraint("ck_perguntas_proveniencia_versionamento", "perguntas", type_="check")
     op.drop_index("ix_perguntas_np_categoria_versao", table_name="perguntas_nem_pato")
     op.drop_index("ix_perguntas_categoria_versao", table_name="perguntas")
+    op.drop_constraint("fk_perguntas_np_categoria_versao_catalogo", "perguntas_nem_pato", type_="foreignkey")
+    op.drop_constraint("fk_perguntas_categoria_versao_catalogo", "perguntas", type_="foreignkey")
     op.drop_constraint("fk_perguntas_np_categoria_versao", "perguntas_nem_pato", type_="foreignkey")
     op.drop_constraint("fk_perguntas_categoria_versao", "perguntas", type_="foreignkey")
     op.drop_column("perguntas_nem_pato", "categoria_versao_id")
     op.drop_column("perguntas", "categoria_versao_id")
+    op.drop_column("perguntas_nem_pato", "proveniencia_legada")
+    op.drop_column("perguntas", "proveniencia_legada")
     op.drop_constraint("fk_alteracoes_categoria_rascunho", "alteracoes_rascunhos_oficiais", type_="foreignkey")
     op.drop_column("alteracoes_rascunhos_oficiais", "categoria_rascunho_id")
     op.drop_index("ix_cat_of_rascunhos_rascunho", table_name="categorias_oficiais_rascunhos")

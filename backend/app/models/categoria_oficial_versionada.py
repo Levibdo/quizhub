@@ -16,6 +16,7 @@ class CategoriaOficialVersao(Base):
         CheckConstraint("modo IN ('QUIZ_CLASSICO', 'NEM_A_PATO')", name="ck_cat_of_versoes_modo"),
         CheckConstraint("length(trim(slug)) > 0 AND slug = lower(trim(slug))", name="ck_cat_of_versoes_slug"),
         CheckConstraint("length(trim(nome)) > 0 AND nome = trim(nome)", name="ck_cat_of_versoes_nome"),
+        UniqueConstraint("id", "catalogo_oficial_id", "categoria_id", name="uq_cat_of_versoes_vinculo_pergunta"),
         UniqueConstraint("catalogo_oficial_id", "categoria_id", name="uq_cat_of_versoes_catalogo_categoria"),
         UniqueConstraint("catalogo_oficial_id", "slug", name="uq_cat_of_versoes_catalogo_slug"),
         Index("ix_cat_of_versoes_identidade", "categoria_id", "catalogo_oficial_id"),

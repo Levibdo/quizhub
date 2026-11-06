@@ -179,9 +179,23 @@ class TestCatalogosOficiaisMigrationPostgres(unittest.TestCase):
     def test_04_importador_idempotencia_rollback_ativacao_e_isolamento(self):
         # Os três testes anteriores exercitam deliberadamente o esquema histórico
         # 0015. O importador abaixo usa os modelos ORM atuais, portanto precisa do
-        # esquema atual para não misturar classes 0017 com tabelas 0015.
-        self.migrate("upgrade", "0017")
-        self.assertEqual(self.revision(), "0017")
+        # esquema atual para não misturar classes 0023 com tabelas históricas.
+        self.migrate("upgrade", "0023")
+        self.assertEqual(self.revision(), "0023")
+
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.scalar(text("""
+                SELECT count(*) FROM perguntas
+                WHERE id = 15001 AND proveniencia_legada IS TRUE
+                  AND catalogo_oficial_id IS NULL
+                  AND categoria_versao_id IS NULL
+            """)), 1)
+            self.assertEqual(connection.scalar(text("""
+                SELECT count(*) FROM perguntas_nem_pato
+                WHERE id = 15101 AND proveniencia_legada IS TRUE
+                  AND catalogo_oficial_id IS NULL
+                  AND categoria_versao_id IS NULL
+            """)), 1)
 
         with self.engine.begin() as connection:
             connection.execute(text("""
@@ -217,6 +231,18 @@ class TestCatalogosOficiaisMigrationPostgres(unittest.TestCase):
             )
             session.commit()
             self.assertEqual((quiz.criadas, nem_pato.criadas), (400, 100))
+            self.assertEqual(session.scalar(text("""
+                SELECT count(*) FROM perguntas
+                WHERE catalogo_oficial_id IS NOT NULL
+                  AND proveniencia_legada IS FALSE
+                  AND categoria_versao_id IS NOT NULL
+            """)), 400)
+            self.assertEqual(session.scalar(text("""
+                SELECT count(*) FROM perguntas_nem_pato
+                WHERE catalogo_oficial_id IS NOT NULL
+                  AND proveniencia_legada IS FALSE
+                  AND categoria_versao_id IS NOT NULL
+            """)), 100)
             self.assertEqual(session.scalar(select(func.count(
                 FontePerguntaOficial.id
             ))), 400)

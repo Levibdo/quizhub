@@ -12,6 +12,7 @@ from sqlalchemy import (
     SmallInteger,
     String, Uuid,
     Text, UniqueConstraint,
+    false,
     func,
     true,
 )
@@ -93,6 +94,9 @@ class Pergunta(Base):
     )
     categoria_versao_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("categorias_oficiais_versoes.id", ondelete="RESTRICT"), nullable=True
+    )
+    proveniencia_legada: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
     )
     id_editorial: Mapped[str | None] = mapped_column(String(80), nullable=True)
 

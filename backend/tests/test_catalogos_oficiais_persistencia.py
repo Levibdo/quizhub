@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.models import (
-    CatalogoOficial, Categoria, FontePerguntaNemPatoOficial,
+    CatalogoOficial, Categoria, CategoriaOficialVersao,
+    FontePerguntaNemPatoOficial,
     FontePerguntaOficial, Pergunta, PerguntaNemPato,
 )
 from app.services.catalogos_oficiais import (
@@ -76,6 +77,15 @@ class TestPersistenciaCatalogosOficiais(unittest.TestCase):
             Pergunta.id_editorial == "qc-geral-001"
         ))
         self.assertEqual(pergunta.fontes_editoriais[0].titulo, "Fonte institucional 1")
+        self.assertIsNotNone(pergunta.categoria_versao_id)
+        self.assertEqual(pergunta.categoria_versao.catalogo_oficial_id, pergunta.catalogo_oficial_id)
+        self.assertEqual(pergunta.categoria_versao.categoria_id, pergunta.categoria_id)
+        self.assertEqual(
+            self.db.scalar(select(func.count(CategoriaOficialVersao.id)).where(
+                CategoriaOficialVersao.catalogo_oficial_id == pergunta.catalogo_oficial_id
+            )),
+            4,
+        )
         self.assertIsNone(self.db.get(Pergunta, 1).catalogo_oficial_id)
 
         repeticao = self.servico._preparar_quiz(self.db, documento, "a" * 64)
@@ -104,6 +114,9 @@ class TestPersistenciaCatalogosOficiais(unittest.TestCase):
             PerguntaNemPato.id_editorial == "np-macabro-001"
         ))
         self.assertEqual(len(pergunta.fontes_editoriais), 2)
+        self.assertIsNotNone(pergunta.categoria_versao_id)
+        self.assertEqual(pergunta.categoria_versao.catalogo_oficial_id, pergunta.catalogo_oficial_id)
+        self.assertEqual(pergunta.categoria_versao.categoria_id, pergunta.categoria_id)
         esperado = documento.categoria.perguntas[0]
         self.assertEqual(pergunta.tema_editorial, esperado.tema_editorial)
         self.assertEqual(pergunta.natureza_resposta, esperado.natureza_resposta)

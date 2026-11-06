@@ -9,6 +9,8 @@
    catálogo são únicos.
 3. Perguntas oficiais publicadas apontam para a representação de categoria do
    mesmo catálogo. Perguntas privadas não apontam para versões oficiais.
+   Perguntas oficiais anteriores ao catálogo versionado são a única exceção:
+   permanecem sem ambos os vínculos e recebem `proveniencia_legada=true`.
 4. Alterações editoriais ocorrem somente em categorias de rascunho. A publicação
    copia categorias e perguntas em uma única transação e não modifica versões
    publicadas anteriores.
@@ -52,6 +54,25 @@ Para cada par determinístico de catálogo publicado e categoria usado por suas
 perguntas, a migration cria uma versão com os valores atuais e
 `origem_backfill=true`. Em seguida vincula cada pergunta oficial à versão do
 seu próprio catálogo. Registros privados permanecem com vínculo nulo.
+
+Perguntas oficiais que já chegarem à 0023 sem `catalogo_oficial_id` não são
+associadas a um catálogo inferido. A migration preserva seus IDs e relações e
+marca `proveniencia_legada=true`; `categoria_versao_id` também permanece nulo.
+Esse marcador registra ausência de proveniência, não a substitui. A constraint
+de proveniência admite exatamente três estados:
+
+- oficial legado: marcador verdadeiro e ambos os vínculos nulos;
+- oficial versionado: marcador falso e ambos os vínculos preenchidos;
+- conteúdo privado: marcador falso e ambos os vínculos nulos.
+
+Novas linhas recebem o marcador falso por padrão. Assim, uma nova pergunta
+oficial só pode ser persistida com catálogo e categoria versionada completos.
+Importações integrais de 400/100 perguntas também materializam as versões de
+categoria na mesma transação; elas não voltam a produzir conteúdo legado.
+Uma trigger criada depois do backfill impede inserir novas linhas marcadas como
+legadas e torna o marcador histórico imutável. Uma FK composta garante ainda
+que categoria lógica, versão de categoria e catálogo da pergunta pertençam ao
+mesmo vínculo publicado.
 
 Snapshots textuais existentes são preenchidos a partir da identidade lógica
 atual e marcados como backfill. Nenhum rótulo histórico ausente é inventado.

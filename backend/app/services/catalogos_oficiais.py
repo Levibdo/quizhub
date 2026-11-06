@@ -8,7 +8,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.models import (
-    CatalogoOficial, Categoria, FontePerguntaNemPatoOficial,
+    CatalogoOficial, Categoria, CategoriaOficialVersao,
+    FontePerguntaNemPatoOficial,
     FontePerguntaOficial, Pergunta, PerguntaNemPato,
 )
 from app.services.validador_catalogos_oficiais import (
@@ -95,6 +96,38 @@ class CatalogosOficiaisService:
             )
         return existente
 
+    @staticmethod
+    def _criar_versoes_categorias(
+        db: Session,
+        catalogo: CatalogoOficial,
+        categorias: dict[str, Categoria],
+        slugs: list[str],
+    ) -> dict[str, CategoriaOficialVersao]:
+        """Materializa categorias da versão durante importações completas.
+
+        A partir da 0023, mesmo o fluxo de importação integral precisa produzir
+        perguntas versionadas. O método não associa conteúdo histórico sem
+        proveniência e não altera versões já publicadas.
+        """
+        db.flush()
+        versoes = {}
+        for slug in slugs:
+            categoria = categorias[slug]
+            versao = CategoriaOficialVersao(
+                categoria_id=categoria.id,
+                catalogo_oficial_id=catalogo.id,
+                modo=catalogo.modo,
+                slug=categoria.slug,
+                nome=categoria.nome,
+                descricao=categoria.descricao,
+                ativa=categoria.ativa,
+                origem_backfill=False,
+            )
+            db.add(versao)
+            versoes[slug] = versao
+        db.flush()
+        return versoes
+
     def preparar_quiz(self, db: Session, caminho: str | Path):
         caminho = Path(caminho)
         relatorio = validar_catalogos(quiz=caminho)
@@ -125,6 +158,9 @@ class CatalogosOficiaisService:
             modo=documento.modo, status="PREPARADO", sha256=sha256,
         )
         db.add(catalogo)
+        versoes_categorias = self._criar_versoes_categorias(
+            db, catalogo, categorias, [item.slug for item in documento.categorias]
+        )
         proximo_id = (db.scalar(select(func.max(Pergunta.id))) or 0) + 1
         for categoria in documento.categorias:
             for item in categoria.perguntas:
@@ -136,6 +172,7 @@ class CatalogosOficiaisService:
                     alternativa_correta=item.resposta_correta,
                     explicacao=item.explicacao, dificuldade=item.dificuldade,
                     origem="OFICIAL", ativa=True, catalogo_oficial=catalogo,
+                    categoria_versao=versoes_categorias[categoria.slug],
                     id_editorial=item.id_editorial,
                 )
                 pergunta.fontes_editoriais = [
@@ -189,6 +226,9 @@ class CatalogosOficiaisService:
             modo=documento.modo, status="PREPARADO", sha256=sha256,
         )
         db.add(catalogo)
+        versoes_categorias = self._criar_versoes_categorias(
+            db, catalogo, categorias, [documento.categoria.slug]
+        )
         for item in documento.categoria.perguntas:
             primeira = item.fontes[0]
             pergunta = PerguntaNemPato(
@@ -197,6 +237,7 @@ class CatalogosOficiaisService:
                 explicacao=item.explicacao, fonte=primeira.titulo,
                 fonte_url=str(primeira.url), fonte_acessada_em=primeira.acessada_em,
                 origem="OFICIAL", ativa=True, catalogo_oficial=catalogo,
+                categoria_versao=versoes_categorias[documento.categoria.slug],
                 id_editorial=item.id_editorial,
                 tema_editorial=item.tema_editorial,
                 natureza_resposta=item.natureza_resposta,
