@@ -11,8 +11,8 @@ from app.db.migrations import (
 
 class MigrationStartupTests(unittest.TestCase):
     def test_alvo_explicito_e_head_versionado(self):
-        with patch.dict(os.environ, {"QUIZHUB_SCHEMA_REVISION": "0022"}, clear=True):
-            self.assertEqual(_target_revision(), "0022")
+        with patch.dict(os.environ, {"QUIZHUB_SCHEMA_REVISION": "0023"}, clear=True):
+            self.assertEqual(_target_revision(), "0023")
 
     def test_recusa_alvo_ausente(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -65,9 +65,9 @@ class MigrationStartupTests(unittest.TestCase):
     @patch("app.db.migrations.ScriptDirectory.from_config")
     def test_check_interrompe_backend_em_schema_incompativel(self, scripts, _current):
         scripts.return_value.get_revision.return_value = MagicMock()
-        scripts.return_value.get_heads.return_value = ["0022"]
-        with patch.dict(os.environ, {"QUIZHUB_SCHEMA_REVISION": "0022"}, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "atual=0021, esperada=0022"):
+        scripts.return_value.get_heads.return_value = ["0023"]
+        with patch.dict(os.environ, {"QUIZHUB_SCHEMA_REVISION": "0023"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "atual=0021, esperada=0023"):
                 check_schema()
 
 

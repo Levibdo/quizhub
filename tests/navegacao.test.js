@@ -140,6 +140,7 @@ async function montar(t, {
       })
     }
     if (url.endsWith('/admin/catalogos/rascunhos/draft-1/revisao')) return Response.json({ rascunho_id: 'draft-1', status: rascunhoStatus, revisao_conteudo: 4, ciclo_id: 'cycle-1', estado_ciclo: 'CONCLUIDO', revisao_editorial: 31, hash_validacao: 'a'.repeat(64), contagens: { APROVADA: 15 }, elegivel_aprovacao: true, impedimentos_aprovacao: [], exige_justificativa_autorrevisao: false })
+    if (url.endsWith('/admin/catalogos/rascunhos/draft-1/categorias')) return Response.json([{ id: 'draft-category-1', categoria_id: 'cat-quiz', modo: 'QUIZ_CLASSICO', slug: 'geral', nome: 'Conhecimentos Gerais', descricao: null, ativa: true, tipo_alteracao: 'INALTERADA', revisao: 1 }])
     if (url.includes('/admin/catalogos/rascunhos/draft-1/revisao/perguntas?')) return Response.json({ ciclo_id: 'cycle-1', revisao_editorial: 31, itens: [], pagina: 1, limite: 20, total: 15 })
     if (url.includes('/admin/catalogos/rascunhos/draft-1/revisao/avisos?')) return Response.json({ ciclo_id: 'cycle-1', revisao_editorial: 31, itens: [], pagina: 1, limite: 100, total: 0, total_paginas: 0, total_pendencias: 0 })
     if (url.endsWith('/admin/catalogos/rascunhos/draft-1/publicar')) return Response.json({ rascunho_id: 'draft-1', status: 'PUBLICADO', catalogo_publicado_id: 'catalogo-3', catalogo_id: 'quiz_classico_v2', modo: 'QUIZ_CLASSICO', versao: 3, total_perguntas: 30 })
@@ -485,6 +486,8 @@ test('catálogos administrativos apresentam estado vazio e erro recuperável', a
   await act(async () => vazio.button('Catálogos oficiais').props.onClick())
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   assert.match(vazio.texto(), /Nenhum catálogo oficial cadastrado/)
+  assert.ok(vazio.button('Criar catálogo inicial Quiz Clássico'))
+  assert.ok(vazio.button('Criar catálogo inicial Nem a Pato'))
 
   const falha = await montar(t, {
     autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
@@ -494,6 +497,32 @@ test('catálogos administrativos apresentam estado vazio e erro recuperável', a
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   assert.match(falha.texto(), /Não foi possível carregar os catálogos/)
   assert.ok(falha.button('Tentar novamente'))
+})
+
+test('administrador cria catálogo inicial para cada modo ausente com CSRF e idempotência', async (t) => {
+  const ui = await montar(t, {
+    autenticado: { id: 'a1', nome: 'Admin', perfil: 'ADMIN' },
+    caminhoInicial: '/admin',
+    catalogosAdmin: { catalogos: [{
+      id: 'catalogo-classico', catalogo_id: 'quiz_classico_v2', modo: 'QUIZ_CLASSICO',
+      versao: 2, status_registro: 'ATIVO', estado_editorial: null,
+      quantidade_perguntas: 400, criado_em: '2026-10-01T00:00:00Z',
+      ativado_em: '2026-10-01T00:00:00Z',
+    }] },
+  })
+  await act(async () => ui.button('Catálogos oficiais').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.equal(ui.button('Criar catálogo inicial Quiz Clássico'), undefined)
+  assert.ok(ui.button('Criar catálogo inicial Nem a Pato'))
+  await act(async () => ui.button('Criar catálogo inicial Nem a Pato').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  const chamada = ui.requisicoes.find(({ url, opcoes }) => (
+    url.endsWith('/admin/catalogos') && opcoes.method === 'POST'
+  ))
+  assert.ok(chamada)
+  assert.equal(JSON.parse(chamada.opcoes.body).modo, 'NEM_A_PATO')
+  assert.equal(chamada.opcoes.headers['X-CSRF-Token'], 'csrf-teste-administrativo')
+  assert.ok(chamada.opcoes.headers['Idempotency-Key'])
 })
 
 test('catálogos administrativos anunciam o carregamento', async (t) => {

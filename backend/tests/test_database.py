@@ -52,6 +52,8 @@ class TestDatabaseConfiguration(unittest.TestCase):
                 "fontes_perguntas_quiz_rascunhos",
                 "fontes_perguntas_nem_pato_rascunhos",
                 "alteracoes_rascunhos_oficiais",
+                "categorias_oficiais_versoes",
+                "categorias_oficiais_rascunhos",
                 "ciclos_revisao_rascunhos",
                 "achados_validacao_rascunhos",
                 "itens_revisao_perguntas",
@@ -131,12 +133,12 @@ class TestAlembicConfiguration(unittest.TestCase):
         self.assertEqual(
             [revision.revision for revision in revisions],
             [
-                "0022", "0021", "0020", "0019", "0018", "0017", "0016", "0015", "0014", "0013", "0012", "0011", "0010",
+                "0023", "0022", "0021", "0020", "0019", "0018", "0017", "0016", "0015", "0014", "0013", "0012", "0011", "0010",
                 "0009", "0008", "0007", "0006", "0005", "0004", "0003", "0002",
                 "0001",
             ],
         )
-        self.assertEqual(scripts.get_current_head(), "0022")
+        self.assertEqual(scripts.get_current_head(), "0023")
 
 
 if __name__ == "__main__":

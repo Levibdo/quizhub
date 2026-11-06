@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import get_db
 from app.main import app
 from app.models import (AprovacaoRascunho, CatalogoOficial, CatalogoOficialRascunho,
-    Categoria, CicloRevisaoRascunho, FontePerguntaNemPatoRascunho, Jogador,
+    Categoria, CategoriaOficialVersao, CicloRevisaoRascunho, FontePerguntaNemPatoRascunho, Jogador,
     ItemRevisaoPergunta, Partida, PartidaPergunta, Pergunta, PerguntaNemPato,
     PerguntaNemPatoRascunho, Temporada, Usuario)
 from app.security import JWT_COOKIE_NAME, criar_token_acesso, password_hash
@@ -137,10 +137,15 @@ class TestPublicacaoIncrementalPostgres(unittest.TestCase):
             temporada=Temporada(numero=(db.scalar(select(func.max(Temporada.numero))) or 0)+1,nome=f"Temporada {marca}",status="ATIVA",inicia_em=datetime.now(timezone.utc))
             jogador=Jogador(nome="Histórico")
             db.add_all([cat,catalogo,temporada,jogador]); db.flush()
+            categoria_versao = CategoriaOficialVersao(
+                categoria_id=cat.id, catalogo_oficial_id=catalogo.id,
+                modo="QUIZ_CLASSICO", slug=cat.slug, nome=cat.nome,
+                ativa=True, origem_backfill=False,
+            ); db.add(categoria_versao); db.flush()
             pid=(db.scalar(select(func.max(Pergunta.id))) or 0)+1
-            pergunta=Pergunta(id=pid,categoria_id=cat.id,enunciado="Pergunta histórica?",alternativa_a="A",alternativa_b="B",alternativa_c="C",alternativa_d="D",alternativa_correta=0,explicacao="Explicação histórica.",dificuldade="FACIL",origem="OFICIAL",catalogo_oficial_id=catalogo.id,id_editorial=f"HIST-{marca}")
-            partida=Partida(jogador_id=jogador.id,categoria_id=cat.id,temporada_id=temporada.id,status="FINALIZADA",pontuacao=100,acertos=1,erros=0,finalizada_em=datetime.now(timezone.utc)); db.add_all([pergunta,partida]); db.flush()
-            snapshot=PartidaPergunta(partida_id=partida.id,pergunta_id=pergunta.id,ordem=1,categoria_id_snapshot=cat.id,enunciado_snapshot=pergunta.enunciado,alternativa_a_snapshot="A",alternativa_b_snapshot="B",alternativa_c_snapshot="C",alternativa_d_snapshot="D",alternativa_correta_snapshot=0,explicacao_snapshot=pergunta.explicacao); db.add(snapshot); db.flush()
+            pergunta=Pergunta(id=pid,categoria_id=cat.id,categoria_versao_id=categoria_versao.id,enunciado="Pergunta histórica?",alternativa_a="A",alternativa_b="B",alternativa_c="C",alternativa_d="D",alternativa_correta=0,explicacao="Explicação histórica.",dificuldade="FACIL",origem="OFICIAL",catalogo_oficial_id=catalogo.id,id_editorial=f"HIST-{marca}")
+            partida=Partida(jogador_id=jogador.id,categoria_id=cat.id,categoria_slug_snapshot=cat.slug,categoria_nome_snapshot=cat.nome,temporada_id=temporada.id,status="FINALIZADA",pontuacao=100,acertos=1,erros=0,finalizada_em=datetime.now(timezone.utc)); db.add_all([pergunta,partida]); db.flush()
+            snapshot=PartidaPergunta(partida_id=partida.id,pergunta_id=pergunta.id,ordem=1,categoria_id_snapshot=cat.id,categoria_slug_snapshot=cat.slug,categoria_nome_snapshot=cat.nome,enunciado_snapshot=pergunta.enunciado,alternativa_a_snapshot="A",alternativa_b_snapshot="B",alternativa_c_snapshot="C",alternativa_d_snapshot="D",alternativa_correta_snapshot=0,explicacao_snapshot=pergunta.explicacao); db.add(snapshot); db.flush()
             partida_id,snapshot_id,temporada_id=partida.id,snapshot.id,temporada.id
         with self.factory.begin() as db: publicar_rascunho(db,rid,1,db.get(Usuario,aid),"Publicação sem impacto sobre histórico do Quiz Clássico.")
         with self.factory() as db:

@@ -99,13 +99,21 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
         }
 
     def test_painel_retorna_401_ao_visitante_e_403_ao_jogador(self):
+        rascunho_id = "00000000-0000-0000-0000-000000000001"
+        catalogo_id = "00000000-0000-0000-0000-000000000002"
+        importacao = {
+            "nome_rascunho": "Autorização", "modo": "NEM_A_PATO",
+            "categorias": [], "perguntas_quiz": [], "perguntas_nem_pato": [],
+        }
         self.assertEqual(self.client.get("/api/v1/admin/resumo").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/dashboard").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/perguntas").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/perguntas/opcoes").status_code, 401)
         self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos").status_code, 401)
-        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos/00000000-0000-0000-0000-000000000001/validacao").status_code, 401)
+        self.assertEqual(self.client.get(f"/api/v1/admin/catalogos/rascunhos/{rascunho_id}/validacao").status_code, 401)
+        self.assertEqual(self.client.get(f"/api/v1/admin/catalogos/rascunhos/{rascunho_id}/categorias").status_code, 401)
+        self.assertEqual(self.client.post(f"/api/v1/admin/catalogos/{catalogo_id}/importacoes/json/previsualizar", json=importacao).status_code, 401)
 
         self.autenticar(self.jogador)
         resposta = self.client.get("/api/v1/admin/resumo")
@@ -119,7 +127,9 @@ class TestAutorizacaoAdministrativa(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/admin/catalogos").status_code, 403)
         self.assertEqual(self.client.get("/api/v1/admin/perguntas").status_code, 403)
         self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos").status_code, 403)
-        self.assertEqual(self.client.get("/api/v1/admin/catalogos/rascunhos/00000000-0000-0000-0000-000000000001/validacao").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/v1/admin/catalogos/rascunhos/{rascunho_id}/validacao").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/v1/admin/catalogos/rascunhos/{rascunho_id}/categorias").status_code, 403)
+        self.assertEqual(self.client.post(f"/api/v1/admin/catalogos/{catalogo_id}/importacoes/json/previsualizar", json=importacao).status_code, 403)
 
     def test_admin_acessa_painel_e_sessao_expirada_e_rejeitada(self):
         self.autenticar(self.admin)

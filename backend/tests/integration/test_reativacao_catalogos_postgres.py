@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.session import get_db
 from app.main import app
 from app.models import (
-    AuditoriaAdministrativa, CatalogoOficial, Categoria,
+    AuditoriaAdministrativa, CatalogoOficial, Categoria, CategoriaOficialVersao,
     FontePerguntaNemPatoOficial, PerguntaNemPato, Usuario,
 )
 from app.security import JWT_COOKIE_NAME, criar_token_acesso, password_hash
@@ -52,8 +52,14 @@ class TestReativacaoCatalogosPostgres(unittest.TestCase):
             for versao, quantidade in enumerate(quantidades, 1):
                 catalogo = CatalogoOficial(catalogo_id=f"np-r-{marca}", versao=versao, modo="NEM_A_PATO", status="ATIVO" if versao == len(quantidades) else "ARQUIVADO", sha256=str(versao) * 64)
                 db.add(catalogo); db.flush(); catalogos.append(catalogo)
+                categoria_versao = CategoriaOficialVersao(
+                    categoria_id=categoria.id, catalogo_oficial_id=catalogo.id,
+                    modo="NEM_A_PATO", slug=categoria.slug, nome=categoria.nome,
+                    ativa=True, origem_backfill=False,
+                )
+                db.add(categoria_versao); db.flush()
                 for indice in range(quantidade):
-                    pergunta = PerguntaNemPato(categoria_id=categoria.id, enunciado=f"Pergunta {versao}-{indice}?", resposta_numerica=indice, explicacao="Explicação documental", origem="OFICIAL", ativa=True, catalogo_oficial_id=catalogo.id, id_editorial=f"R-{versao}-{indice:03d}")
+                    pergunta = PerguntaNemPato(categoria_id=categoria.id, categoria_versao_id=categoria_versao.id, enunciado=f"Pergunta {versao}-{indice}?", resposta_numerica=indice, explicacao="Explicação documental", origem="OFICIAL", ativa=True, catalogo_oficial_id=catalogo.id, id_editorial=f"R-{versao}-{indice:03d}")
                     pergunta.fontes_editoriais = [FontePerguntaNemPatoOficial(ordem=1, titulo="Fonte", url=f"https://example.test/{marca}/{versao}/{indice}", acessada_em=date(2026, 10, 31))]
                     db.add(pergunta)
             db.flush()

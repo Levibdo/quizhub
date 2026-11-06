@@ -625,3 +625,51 @@ test('reativação de catálogo envia versão ativa, CSRF e idempotência', asyn
   assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'reativar-chave')
   assert.deepEqual(JSON.parse(chamadas[1].opcoes.body), { justificativa: 'Retorno editorial da versão anterior.' })
 })
+
+test('categoria de rascunho usa revisão, CSRF e idempotência', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-categoria' })
+    return Response.json({ categoria_id: 'cat-1', nome: 'História' }, { status: 201 })
+  }
+  await api.salvarCategoriaRascunho('draft-1', null, {
+    slug: 'historia', nome: 'História', descricao: null, ativa: true,
+  }, 3, 'categoria-chave')
+  assert.match(chamadas[1].url, /catalogos\/rascunhos\/draft-1\/categorias$/)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-categoria')
+  assert.equal(chamadas[1].opcoes.headers['If-Match'], '"3"')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'categoria-chave')
+})
+
+test('remoção e restauração de categoria são escritas versionadas protegidas', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-categoria' })
+    return Response.json({ revisao: 5 })
+  }
+  await api.removerCategoriaRascunho('draft-1', 'cat-1', 3, 'remover-cat')
+  await api.restaurarCategoriaRascunho('draft-1', 'cat-1', 4, 'restaurar-cat')
+  assert.equal(chamadas[1].opcoes.method, 'DELETE')
+  assert.equal(chamadas[1].opcoes.headers['If-Match'], '"3"')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'remover-cat')
+  assert.match(chamadas[3].url, /categorias\/cat-1\/restaurar$/)
+  assert.equal(chamadas[3].opcoes.headers['X-CSRF-Token'], 'csrf-categoria')
+  assert.equal(chamadas[3].opcoes.headers['If-Match'], '"4"')
+})
+
+test('confirmação de importação JSON nunca omite CSRF ou idempotência', async () => {
+  const chamadas = []
+  globalThis.fetch = async (url, opcoes) => {
+    chamadas.push({ url, opcoes })
+    if (url.endsWith('/api/v1/admin/csrf')) return Response.json({ token: 'csrf-json' })
+    return Response.json({ rascunho_id: 'draft-json', publicado: false }, { status: 201 })
+  }
+  const conteudo = { nome_rascunho: 'Lote', modo: 'NEM_A_PATO', categorias: [], perguntas_quiz: [], perguntas_nem_pato: [] }
+  const resposta = await api.confirmarImportacaoCatalogoJson('catalog-1', conteudo, 'a'.repeat(64), 'json-chave')
+  assert.equal(resposta.publicado, false)
+  assert.match(chamadas[1].url, /importacoes\/json\/confirmar$/)
+  assert.equal(chamadas[1].opcoes.headers['X-CSRF-Token'], 'csrf-json')
+  assert.equal(chamadas[1].opcoes.headers['Idempotency-Key'], 'json-chave')
+})
