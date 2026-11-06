@@ -75,7 +75,7 @@ export default function TelaAdmin({ voltar, aoExpirarSessao, registrarProtecaoNa
         <div>
           <span className="home-eyebrow">Área restrita</span>
           <h1 id="admin-title">Administração</h1>
-          <p>Visão operacional do QuizHub, sem alterar dados.</p>
+          <p>Operação segura de catálogos versionados, perguntas e auditoria.</p>
         </div>
         <button className="button-secondary admin-refresh" onClick={atualizar} disabled={carregando}>
           {carregando ? 'Atualizando…' : 'Atualizar dados'}

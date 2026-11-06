@@ -25,6 +25,78 @@ class CriarRascunho(BaseModel):
     nome: str = Field(min_length=1, max_length=160)
 
 
+class CategoriaRascunhoEntrada(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slug: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    nome: str = Field(min_length=1, max_length=100)
+    descricao: str | None = None
+    ativa: bool = True
+
+
+class CategoriaRascunhoPublica(CategoriaRascunhoEntrada):
+    id: UUID
+    categoria_id: UUID
+    modo: Modo
+    tipo_alteracao: str
+    revisao: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PerguntaQuizImportacaoJson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_editorial: str = Field(min_length=1, max_length=80)
+    categoria_slug: str = Field(min_length=1, max_length=80)
+    enunciado: str = Field(min_length=1)
+    alternativas: list[str] = Field(min_length=4, max_length=4)
+    alternativa_correta: int = Field(ge=0, le=3)
+    explicacao: str = Field(min_length=1)
+    dificuldade: Dificuldade
+    referencias: list[FonteRascunho] = Field(min_length=1)
+
+
+class PerguntaNemPatoImportacaoJson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_editorial: str = Field(min_length=1, max_length=80)
+    categoria_slug: str = Field(min_length=1, max_length=80)
+    enunciado: str = Field(min_length=1)
+    resposta_numerica: str
+    unidade: str | None = None
+    explicacao: str = Field(min_length=1)
+    natureza_resposta: Natureza
+    tema_editorial: str | None = Field(default=None, max_length=100)
+    qualificacao_estimativa: str | None = None
+    referencias: list[FonteRascunho] = Field(min_length=1)
+
+    @field_validator("resposta_numerica")
+    @classmethod
+    def bigint_valido(cls, valor):
+        numero = int(valor)
+        if numero < 0 or numero > 2**63 - 1: raise ValueError("resposta numérica fora do intervalo BIGINT")
+        return str(numero)
+
+
+class ImportacaoCatalogoJson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    nome_rascunho: str = Field(min_length=1, max_length=160)
+    modo: Modo
+    categorias: list[CategoriaRascunhoEntrada] = Field(min_length=1)
+    perguntas_quiz: list[PerguntaQuizImportacaoJson] = Field(default_factory=list)
+    perguntas_nem_pato: list[PerguntaNemPatoImportacaoJson] = Field(default_factory=list)
+
+    @field_validator("categorias")
+    @classmethod
+    def slugs_unicos(cls, valores):
+        slugs = [item.slug for item in valores]
+        if len(slugs) != len(set(slugs)): raise ValueError("slugs de categoria duplicados")
+        return valores
+
+
+class ConfirmarImportacaoCatalogoJson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sha256_esperado: str = Field(pattern=r"^[0-9a-f]{64}$")
+    conteudo: ImportacaoCatalogoJson
+
+
 class DescartarRascunho(BaseModel):
     model_config = ConfigDict(extra="forbid")
     motivo: str = Field(min_length=1, max_length=2000)

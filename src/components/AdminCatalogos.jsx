@@ -3,6 +3,7 @@ import { criarCatalogoInicialOficial, listarCatalogosOficiaisAdministrativos, re
 import AdminRascunhos from './AdminRascunhos'
 
 const rotuloModo = (modo) => modo === 'NEM_A_PATO' ? 'Nem a Pato' : 'Quiz Clássico'
+const MODOS = ['QUIZ_CLASSICO', 'NEM_A_PATO']
 const rotuloStatus = (status) => status.charAt(0) + status.slice(1).toLowerCase()
 const formatarData = (data) => data
   ? new Date(data).toLocaleString('pt-BR')
@@ -15,6 +16,9 @@ export default function AdminCatalogos({ aoExpirarSessao, aoAlterarFormulario })
   const [tentativa, setTentativa] = useState(0)
   const [criando, setCriando] = useState(false)
   const [reativando, setReativando] = useState('')
+  const modosSemCatalogo = MODOS.filter(
+    (modo) => !catalogos.some((catalogo) => catalogo.modo === modo),
+  )
 
   const atualizar = useCallback(() => {
     setErro('')
@@ -102,7 +106,22 @@ export default function AdminCatalogos({ aoExpirarSessao, aoAlterarFormulario })
         </div>
       )}
       {!carregando && !erro && !catalogos.length && (
-        <div className="admin-empty"><p>Nenhum catálogo oficial cadastrado.</p><button type="button" disabled={criando} onClick={() => criarInicial('NEM_A_PATO')}>Criar catálogo inicial Nem a Pato</button></div>
+        <p className="admin-empty">Nenhum catálogo oficial cadastrado.</p>
+      )}
+      {!carregando && !erro && modosSemCatalogo.length > 0 && (
+        <section className="admin-catalog-bootstrap" aria-labelledby="admin-catalog-bootstrap-title">
+          <div>
+            <h3 id="admin-catalog-bootstrap-title">Iniciar catálogo oficial</h3>
+            <p>Crie a primeira versão vazia somente para preparar um rascunho versionado. Ela não libera partidas sem perguntas elegíveis.</p>
+          </div>
+          <div className="admin-section-actions">
+            {modosSemCatalogo.map((modo) => (
+              <button key={modo} type="button" disabled={criando} onClick={() => criarInicial(modo)}>
+                {criando ? 'Criando…' : `Criar catálogo inicial ${rotuloModo(modo)}`}
+              </button>
+            ))}
+          </div>
+        </section>
       )}
       {!carregando && !erro && catalogos.length > 0 && (
         <div className="admin-grid admin-catalog-list">

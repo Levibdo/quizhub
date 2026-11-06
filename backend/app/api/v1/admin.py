@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db, get_session_factory
-from app.models import AuditoriaAdministrativa, CatalogoOficial, Usuario
+from app.models import AuditoriaAdministrativa, CatalogoOficial, CategoriaOficialRascunho, Usuario
 from app.schemas.admin import (
     AuditoriaAdministrativaPublica,
     CatalogoAdministrativo,
@@ -25,7 +25,9 @@ from app.schemas.admin import (
     TokenCsrfAdministrativo,
 )
 from app.schemas.rascunhos_oficiais import (
-    AlteracaoRascunhoPublica, CriarRascunho, DescartarRascunho,
+    AlteracaoRascunhoPublica, CategoriaRascunhoEntrada, CategoriaRascunhoPublica,
+    ConfirmarImportacaoCatalogoJson, CriarRascunho, DescartarRascunho,
+    ImportacaoCatalogoJson,
     PaginaAlteracoesRascunho, PaginaPerguntasRascunho, PaginaRascunhos,
     PerguntaNemPatoRascunhoEntrada, PerguntaQuizRascunhoEntrada,
     PerguntaRascunhoDetalhe, RascunhoResumo, ValidacaoRascunhoOficial,
@@ -52,6 +54,10 @@ from app.services.rascunhos_catalogos_oficiais import (
     listar_alteracoes, listar_perguntas, listar_rascunhos, obter_pergunta,
     obter_rascunho, salvar_pergunta,
 )
+from app.services.categorias_oficiais_rascunhos import (
+    alterar_remocao_categoria, listar_categorias, salvar_categoria,
+)
+from app.services.importacao_catalogo_oficial_json import confirmar as confirmar_importacao_json, previsualizar as previsualizar_importacao_json
 from app.services.validacao_rascunhos_oficiais import validar_rascunho_oficial
 from app.services.publicacao_incremental_catalogos import publicar_rascunho
 from app.services.reativacao_catalogos_oficiais import reativar_catalogo_oficial
@@ -418,12 +424,92 @@ def criar_rascunho_admin(catalogo_id: UUID, dados: CriarRascunho, chave: str | N
         return _resumo_rascunho(db, item)
 
 
+@router.post("/catalogos/{catalogo_id}/importacoes/json/previsualizar")
+def previsualizar_importacao_catalogo_json(catalogo_id: UUID, dados: ImportacaoCatalogoJson, db: Session = Depends(get_db), _admin: Usuario = Depends(exigir_admin)):
+    catalogo = db.get(CatalogoOficial, catalogo_id)
+    if catalogo is None: raise HTTPException(404, "catálogo oficial não encontrado")
+    if catalogo.modo != dados.modo: raise HTTPException(409, {"codigo": "MODO_CATALOGO_DIVERGENTE", "mensagem": "o modo não corresponde ao catálogo"})
+    return previsualizar_importacao_json(dados.model_dump(mode="json"))
+
+
+@router.post("/catalogos/{catalogo_id}/importacoes/json/confirmar", status_code=201)
+def confirmar_importacao_catalogo_json(catalogo_id: UUID, dados: ConfirmarImportacaoCatalogoJson, chave: str | None = Header(None, alias="Idempotency-Key"), admin: Usuario = Depends(exigir_csrf_admin)):
+    pedido = dados.model_dump(mode="json")
+    def executar(db):
+        rascunho, revisao, previa = confirmar_importacao_json(
+            db, catalogo_id, dados.conteudo.model_dump(mode="python"), dados.sha256_esperado,
+            db.get(Usuario, admin.id),
+        )
+        return 201, {"rascunho_id": str(rascunho.id), "revisao": revisao,
+                     "total_categorias": previa["total_categorias"],
+                     "total_perguntas": previa["total_perguntas"],
+                     "publicado": False}
+    return _executar_idempotente(
+        admin=admin, tipo="IMPORTAR_CATALOGO_OFICIAL_JSON",
+        recurso_tipo="CATALOGO_OFICIAL", recurso_id=catalogo_id,
+        chave=chave, pedido=pedido, executar=executar,
+    ).resposta
+
+
 @router.get("/catalogos/rascunhos/{rascunho_id}/perguntas", response_model=PaginaPerguntasRascunho)
 def listar_perguntas_rascunho_admin(rascunho_id: UUID, pagina: int = Query(1, ge=1), limite: int = Query(20, ge=1, le=100), busca: str | None = Query(None, max_length=300), tipo_alteracao: str | None = None, db: Session = Depends(get_db), _admin: Usuario = Depends(exigir_admin)):
     rascunho = obter_rascunho(db, rascunho_id)
     if rascunho is None: raise HTTPException(404, "rascunho não encontrado")
     itens, total, paginas = listar_perguntas(db, rascunho, pagina=pagina, limite=limite, busca=busca, tipo_alteracao=tipo_alteracao)
     return PaginaPerguntasRascunho(itens=[_detalhe_pergunta(i) for i in itens], pagina=pagina, limite=limite, total=total, total_paginas=paginas)
+
+
+@router.get("/catalogos/rascunhos/{rascunho_id}/categorias", response_model=list[CategoriaRascunhoPublica])
+def listar_categorias_rascunho_admin(rascunho_id: UUID, db: Session = Depends(get_db), _admin: Usuario = Depends(exigir_admin)):
+    if obter_rascunho(db, rascunho_id) is None: raise HTTPException(404, "rascunho não encontrado")
+    return [CategoriaRascunhoPublica.model_validate(item) for item in listar_categorias(db, rascunho_id)]
+
+
+def _salvar_categoria_admin(rascunho_id, categoria_id, dados, revisao, chave, admin):
+    pedido = dados.model_dump(mode="json") | {"revisao": revisao}
+    tipo = "ADICIONAR_CATEGORIA_RASCUNHO" if categoria_id is None else "EDITAR_CATEGORIA_RASCUNHO"
+    def executar(db):
+        item, nova = salvar_categoria(db, rascunho_id, categoria_id, dados.model_dump(), revisao, db.get(Usuario, admin.id))
+        return (201 if categoria_id is None else 200), {"id": str(item.id), "revisao": nova}
+    resultado = _executar_idempotente(admin=admin, tipo=tipo, recurso_tipo="CATALOGO_OFICIAL_RASCUNHO", recurso_id=rascunho_id, chave=chave, pedido=pedido, executar=executar)
+    with get_session_factory()() as db:
+        item = db.get(CategoriaOficialRascunho, UUID(resultado.resposta["id"]))
+        return CategoriaRascunhoPublica.model_validate(item), resultado.resposta["revisao"]
+
+
+@router.post("/catalogos/rascunhos/{rascunho_id}/categorias", response_model=CategoriaRascunhoPublica, status_code=201)
+def adicionar_categoria_rascunho_admin(response: Response, rascunho_id: UUID, dados: CategoriaRascunhoEntrada, if_match: str | None = Header(None, alias="If-Match"), chave: str | None = Header(None, alias="Idempotency-Key"), admin: Usuario = Depends(exigir_csrf_admin)):
+    item, revisao = _salvar_categoria_admin(rascunho_id, None, dados, _revisao_if_match(if_match), chave, admin); response.headers["ETag"] = f'"{revisao}"'; return item
+
+
+@router.put("/catalogos/rascunhos/{rascunho_id}/categorias/{categoria_id}", response_model=CategoriaRascunhoPublica)
+def editar_categoria_rascunho_admin(response: Response, rascunho_id: UUID, categoria_id: UUID, dados: CategoriaRascunhoEntrada, if_match: str | None = Header(None, alias="If-Match"), chave: str | None = Header(None, alias="Idempotency-Key"), admin: Usuario = Depends(exigir_csrf_admin)):
+    item, revisao = _salvar_categoria_admin(rascunho_id, categoria_id, dados, _revisao_if_match(if_match), chave, admin); response.headers["ETag"] = f'"{revisao}"'; return item
+
+
+def _mudar_estado_categoria(rascunho_id, categoria_id, revisao, chave, admin, restaurar):
+    tipo = "RESTAURAR_CATEGORIA_RASCUNHO" if restaurar else "REMOVER_CATEGORIA_RASCUNHO"
+    def executar(db):
+        item, nova = alterar_remocao_categoria(
+            db, rascunho_id, categoria_id, revisao, db.get(Usuario, admin.id),
+            restaurar=restaurar,
+        )
+        return 200, {"id": str(item.id), "revisao": nova}
+    return _executar_idempotente(
+        admin=admin, tipo=tipo, recurso_tipo="CATEGORIA_OFICIAL_RASCUNHO",
+        recurso_id=categoria_id, chave=chave,
+        pedido={"rascunho_id": str(rascunho_id), "revisao": revisao}, executar=executar,
+    )
+
+
+@router.delete("/catalogos/rascunhos/{rascunho_id}/categorias/{categoria_id}")
+def remover_categoria_rascunho_admin(rascunho_id: UUID, categoria_id: UUID, if_match: str | None = Header(None, alias="If-Match"), chave: str | None = Header(None, alias="Idempotency-Key"), admin: Usuario = Depends(exigir_csrf_admin)):
+    return _mudar_estado_categoria(rascunho_id, categoria_id, _revisao_if_match(if_match), chave, admin, False).resposta
+
+
+@router.post("/catalogos/rascunhos/{rascunho_id}/categorias/{categoria_id}/restaurar")
+def restaurar_categoria_rascunho_admin(rascunho_id: UUID, categoria_id: UUID, if_match: str | None = Header(None, alias="If-Match"), chave: str | None = Header(None, alias="Idempotency-Key"), admin: Usuario = Depends(exigir_csrf_admin)):
+    return _mudar_estado_categoria(rascunho_id, categoria_id, _revisao_if_match(if_match), chave, admin, True).resposta
 
 
 @router.get("/catalogos/rascunhos/{rascunho_id}/perguntas/{pergunta_id}", response_model=PerguntaRascunhoDetalhe)

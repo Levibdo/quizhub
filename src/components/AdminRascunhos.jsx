@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  confirmarImportacaoCatalogoJson,
   criarRascunhoOficial, descartarRascunhoOficial, listarHistoricoRascunho,
-  listarPerguntasRascunho, listarRascunhosOficiais, obterOpcoesPerguntasOficiais,
+  listarCategoriasRascunho, listarPerguntasRascunho, listarRascunhosOficiais,
   obterPerguntaRascunho, obterRascunhoOficial, removerPerguntaRascunho,
-  restaurarPerguntaRascunho, salvarPerguntaRascunho, validarRascunhoOficial,
+  previsualizarImportacaoCatalogoJson, restaurarPerguntaRascunho,
+  removerCategoriaRascunho, restaurarCategoriaRascunho,
+  salvarCategoriaRascunho, salvarPerguntaRascunho, validarRascunhoOficial,
 } from '../services/api'
 import AdminRevisaoRascunho from './AdminRevisaoRascunho'
 
@@ -12,6 +15,50 @@ const MAX_BIGINT = '9223372036854775807'
 const rotuloModo = (modo) => modo === 'NEM_A_PATO' ? 'Nem a Pato' : 'Quiz Clássico'
 const formatarData = (valor) => valor ? new Date(valor).toLocaleString('pt-BR') : 'Não registrada'
 const ROTULOS_NIVEL = { ERRO: 'Erros', AVISO: 'Avisos', INFORMACAO: 'Informações' }
+
+function GestaoCategorias({ rascunho, categorias, aoAtualizar, aoErro }) {
+  const [aberto, setAberto] = useState(false)
+  const [editando, setEditando] = useState(null)
+  const [formulario, setFormulario] = useState({ slug: '', nome: '', descricao: '', ativa: true })
+  const iniciar = (item = null) => {
+    setEditando(item); setFormulario(item ? { slug: item.slug, nome: item.nome, descricao: item.descricao || '', ativa: item.ativa } : { slug: '', nome: '', descricao: '', ativa: true }); setAberto(true)
+  }
+  const salvar = async (evento) => {
+    evento.preventDefault()
+    try {
+      await salvarCategoriaRascunho(rascunho.id, editando?.categoria_id, { ...formulario, slug: formulario.slug.trim().toLowerCase(), nome: formulario.nome.trim(), descricao: formulario.descricao.trim() || null }, rascunho.revisao)
+      setAberto(false); await aoAtualizar()
+    } catch (error) { aoErro(error) }
+  }
+  const mudarEstado = async (item, restaurar) => {
+    const acao = restaurar ? 'restaurar' : 'remover'
+    if (!restaurar && !window.confirm(`Remover a categoria ${item.nome} deste rascunho?`)) return
+    try {
+      const executar = restaurar ? restaurarCategoriaRascunho : removerCategoriaRascunho
+      await executar(rascunho.id, item.categoria_id, rascunho.revisao)
+      await aoAtualizar()
+    } catch (error) { aoErro(new Error(`Não foi possível ${acao} a categoria. ${error.message}`)) }
+  }
+  return <section className="admin-draft-categories" aria-labelledby="draft-categories-title">
+    <div className="admin-section-heading"><div><span className="admin-draft-badge">IDENTIDADES VERSIONADAS</span><h4 id="draft-categories-title">Categorias deste rascunho</h4></div>{rascunho.status === 'EM_EDICAO' && <button type="button" onClick={() => iniciar()}>Adicionar categoria</button>}</div>
+    {!categorias.length ? <p className="admin-empty">Nenhuma categoria definida.</p> : <div className="admin-category-list">{categorias.map((item) => <article key={item.id}><div><strong>{item.nome}</strong><span className="admin-status">{item.tipo_alteracao}</span></div><code>{item.slug}</code>{item.descricao && <p>{item.descricao}</p>}{rascunho.status === 'EM_EDICAO' && <div className="admin-draft-editor__actions">{item.tipo_alteracao === 'REMOVIDA' ? <button type="button" className="button-secondary" onClick={() => mudarEstado(item, true)}>Restaurar</button> : <><button type="button" className="button-secondary" onClick={() => iniciar(item)}>Editar no rascunho</button><button type="button" className="button-danger" onClick={() => mudarEstado(item, false)}>Remover</button></>}</div>}</article>)}</div>}
+    {aberto && <form className="admin-draft-form-grid" onSubmit={salvar}><label>Slug<input value={formulario.slug} pattern="[a-z0-9][a-z0-9-]*" required onChange={(e) => setFormulario({ ...formulario, slug: e.target.value })} /></label><label>Nome<input value={formulario.nome} required onChange={(e) => setFormulario({ ...formulario, nome: e.target.value })} /></label><label className="admin-draft-span">Descrição<textarea value={formulario.descricao} onChange={(e) => setFormulario({ ...formulario, descricao: e.target.value })} /></label><div className="admin-draft-editor__actions"><button type="button" className="button-secondary" onClick={() => setAberto(false)}>Cancelar</button><button type="submit">Salvar categoria</button></div></form>}
+  </section>
+}
+
+function ImportacaoJson({ catalogos, aoConcluir, aoErro }) {
+  const [catalogoId, setCatalogoId] = useState('')
+  const [conteudo, setConteudo] = useState(null)
+  const [previa, setPrevia] = useState(null)
+  const selecionar = async (evento) => {
+    setPrevia(null); setConteudo(null)
+    try { const texto = await evento.target.files?.[0]?.text(); if (texto) setConteudo(JSON.parse(texto)) }
+    catch { aoErro(new Error('O arquivo não contém JSON válido.')) }
+  }
+  const previsualizar = async () => { try { setPrevia(await previsualizarImportacaoCatalogoJson(catalogoId, conteudo)) } catch (error) { aoErro(error) } }
+  const confirmar = async () => { if (!window.confirm('Criar um rascunho com este conteúdo? Nada será publicado automaticamente.')) return; try { await confirmarImportacaoCatalogoJson(catalogoId, conteudo, previa.sha256); setConteudo(null); setPrevia(null); await aoConcluir() } catch (error) { aoErro(error) } }
+  return <section className="admin-import-json"><h4>Importar catálogo JSON</h4><p className="admin-note">A importação cria um rascunho sujeito a validação, revisão e aprovação. Ela nunca publica automaticamente.</p><div className="admin-draft-filters"><label>Catálogo-base<select value={catalogoId} onChange={(e) => setCatalogoId(e.target.value)}><option value="">Selecione</option>{catalogos.filter((item) => item.status_registro === 'ATIVO').map((item) => <option key={item.id} value={item.id}>{rotuloModo(item.modo)} · v{item.versao}</option>)}</select></label><label>Arquivo JSON<input type="file" accept="application/json,.json" onChange={selecionar} /></label><button type="button" disabled={!catalogoId || !conteudo} onClick={previsualizar}>Pré-visualizar</button></div>{previa && <div className={previa.valido ? 'admin-success' : 'admin-error'} role="status"><p>{previa.total_categorias} categorias · {previa.total_perguntas} perguntas · {previa.valido ? 'estrutura válida' : `${previa.erros.length} erro(s)`}</p>{previa.erros.map((erro) => <p key={`${erro.registro}-${erro.campo}`}>Registro {erro.registro + 1}: {erro.campo} — {erro.codigo}</p>)}{previa.valido && <button type="button" onClick={confirmar}>Confirmar criação do rascunho</button>}</div>}</section>
+}
 
 function erroOperacao(error) {
   if (error.status === 412) return 'Este rascunho foi alterado por outro administrador. Suas alterações locais foram preservadas.'
@@ -203,7 +250,7 @@ export default function AdminRascunhos({ catalogos, aoExpirarSessao, aoAlterarFo
   const [rascunhos, setRascunhos] = useState([])
   const [selecionado, setSelecionado] = useState(null)
   const [perguntas, setPerguntas] = useState(null)
-  const [opcoes, setOpcoes] = useState({ categorias: [] })
+  const [categoriasRascunho, setCategoriasRascunho] = useState([])
   const [editor, setEditor] = useState(null)
   const [historico, setHistorico] = useState(null)
   const [busca, setBusca] = useState('')
@@ -230,19 +277,15 @@ export default function AdminRascunhos({ catalogos, aoExpirarSessao, aoAlterarFo
   const carregar = useCallback(async () => {
     setCarregando(true); setErro('')
     try {
-      const [dados, dadosOpcoes] = await Promise.all([
-        listarRascunhosOficiais({ limite: 100 }), obterOpcoesPerguntasOficiais(),
-      ])
-      setRascunhos(dados.itens); setOpcoes(dadosOpcoes)
+      const dados = await listarRascunhosOficiais({ limite: 100 })
+      setRascunhos(dados.itens)
     } catch (error) { tratarErro(error) } finally { setCarregando(false) }
   }, [tratarErro])
   useEffect(() => {
     let ativo = true
-    Promise.all([
-      listarRascunhosOficiais({ limite: 100 }), obterOpcoesPerguntasOficiais(),
-    ]).then(([dados, dadosOpcoes]) => {
+    listarRascunhosOficiais({ limite: 100 }).then((dados) => {
       if (!ativo) return
-      setRascunhos(dados.itens); setOpcoes(dadosOpcoes); setCarregando(false)
+      setRascunhos(dados.itens); setCarregando(false)
     }).catch((error) => {
       if (!ativo) return
       tratarErro(error); setCarregando(false)
@@ -253,18 +296,19 @@ export default function AdminRascunhos({ catalogos, aoExpirarSessao, aoAlterarFo
   const abrir = async (rascunho) => {
     setErro(''); setEditor(null); setHistorico(null); setValidacao(null)
     try {
-      const [atual, lista] = await Promise.all([
-        obterRascunhoOficial(rascunho.id), listarPerguntasRascunho(rascunho.id, { limite: 20 }),
+      const [atual, lista, categorias] = await Promise.all([
+        obterRascunhoOficial(rascunho.id), listarPerguntasRascunho(rascunho.id, { limite: 20 }), listarCategoriasRascunho(rascunho.id),
       ])
-      setSelecionado(atual); setPerguntas(lista)
+      setSelecionado(atual); setPerguntas(lista); setCategoriasRascunho(categorias)
     } catch (error) { tratarErro(error) }
   }
   const atualizarPerguntas = async (rascunho = selecionado) => {
-    const [atual, lista] = await Promise.all([
+    const [atual, lista, categorias] = await Promise.all([
       obterRascunhoOficial(rascunho.id),
       listarPerguntasRascunho(rascunho.id, { limite: 20, busca, tipo_alteracao: tipo }),
+      listarCategoriasRascunho(rascunho.id),
     ])
-    setSelecionado(atual); setPerguntas(lista)
+    setSelecionado(atual); setPerguntas(lista); setCategoriasRascunho(categorias)
   }
   const criar = async (catalogo) => {
     const nome = window.prompt(`Nome do rascunho baseado em ${catalogo.catalogo_id}:`)
@@ -317,13 +361,14 @@ export default function AdminRascunhos({ catalogos, aoExpirarSessao, aoAlterarFo
     if (!motivo?.trim() || !window.confirm('Descartar o rascunho? Ele continuará disponível somente para consulta.')) return
     try { const atual = await descartarRascunhoOficial(selecionado.id, motivo.trim(), selecionado.revisao); setSelecionado(atual); setSucesso('Rascunho descartado e bloqueado para edição.'); await carregar() } catch (error) { tratarErro(error) }
   }
-  const categorias = useMemo(() => opcoes.categorias.filter((item) => item.modo === selecionado?.modo), [opcoes, selecionado])
+  const categorias = useMemo(() => categoriasRascunho.map((item) => ({ ...item, id: item.categoria_id })), [categoriasRascunho])
 
   if (selecionado) return (
     <section className="admin-draft-workspace" aria-labelledby="admin-draft-title">
       <header className="admin-draft-header"><div><span className="admin-draft-badge">RASCUNHO — NÃO PUBLICADO</span><h3 id="admin-draft-title">{selecionado.nome}</h3><p>{rotuloModo(selecionado.modo)} · origem {selecionado.catalogo_id} v{selecionado.versao_base}</p></div><dl><div><dt>Estado</dt><dd>{selecionado.status}</dd></div><div><dt>Revisão</dt><dd>{selecionado.revisao}</dd></div><div><dt>Salvamento</dt><dd>{editor ? 'Edição aberta' : 'Sincronizado'}</dd></div></dl></header>
       <div className="admin-draft-toolbar"><button type="button" className="button-secondary" onClick={() => { if (podeAbandonarFormulario()) { setFormularioSujo(false); setSelecionado(null); setEditor(null); setValidacao(null) } }}>Voltar aos rascunhos</button><button type="button" onClick={() => { if (podeAbandonarFormulario()) { setValidacao(null); setEditor(criarFormulario(selecionado.modo, null, categorias[0]?.id)) } }} disabled={selecionado.status !== 'EM_EDICAO'}>Adicionar pergunta</button><button type="button" className="button-secondary" onClick={consultarHistorico}>Histórico editorial</button><button type="button" onClick={executarValidacao} disabled={validando}>{validando ? 'Validando…' : 'Validar rascunho'}</button>{selecionado.status === 'EM_EDICAO' && <button type="button" className="button-danger" onClick={descartar}>Descartar rascunho</button>}</div>
       {erro && <p className="admin-error" role="alert">{erro}</p>}{sucesso && <p className="admin-success" role="status">{sucesso}</p>}
+      {!editor && !historico && !validacao && <GestaoCategorias rascunho={selecionado} categorias={categoriasRascunho} aoAtualizar={() => atualizarPerguntas()} aoErro={tratarErro} />}
       {!editor && !historico && !validacao && <AdminRevisaoRascunho rascunho={selecionado} aoSincronizar={async () => { await atualizarPerguntas(); await carregar() }} aoExpirarSessao={aoExpirarSessao} aoAlterarFormulario={setFormularioSujo} />}
       {editor && <EditorPergunta key={editor.id || 'nova'} rascunho={selecionado} pergunta={editor.id ? editor : null} categorias={categorias} aoCancelar={() => setEditor(null)} aoSalvar={salvar} aoAlterarSujo={setFormularioSujo} somenteLeitura={selecionado.status !== 'EM_EDICAO' || editor.tipo_alteracao === 'REMOVIDA'} />}
       {validacao && <RelatorioValidacao resultado={validacao} revisaoAtual={selecionado.revisao} filtro={filtroValidacao} aoFiltrar={setFiltroValidacao} aoFechar={() => setValidacao(null)} aoAbrirPergunta={abrirPerguntaDoRelatorio} />}
@@ -338,6 +383,7 @@ export default function AdminRascunhos({ catalogos, aoExpirarSessao, aoAlterarFo
       {erro && <p className="admin-error" role="alert">{erro}</p>}{sucesso && <p className="admin-success" role="status">{sucesso}</p>}
       {carregando ? <p className="admin-loading" role="status">Carregando rascunhos…</p> : !rascunhos.length ? <p className="admin-empty">Nenhum rascunho criado.</p> : <div className="admin-draft-list">{rascunhos.map((item) => <article key={item.id}><div><span className="admin-card-kicker">{rotuloModo(item.modo)}</span><span className="admin-status">{item.status}</span></div><h4>{item.nome}</h4><p>{item.catalogo_id} v{item.versao_base} · revisão {item.revisao}</p><p>{item.adicionadas} adicionadas · {item.modificadas} modificadas · {item.removidas} removidas</p><small>Criador: {item.criado_por_id || 'não informado'} · atualizado em {formatarData(item.atualizado_em)}</small><button type="button" onClick={() => abrir(item)}>{item.status === 'EM_EDICAO' ? 'Gerenciar rascunho' : 'Consultar rascunho'}</button></article>)}</div>}
       <div className="admin-draft-create"><h4>Criar a partir da versão ativa</h4>{catalogos.filter((catalogo) => catalogo.status_registro === 'ATIVO').map((catalogo) => <button key={catalogo.id} type="button" className="button-secondary" onClick={() => criar(catalogo)}>Criar rascunho de {rotuloModo(catalogo.modo)} · {catalogo.catalogo_id} v{catalogo.versao} ({catalogo.quantidade_perguntas} perguntas)</button>)}</div>
+      <ImportacaoJson catalogos={catalogos} aoConcluir={carregar} aoErro={tratarErro} />
     </section>
   )
 }

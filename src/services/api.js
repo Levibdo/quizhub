@@ -302,6 +302,43 @@ export function listarPerguntasRascunho(rascunhoId, filtros = {}) {
   return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas?${parametros}`, { method: 'GET' })
 }
 
+export function listarCategoriasRascunho(rascunhoId) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/categorias`, { method: 'GET' })
+}
+
+export function salvarCategoriaRascunho(rascunhoId, categoriaId, dados, revisao, chave) {
+  const sufixo = categoriaId ? `/${categoriaId}` : ''
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/categorias${sufixo}`, {
+    method: categoriaId ? 'PUT' : 'POST', headers: cabecalhosEscritaRascunho(revisao, chave),
+    body: JSON.stringify(dados),
+  })
+}
+
+export function removerCategoriaRascunho(rascunhoId, categoriaId, revisao, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/categorias/${categoriaId}`, {
+    method: 'DELETE', headers: cabecalhosEscritaRascunho(revisao, chave),
+  })
+}
+
+export function restaurarCategoriaRascunho(rascunhoId, categoriaId, revisao, chave) {
+  return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/categorias/${categoriaId}/restaurar`, {
+    method: 'POST', headers: cabecalhosEscritaRascunho(revisao, chave),
+  })
+}
+
+export function previsualizarImportacaoCatalogoJson(catalogoId, conteudo) {
+  return requisitar(`/api/v1/admin/catalogos/${catalogoId}/importacoes/json/previsualizar`, {
+    method: 'POST', body: JSON.stringify(conteudo),
+  })
+}
+
+export function confirmarImportacaoCatalogoJson(catalogoId, conteudo, sha256Esperado, chave) {
+  return requisitar(`/api/v1/admin/catalogos/${catalogoId}/importacoes/json/confirmar`, {
+    method: 'POST', headers: cabecalhosEscritaRascunho(undefined, chave),
+    body: JSON.stringify({ sha256_esperado: sha256Esperado, conteudo }),
+  })
+}
+
 export function obterPerguntaRascunho(rascunhoId, perguntaId) {
   return requisitar(`/api/v1/admin/catalogos/rascunhos/${rascunhoId}/perguntas/${perguntaId}`, { method: 'GET' })
 }
