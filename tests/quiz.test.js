@@ -50,7 +50,7 @@ for (const modo of ['correta', 'incorreta', 'timeout', 'final']) {
     const pergunta = { id: 31, pergunta: 'Pergunta respondida?', alternativas: ['A', 'B', 'C', 'D'] }
     const seguinte = { id: 88, pergunta: 'Proxima autorizada?', alternativas: ['E', 'F', 'G', 'H'] }
     const partida = {
-      partida_id: 'partida-real', jogador: 'Jogador', categoria: 'geral',
+      partida_id: '123e4567-e89b-42d3-a456-426614174020', jogador: 'Jogador', categoria: 'geral',
       status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0, pergunta_atual: pergunta,
     }
     const resultado = {
@@ -223,7 +223,7 @@ test('categoria privada usa fallback, selo de origem e UUID correto', async (t) 
   })
 })
 
-test('visitante envia identidade persistente ao criar partida', async (t) => {
+test('visitante delega identidade segura ao cookie HttpOnly do servidor', async (t) => {
   const fetchOriginal = globalThis.fetch
   const storageOriginal = globalThis.localStorage
   const storage = new Map()
@@ -240,7 +240,7 @@ test('visitante envia identidade persistente ao criar partida', async (t) => {
       { id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO', origem: 'OFICIAL' },
     ])
     if (url.endsWith('/partidas')) return Response.json({
-      partida_id: 'visitante', jogador: 'Apelido novo', categoria: 'geral',
+      partida_id: '123e4567-e89b-42d3-a456-426614174000', jogador: 'Apelido novo', categoria: 'geral',
       status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0,
       pergunta_atual: { id: 1, pergunta: 'Pergunta?', alternativas: ['A', 'B', 'C', 'D'] },
     })
@@ -262,8 +262,12 @@ test('visitante envia identidade persistente ao criar partida', async (t) => {
   await act(async () => renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
   const corpo = JSON.parse(chamadas.find((item) => item.url.endsWith('/partidas')).options.body)
   assert.equal(corpo.jogador, 'Apelido novo')
-  assert.match(corpo.visitante_id, /^[0-9a-f-]{36}$/)
-  assert.equal(storage.get('quizhub-visitante-id'), corpo.visitante_id)
+  assert.equal(Object.hasOwn(corpo, 'visitante_id'), false)
+  assert.equal(storage.has('quizhub-visitante-id'), false)
+  assert.equal(
+    storage.get('quizhub-classic-active-partida'),
+    '123e4567-e89b-42d3-a456-426614174000',
+  )
 })
 
 test('erro ao carregar categorias permite tentar novamente', async (t) => {
@@ -478,7 +482,7 @@ test('marca protege partida clássica ativa e confirmação abandona o progresso
   globalThis.window = { location: { protocol: 'http:', hostname: 'localhost', pathname: '/' }, history: { pushState() {} }, addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout }
   globalThis.localStorage = { getItem: () => null, setItem() {} }
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  const partida = { partida_id: 'ativa', jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0, pergunta_atual: { id: 1, pergunta: 'Pergunta em curso?', alternativas: ['A', 'B', 'C', 'D'] } }
+  const partida = { partida_id: '123e4567-e89b-42d3-a456-426614174021', jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0, pergunta_atual: { id: 1, pergunta: 'Pergunta em curso?', alternativas: ['A', 'B', 'C', 'D'] } }
   globalThis.fetch = async (url) => {
     if (url.endsWith('/auth/me')) return Response.json({ nome: 'Levi' })
     if (url.endsWith('/categorias/jogaveis')) return Response.json([{ id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' }])

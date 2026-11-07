@@ -519,11 +519,13 @@ class MeuConteudoPerguntasTestCase(unittest.TestCase):
 
     def test_snapshot_classico_permanece_apos_edicao_e_exclusao_da_pergunta(self):
         pergunta = self.criar_classica().json()
+        visitante_id = uuid4()
         with self.sessions() as db:
             original = db.get(Pergunta, pergunta["id"])
             ocorrencia = PartidaPergunta(
                 partida=Partida(
-                    jogador=Jogador(nome="Histórico"), categoria_id=self.classica.id
+                    jogador=Jogador(nome="Histórico", visitante_id=visitante_id),
+                    categoria_id=self.classica.id,
                 ),
                 pergunta=original,
                 ordem=1,
@@ -557,7 +559,12 @@ class MeuConteudoPerguntasTestCase(unittest.TestCase):
             self.assertEqual(publica.pergunta, "Qual é a resposta?")
             self.assertEqual(publica.alternativas, ["Um", "Dois", "Três", "Quatro"])
             resultado = PartidasPersistentes().responder(
-                db, str(ocorrencia.partida_id), ocorrencia.pergunta_id, 1
+                db,
+                str(ocorrencia.partida_id),
+                ocorrencia.pergunta_id,
+                1,
+                None,
+                visitante_id,
             )
             self.assertTrue(resultado.correta)
             self.assertEqual(resultado.alternativa_correta, 1)

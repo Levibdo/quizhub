@@ -19,10 +19,12 @@ JWT_COOKIE_SECURE_ENV = "JWT_COOKIE_SECURE"
 JWT_ALGORITHM = "HS256"
 JWT_COOKIE_NAME = "quizhub_access_token"
 CSRF_COOKIE_NAME = "quizhub_csrf_token"
+CLASSIC_GUEST_COOKIE_NAME = "quizhub_classic_guest"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_TRUSTED_ORIGINS_ENV = "CSRF_TRUSTED_ORIGINS"
 SESSAO_DURACAO = timedelta(hours=8)
 CSRF_DURACAO = timedelta(minutes=30)
+CLASSIC_GUEST_DURATION = timedelta(days=30)
 
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("quizhub-dummy-password")
@@ -60,6 +62,40 @@ def criar_token_acesso(
         obter_segredo_jwt(),
         algorithm=JWT_ALGORITHM,
     )
+
+
+def criar_token_visitante_classico(
+    visitante_id: UUID,
+    agora: datetime | None = None,
+    duracao: timedelta = CLASSIC_GUEST_DURATION,
+) -> str:
+    emitido_em = agora or datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": str(visitante_id),
+            "iat": emitido_em,
+            "exp": emitido_em + duracao,
+            "tipo": "visitante_classico",
+        },
+        obter_segredo_jwt(),
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def identificar_visitante_classico(token: str | None) -> UUID | None:
+    if token is None:
+        return None
+    try:
+        payload = jwt.decode(
+            token,
+            obter_segredo_jwt(),
+            algorithms=[JWT_ALGORITHM],
+        )
+        if payload.get("tipo") != "visitante_classico":
+            return None
+        return UUID(payload["sub"])
+    except (InvalidTokenError, KeyError, TypeError, ValueError):
+        return None
 
 
 def _identificador_sessao(token: str) -> str:
@@ -130,6 +166,11 @@ def validar_origem_csrf(request: Request) -> None:
         raise _erro_csrf(
             "CSRF_ORIGEM_INVALIDA", "origem da requisição não autorizada"
         )
+
+
+def exigir_origem_confiavel(request: Request) -> None:
+    """Protege escritas por cookie quando não existe token CSRF de usuário."""
+    validar_origem_csrf(request)
 
 
 def validar_token_csrf(

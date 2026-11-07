@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine, func, select
@@ -12,7 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.v1.partidas import avancar_pergunta, criar_partida, enviar_resposta
+from app.api.v1.partidas import (
+    avancar_pergunta,
+    criar_partida,
+    enviar_resposta,
+    recuperar_partida,
+)
 from app.db.session import get_db
 from app.main import app
 from app.db.base import Base
@@ -34,6 +39,12 @@ from app.models import (
     Usuario,
 )
 from app.schemas.partidas import AvancarPergunta, CriarPartida, EnviarResposta, PartidaPublica
+from app.security import (
+    CLASSIC_GUEST_COOKIE_NAME,
+    JWT_COOKIE_NAME,
+    criar_token_acesso,
+    criar_token_visitante_classico,
+)
 from app.services.partidas import PartidasPersistentes
 
 
@@ -93,13 +104,16 @@ class TestPartidasPersistentes(unittest.TestCase):
             seed_catalogo_partidas(session)
         self.relogio = Relogio()
         self.servico = PartidasPersistentes(self.relogio)
+        self.visitante_id = uuid4()
 
     def tearDown(self):
         self.engine.dispose()
 
     def criar(self, categoria="tecnologia", jogador="Levi"):
         with self.sessions() as session:
-            return self.servico.criar(session, jogador, categoria)
+            return self.servico.criar(
+                session, jogador, categoria, visitante_id=self.visitante_id
+            )
 
     def atual(self, session, partida_id):
         partida_uuid = UUID(partida_id) if isinstance(partida_id, str) else partida_id
@@ -116,7 +130,12 @@ class TestPartidasPersistentes(unittest.TestCase):
     def responder(self, partida_id, pergunta_id, alternativa):
         with self.sessions() as session:
             return self.servico.responder(
-                session, partida_id, pergunta_id, alternativa
+                session,
+                partida_id,
+                pergunta_id,
+                alternativa,
+                None,
+                self.visitante_id,
             )
 
     def test_criacao_persiste_jogador_partida_e_dez_perguntas(self):
@@ -190,7 +209,7 @@ class TestPartidasPersistentes(unittest.TestCase):
             if resposta.status == "EM_ANDAMENTO":
                 with self.sessions() as session:
                     self.servico.avancar(
-                        session, criada.partida_id, pergunta_id
+                        session, criada.partida_id, pergunta_id, None, self.visitante_id
                     )
         with self.sessions() as session:
             partida = session.get(Partida, UUID(criada.partida_id))
@@ -212,7 +231,10 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.assertIsNone(partida.jogador.usuario_id)
 
     def test_criacao_sem_identidade_preserva_visitante_historico(self):
-        criada = self.criar(jogador="Visitante legado")
+        with self.sessions() as session:
+            criada = self.servico.criar(
+                session, "Visitante legado", "tecnologia"
+            )
         with self.sessions() as session:
             partida = session.get(Partida, UUID(criada.partida_id))
             self.assertIsNone(partida.jogador.visitante_id)
@@ -239,13 +261,13 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.assertEqual(partida.jogador.usuario_id, usuario.id)
             self.assertIsNone(partida.jogador.visitante_id)
 
-    def test_schema_rejeita_visitante_id_invalido(self):
-        with self.assertRaises(ValidationError):
-            CriarPartida(
-                jogador="Visitante",
-                categoria="tecnologia",
-                visitante_id="nao-e-uuid",
-            )
+    def test_schema_ignora_identidade_de_visitante_controlada_pelo_cliente(self):
+        entrada = CriarPartida(
+            jogador="Visitante",
+            categoria="tecnologia",
+            visitante_id=str(uuid4()),
+        )
+        self.assertNotIn("visitante_id", entrada.model_dump())
 
     def test_cada_nova_partida_cria_novo_jogador_mesmo_nome(self):
         self.criar(jogador="João")
@@ -414,7 +436,9 @@ class TestPartidasPersistentes(unittest.TestCase):
 
         self.assertIsNone(resultado.pergunta_disponibilizada_em)
         with self.sessions() as session:
-            self.servico.avancar(session, criada.partida_id, pergunta_id)
+            self.servico.avancar(
+                session, criada.partida_id, pergunta_id, None, self.visitante_id
+            )
         with self.sessions() as session:
             resposta = session.scalar(select(Resposta))
             partida = session.get(Partida, UUID(criada.partida_id))
@@ -526,7 +550,13 @@ class TestPartidasPersistentes(unittest.TestCase):
                 self.assertEqual(resultado.status, "EM_ANDAMENTO")
                 self.assertIsNone(resultado.pergunta_atual)
                 with self.sessions() as session:
-                    self.servico.avancar(session, criada.partida_id, last_question_id)
+                    self.servico.avancar(
+                        session,
+                        criada.partida_id,
+                        last_question_id,
+                        None,
+                        self.visitante_id,
+                    )
 
         self.assertEqual(resultado.status, "FINALIZADA")
         self.assertIsNotNone(resultado.finalizada_em)
@@ -544,7 +574,10 @@ class TestPartidasPersistentes(unittest.TestCase):
     def test_nova_session_reconstroi_e_continua_partida(self):
         creation_session = self.sessions()
         criada = self.servico.criar(
-            creation_session, "Levi", "tecnologia"
+            creation_session,
+            "Levi",
+            "tecnologia",
+            visitante_id=self.visitante_id,
         )
         creation_session.close()
 
@@ -555,7 +588,12 @@ class TestPartidasPersistentes(unittest.TestCase):
 
         response_session = self.sessions()
         resultado = self.servico.responder(
-            response_session, criada.partida_id, pergunta_id, correta
+            response_session,
+            criada.partida_id,
+            pergunta_id,
+            correta,
+            None,
+            self.visitante_id,
         )
         response_session.close()
         self.assertEqual(resultado.acertos, 1)
@@ -623,7 +661,12 @@ class TestPartidasPersistentes(unittest.TestCase):
         ):
             with self.assertRaises(HTTPException) as error:
                 self.servico.responder(
-                    session, criada.partida_id, pergunta_id, alternativa
+                    session,
+                    criada.partida_id,
+                    pergunta_id,
+                    alternativa,
+                    None,
+                    self.visitante_id,
                 )
         session.close()
         self.assertEqual(error.exception.status_code, 409)
@@ -664,7 +707,13 @@ class TestPartidasPersistentes(unittest.TestCase):
                 self.assertEqual(resultado.correta, None if modo == 'timeout' else modo == 'correta')
                 self.assertIsNone(resultado.pergunta_atual)
                 with self.sessions() as session:
-                    proxima = self.servico.avancar(session, criada.partida_id, pergunta_id)
+                    proxima = self.servico.avancar(
+                        session,
+                        criada.partida_id,
+                        pergunta_id,
+                        None,
+                        self.visitante_id,
+                    )
                 self.assertNotEqual(proxima.pergunta_atual.id, pergunta_id)
                 self.assertEqual(set(proxima.pergunta_atual.model_dump()), {'id', 'pergunta', 'alternativas'})
                 self.assertNotIn('explicacao', proxima.model_dump_json())
@@ -674,7 +723,13 @@ class TestPartidasPersistentes(unittest.TestCase):
         criada = self.criar()
         with self.sessions() as session:
             with self.assertRaises(HTTPException):
-                self.servico.avancar(session, criada.partida_id, criada.pergunta_atual.id)
+                self.servico.avancar(
+                    session,
+                    criada.partida_id,
+                    criada.pergunta_atual.id,
+                    None,
+                    self.visitante_id,
+                )
         resultado = self.responder(criada.partida_id, criada.pergunta_atual.id, 0)
         self.assertIsNone(resultado.pergunta_disponibilizada_em)
         with self.sessions() as session:
@@ -684,12 +739,24 @@ class TestPartidasPersistentes(unittest.TestCase):
             self.responder(criada.partida_id, proxima_id, 0)
         self.relogio.agora += timedelta(minutes=5)
         with self.sessions() as session:
-            proxima = self.servico.avancar(session, criada.partida_id, criada.pergunta_atual.id)
+            proxima = self.servico.avancar(
+                session,
+                criada.partida_id,
+                criada.pergunta_atual.id,
+                None,
+                self.visitante_id,
+            )
         inicio = proxima.pergunta_disponibilizada_em
         self.assertEqual(como_utc(inicio), self.relogio.agora)
         self.relogio.agora += timedelta(seconds=2)
         with self.sessions() as session:
-            repetida = self.servico.avancar(session, criada.partida_id, criada.pergunta_atual.id)
+            repetida = self.servico.avancar(
+                session,
+                criada.partida_id,
+                criada.pergunta_atual.id,
+                None,
+                self.visitante_id,
+            )
         self.assertEqual(como_utc(repetida.pergunta_disponibilizada_em), como_utc(inicio))
         self.assertEqual(proxima.pergunta_atual.id, repetida.pergunta_atual.id)
         self.assertNotIn('explicacao', repetida.model_dump_json())
@@ -697,11 +764,153 @@ class TestPartidasPersistentes(unittest.TestCase):
         self.assertFalse(resultado2.timeout)
         with self.sessions() as session:
             with self.assertRaises(HTTPException):
-                self.servico.avancar(session, criada.partida_id, criada.pergunta_atual.id)
+                self.servico.avancar(
+                    session,
+                    criada.partida_id,
+                    criada.pergunta_atual.id,
+                    None,
+                    self.visitante_id,
+                )
+
+    def test_recuperacao_preserva_sequencia_prazo_e_nao_escreve(self):
+        criada = self.criar()
+        with self.sessions() as session:
+            partida_antes = session.execute(select(
+                Partida.status,
+                Partida.pontuacao,
+                Partida.acertos,
+                Partida.erros,
+                Partida.finalizada_em,
+            ).where(Partida.id == UUID(criada.partida_id))).one()
+            respostas_antes = session.scalar(
+                select(func.count()).select_from(Resposta)
+            )
+            antes = list(session.execute(
+                select(
+                    PartidaPergunta.id,
+                    PartidaPergunta.pergunta_id,
+                    PartidaPergunta.ordem,
+                    PartidaPergunta.disponibilizada_em,
+                    PartidaPergunta.prazo_resposta_em,
+                )
+                .where(PartidaPergunta.partida_id == UUID(criada.partida_id))
+                .order_by(PartidaPergunta.ordem)
+            ))
+            recuperada = self.servico.recuperar(
+                session, criada.partida_id, None, self.visitante_id
+            )
+            depois = list(session.execute(
+                select(
+                    PartidaPergunta.id,
+                    PartidaPergunta.pergunta_id,
+                    PartidaPergunta.ordem,
+                    PartidaPergunta.disponibilizada_em,
+                    PartidaPergunta.prazo_resposta_em,
+                )
+                .where(PartidaPergunta.partida_id == UUID(criada.partida_id))
+                .order_by(PartidaPergunta.ordem)
+            ))
+            partida_depois = session.execute(select(
+                Partida.status,
+                Partida.pontuacao,
+                Partida.acertos,
+                Partida.erros,
+                Partida.finalizada_em,
+            ).where(Partida.id == UUID(criada.partida_id))).one()
+            respostas_depois = session.scalar(
+                select(func.count()).select_from(Resposta)
+            )
+        self.assertEqual(recuperada.fase, "AGUARDANDO_RESPOSTA")
+        self.assertEqual(recuperada.ordem_atual, 1)
+        self.assertEqual(recuperada.total_perguntas, 10)
+        self.assertEqual(recuperada.pergunta_atual.id, criada.pergunta_atual.id)
+        self.assertEqual(
+            como_utc(recuperada.prazo_resposta_em),
+            como_utc(criada.prazo_resposta_em),
+        )
+        self.assertEqual(antes, depois)
+        self.assertEqual(partida_antes, partida_depois)
+        self.assertEqual(respostas_antes, respostas_depois)
+
+    def test_recuperacao_devolve_feedback_sem_revelar_proxima_pergunta(self):
+        criada = self.criar()
+        resultado = self.responder(
+            criada.partida_id, criada.pergunta_atual.id, 0
+        )
+        with self.sessions() as session:
+            recuperada = self.servico.recuperar(
+                session, criada.partida_id, None, self.visitante_id
+            )
+        self.assertEqual(recuperada.fase, "AGUARDANDO_AVANCO")
+        self.assertEqual(recuperada.pergunta_atual.id, criada.pergunta_atual.id)
+        self.assertEqual(
+            recuperada.resultado_ultima_resposta.pergunta_id,
+            criada.pergunta_atual.id,
+        )
+        self.assertEqual(
+            recuperada.resultado_ultima_resposta.alternativa_correta,
+            resultado.alternativa_correta,
+        )
+
+    def test_propriedade_centralizada_protege_leitura_resposta_e_avanco(self):
+        criada = self.criar()
+        outra_identidade = uuid4()
+        operacoes = (
+            lambda session: self.servico.recuperar(
+                session, criada.partida_id, None, outra_identidade
+            ),
+            lambda session: self.servico.responder(
+                session,
+                criada.partida_id,
+                criada.pergunta_atual.id,
+                0,
+                None,
+                outra_identidade,
+            ),
+            lambda session: self.servico.avancar(
+                session,
+                criada.partida_id,
+                criada.pergunta_atual.id,
+                None,
+                outra_identidade,
+            ),
+        )
+        for operacao in operacoes:
+            with self.subTest(operacao=operacao):
+                with self.sessions() as session, self.assertRaises(HTTPException) as erro:
+                    operacao(session)
+                self.assertEqual(erro.exception.status_code, 404)
+
+    def test_partida_concluida_e_legado_sem_identidade_tem_estado_seguro(self):
+        criada = self.criar()
+        with self.sessions() as session:
+            partida = session.get(Partida, UUID(criada.partida_id))
+            partida.status = "FINALIZADA"
+            partida.finalizada_em = self.relogio.agora
+            session.commit()
+        with self.sessions() as session:
+            recuperada = self.servico.recuperar(
+                session, criada.partida_id, None, self.visitante_id
+            )
+        self.assertEqual(recuperada.fase, "FINALIZADA")
+        self.assertIsNone(recuperada.pergunta_atual)
+
+        with self.sessions() as session:
+            legada = self.servico.criar(session, "Legado", "tecnologia")
+            with self.assertRaises(HTTPException) as erro:
+                self.servico.recuperar(
+                    session, legada.partida_id, None, self.visitante_id
+                )
+        self.assertEqual(erro.exception.status_code, 404)
 
 
 class TestPartidasEndpoints(unittest.TestCase):
     def setUp(self):
+        self.jwt_env = patch.dict(
+            "os.environ", {"JWT_SECRET": "segredo-de-teste-partidas-com-mais-de-32-bytes"}
+        )
+        self.jwt_env.start()
+        self.addCleanup(self.jwt_env.stop)
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine, expire_on_commit=False)
@@ -712,8 +921,13 @@ class TestPartidasEndpoints(unittest.TestCase):
         self.engine.dispose()
 
     def test_funcoes_de_endpoint_preservam_contrato(self):
+        token_visitante = criar_token_visitante_classico(uuid4())
         created = criar_partida(
-            CriarPartida(jogador="Levi", categoria="tecnologia"), self.session, None
+            CriarPartida(jogador="Levi", categoria="tecnologia"),
+            Response(),
+            self.session,
+            None,
+            token_visitante,
         )
         self.assertIsInstance(created, PartidaPublica)
         match = created.model_dump()
@@ -729,6 +943,8 @@ class TestPartidasEndpoints(unittest.TestCase):
                 pergunta_id=match["pergunta_atual"]["id"], alternativa=0
             ),
             self.session,
+            None,
+            token_visitante,
         )
         self.assertIn("pontos_ganhos", answered.model_dump())
         self.assertIn("alternativa_correta", answered.model_dump())
@@ -739,13 +955,26 @@ class TestPartidasEndpoints(unittest.TestCase):
             match["partida_id"],
             AvancarPergunta(pergunta_id=pergunta.id),
             self.session,
+            None,
+            token_visitante,
         )
         self.assertNotIn("explicacao", proxima.model_dump_json())
         self.assertNotIn("alternativa_correta", proxima.model_dump_json())
 
+        recuperada = recuperar_partida(
+            match["partida_id"], self.session, None, token_visitante
+        )
+        self.assertEqual(recuperada.fase, "AGUARDANDO_RESPOSTA")
+        self.assertEqual(recuperada.ordem_atual, 2)
+
 
 class TestFluxoHttpPartidas(unittest.TestCase):
     def setUp(self):
+        self.jwt_env = patch.dict(
+            "os.environ", {"JWT_SECRET": "segredo-de-teste-partidas-http-com-mais-de-32-bytes"}
+        )
+        self.jwt_env.start()
+        self.addCleanup(self.jwt_env.stop)
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -762,6 +991,7 @@ class TestFluxoHttpPartidas(unittest.TestCase):
 
         app.dependency_overrides[get_db] = banco_teste
         self.client = TestClient(app)
+        self.origem = {"Origin": "http://testserver"}
 
     def tearDown(self):
         self.client.close()
@@ -772,6 +1002,7 @@ class TestFluxoHttpPartidas(unittest.TestCase):
         criada = self.client.post(
             "/api/v1/partidas",
             json={"jogador": "Integração", "categoria": "tecnologia"},
+            headers=self.origem,
         )
         self.assertEqual(criada.status_code, 201, criada.text)
         partida = criada.json()
@@ -780,6 +1011,7 @@ class TestFluxoHttpPartidas(unittest.TestCase):
         respondida = self.client.post(
             f"/api/v1/partidas/{partida['partida_id']}/respostas",
             json={"pergunta_id": pergunta_1["id"], "alternativa": 0},
+            headers=self.origem,
         )
         self.assertEqual(respondida.status_code, 200, respondida.text)
         feedback = respondida.json()
@@ -789,6 +1021,7 @@ class TestFluxoHttpPartidas(unittest.TestCase):
         avancada = self.client.post(
             f"/api/v1/partidas/{partida['partida_id']}/proxima",
             json={"pergunta_id": pergunta_1["id"]},
+            headers=self.origem,
         )
         self.assertEqual(avancada.status_code, 200, avancada.text)
         proxima = avancada.json()
@@ -801,6 +1034,7 @@ class TestFluxoHttpPartidas(unittest.TestCase):
         repetida = self.client.post(
             f"/api/v1/partidas/{partida['partida_id']}/proxima",
             json={"pergunta_id": pergunta_1["id"]},
+            headers=self.origem,
         )
         self.assertEqual(repetida.status_code, 200, repetida.text)
         self.assertEqual(
@@ -815,12 +1049,217 @@ class TestFluxoHttpPartidas(unittest.TestCase):
         segunda_resposta = self.client.post(
             f"/api/v1/partidas/{partida['partida_id']}/respostas",
             json={"pergunta_id": pergunta_2["id"], "alternativa": 0},
+            headers=self.origem,
         )
         self.assertEqual(segunda_resposta.status_code, 200, segunda_resposta.text)
         with self.sessions() as session:
             self.assertEqual(
                 session.scalar(select(func.count()).select_from(Resposta)), 2
             )
+
+    def test_http_recupera_feedback_e_isola_identidade_convidada(self):
+        criada = self.client.post(
+            "/api/v1/partidas",
+            json={
+                "jogador": "Visitante seguro",
+                "categoria": "tecnologia",
+                "visitante_id": str(uuid4()),
+            },
+            headers=self.origem,
+        )
+        self.assertEqual(criada.status_code, 201, criada.text)
+        partida = criada.json()
+        self.assertIn("quizhub_classic_guest", criada.cookies)
+
+        primeira = self.client.get(f"/api/v1/partidas/{partida['partida_id']}")
+        self.assertEqual(primeira.status_code, 200, primeira.text)
+        self.assertEqual(primeira.json()["fase"], "AGUARDANDO_RESPOSTA")
+
+        resposta = self.client.post(
+            f"/api/v1/partidas/{partida['partida_id']}/respostas",
+            json={"pergunta_id": partida["pergunta_atual"]["id"], "alternativa": 0},
+            headers=self.origem,
+        )
+        self.assertEqual(resposta.status_code, 200, resposta.text)
+        feedback = self.client.get(f"/api/v1/partidas/{partida['partida_id']}")
+        self.assertEqual(feedback.status_code, 200, feedback.text)
+        self.assertEqual(feedback.json()["fase"], "AGUARDANDO_AVANCO")
+        self.assertIsNotNone(feedback.json()["resultado_ultima_resposta"])
+
+        sem_identidade = TestClient(app)
+        try:
+            anonima = sem_identidade.get(
+                f"/api/v1/partidas/{partida['partida_id']}"
+            )
+            self.assertEqual(anonima.status_code, 401)
+            outra = sem_identidade.post(
+                "/api/v1/partidas",
+                json={"jogador": "Outro", "categoria": "tecnologia"},
+                headers=self.origem,
+            )
+            self.assertEqual(outra.status_code, 201, outra.text)
+            alheia = sem_identidade.get(
+                f"/api/v1/partidas/{partida['partida_id']}"
+            )
+            self.assertEqual(alheia.status_code, 404)
+        finally:
+            sem_identidade.close()
+
+    def test_origem_e_obrigatoria_nos_tres_posts_classicos(self):
+        total_inicial = 0
+        for headers in ({}, {"Origin": "https://origem-invalida.example"}):
+            resposta = self.client.post(
+                "/api/v1/partidas",
+                json={"jogador": "CSRF", "categoria": "tecnologia"},
+                headers=headers,
+            )
+            self.assertEqual(resposta.status_code, 403, resposta.text)
+        with self.sessions() as session:
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(Partida)),
+                total_inicial,
+            )
+
+        criada = self.client.post(
+            "/api/v1/partidas",
+            json={"jogador": "CSRF", "categoria": "tecnologia"},
+            headers=self.origem,
+        ).json()
+        rota_resposta = f"/api/v1/partidas/{criada['partida_id']}/respostas"
+        payload_resposta = {
+            "pergunta_id": criada["pergunta_atual"]["id"], "alternativa": 0
+        }
+        for headers in ({}, {"Origin": "https://origem-invalida.example"}):
+            resposta = self.client.post(
+                rota_resposta, json=payload_resposta, headers=headers
+            )
+            self.assertEqual(resposta.status_code, 403, resposta.text)
+
+        respondida = self.client.post(
+            rota_resposta, json=payload_resposta, headers=self.origem
+        )
+        self.assertEqual(respondida.status_code, 200, respondida.text)
+        rota_avanco = f"/api/v1/partidas/{criada['partida_id']}/proxima"
+        payload_avanco = {"pergunta_id": criada["pergunta_atual"]["id"]}
+        for headers in ({}, {"Origin": "https://origem-invalida.example"}):
+            resposta = self.client.post(
+                rota_avanco, json=payload_avanco, headers=headers
+            )
+            self.assertEqual(resposta.status_code, 403, resposta.text)
+        avancada = self.client.post(
+            rota_avanco, json=payload_avanco, headers=self.origem
+        )
+        self.assertEqual(avancada.status_code, 200, avancada.text)
+
+    def test_cookie_visitante_tem_atributos_de_seguranca_completos(self):
+        with patch.dict("os.environ", {"JWT_COOKIE_SECURE": "true"}):
+            resposta = self.client.post(
+                "/api/v1/partidas",
+                json={"jogador": "Cookie", "categoria": "tecnologia"},
+                headers=self.origem,
+            )
+        self.assertEqual(resposta.status_code, 201, resposta.text)
+        cookie = resposta.headers["set-cookie"].lower()
+        self.assertIn(f"{CLASSIC_GUEST_COOKIE_NAME}=", cookie)
+        self.assertIn("httponly", cookie)
+        self.assertIn("secure", cookie)
+        self.assertIn("samesite=lax", cookie)
+        self.assertIn("path=/api/v1/partidas", cookie)
+        self.assertIn("max-age=2592000", cookie)
+
+    def test_tokens_visitantes_invalidos_expirados_e_de_tipo_errado_sao_rejeitados(self):
+        criada = self.client.post(
+            "/api/v1/partidas",
+            json={"jogador": "Token", "categoria": "tecnologia"},
+            headers=self.origem,
+        ).json()
+        rota = f"/api/v1/partidas/{criada['partida_id']}"
+        emitido = datetime.now(timezone.utc) - timedelta(hours=2)
+        tokens = (
+            criar_token_visitante_classico(
+                uuid4(), agora=emitido, duracao=timedelta(hours=1)
+            ),
+            criar_token_visitante_classico(uuid4()) + "adulterado",
+            criar_token_acesso(uuid4()),
+        )
+        for token in tokens:
+            with self.subTest(token=token[-8:]):
+                cliente = TestClient(app)
+                try:
+                    cliente.cookies.set(CLASSIC_GUEST_COOKIE_NAME, token)
+                    resposta = cliente.get(rota)
+                    self.assertEqual(resposta.status_code, 401, resposta.text)
+                finally:
+                    cliente.close()
+
+    def test_usuario_autenticado_nao_acessa_partida_de_outro_e_sessao_inativa_expira(self):
+        with self.sessions() as session:
+            usuario_a = Usuario(
+                nome="Usuário A", email="a-propriedade@example.com", senha_hash="hash"
+            )
+            usuario_b = Usuario(
+                nome="Usuário B", email="b-propriedade@example.com", senha_hash="hash"
+            )
+            session.add_all((usuario_a, usuario_b))
+            session.commit()
+            usuario_a_id, usuario_b_id = usuario_a.id, usuario_b.id
+        cliente_a, cliente_b = TestClient(app), TestClient(app)
+        try:
+            cliente_a.cookies.set(JWT_COOKIE_NAME, criar_token_acesso(usuario_a_id))
+            cliente_b.cookies.set(JWT_COOKIE_NAME, criar_token_acesso(usuario_b_id))
+            criada = cliente_a.post(
+                "/api/v1/partidas",
+                json={"categoria": "tecnologia"},
+                headers=self.origem,
+            )
+            self.assertEqual(criada.status_code, 201, criada.text)
+            partida = criada.json()
+            rota = f"/api/v1/partidas/{partida['partida_id']}"
+            self.assertEqual(cliente_a.get(rota).status_code, 200)
+            self.assertEqual(cliente_b.get(rota).status_code, 404)
+            self.assertEqual(cliente_b.post(
+                f"{rota}/respostas",
+                json={"pergunta_id": partida["pergunta_atual"]["id"], "alternativa": 0},
+                headers=self.origem,
+            ).status_code, 404)
+            self.assertEqual(cliente_b.post(
+                f"{rota}/proxima",
+                json={"pergunta_id": partida["pergunta_atual"]["id"]},
+                headers=self.origem,
+            ).status_code, 404)
+
+            with self.sessions() as session:
+                session.get(Usuario, usuario_a_id).ativo = False
+                session.commit()
+            self.assertEqual(cliente_a.get(rota).status_code, 401)
+        finally:
+            cliente_a.close()
+            cliente_b.close()
+
+    def test_sessao_autenticada_expirada_nao_recupera_partida_historica(self):
+        with self.sessions() as session:
+            usuario = Usuario(
+                nome="Histórico", email="historico-auth@example.com", senha_hash="hash"
+            )
+            session.add(usuario)
+            session.commit()
+            usuario_id = usuario.id
+            criada = PartidasPersistentes().criar(
+                session, None, "tecnologia", usuario
+            )
+        rota = f"/api/v1/partidas/{criada.partida_id}"
+        cliente = TestClient(app)
+        try:
+            cliente.cookies.set(JWT_COOKIE_NAME, criar_token_acesso(usuario_id))
+            self.assertEqual(cliente.get(rota).status_code, 200)
+            cliente.cookies.set(JWT_COOKIE_NAME, criar_token_acesso(
+                usuario_id,
+                agora=datetime.now(timezone.utc) - timedelta(hours=2),
+                duracao=timedelta(hours=1),
+            ))
+            self.assertEqual(cliente.get(rota).status_code, 401)
+        finally:
+            cliente.close()
 
 
 if __name__ == "__main__":

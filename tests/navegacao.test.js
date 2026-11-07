@@ -44,6 +44,8 @@ function ambienteHistorico(caminhoInicial = '/') {
 async function montar(t, {
   autenticado = true, categorias = [], partida = null, caminhoInicial = '/',
   auditoria = null, catalogosAdmin = null, perguntasAdmin = null, rascunhoStatus = 'EM_EDICAO',
+  partidaRecuperada = null, respostaPartida = null, avancoPartida = null,
+  storageInicial = {},
 } = {}) {
   const windowOriginal = globalThis.window
   const fetchOriginal = globalThis.fetch
@@ -54,7 +56,12 @@ async function montar(t, {
   const requisicoes = []
   globalThis.window = ambienteHistorico(caminhoInicial)
   globalThis.document = { querySelector: () => ({ setAttribute(nome, valor) { atributosTitulo.push([nome, valor]) }, focus() { focos.push(globalThis.window.location.pathname) } }), getElementById: () => null }
-  globalThis.localStorage = { getItem: () => null, setItem() {} }
+  const storage = new Map(Object.entries(storageInicial))
+  globalThis.localStorage = {
+    getItem: (chave) => storage.get(chave) ?? null,
+    setItem: (chave, valor) => storage.set(chave, String(valor)),
+    removeItem: (chave) => storage.delete(chave),
+  }
   globalThis.fetch = async (url, opcoes = {}) => {
     requisicoes.push({ url, opcoes })
     if (url.endsWith('/auth/me')) return autenticado
@@ -66,6 +73,36 @@ async function montar(t, {
     if (url.includes('/meu-conteudo/categorias?')) return Response.json([])
     if (url.endsWith('/categorias/jogaveis')) return Response.json(categorias)
     if (url.includes('/ranking?')) return Response.json([])
+    if (/\/partidas\/[0-9a-f-]+$/.test(url) && (opcoes.method ?? 'GET') === 'GET') {
+      const recuperacao = typeof partidaRecuperada === 'function'
+        ? await partidaRecuperada()
+        : await partidaRecuperada
+      if (recuperacao instanceof Error) {
+        return Response.json(
+          { detail: recuperacao.message },
+          { status: recuperacao.status ?? 503 },
+        )
+      }
+      return Response.json(recuperacao)
+    }
+    if (url.endsWith('/respostas') && respostaPartida) {
+      const resposta = typeof respostaPartida === 'function'
+        ? await respostaPartida()
+        : await respostaPartida
+      if (resposta instanceof Error) {
+        return Response.json({ detail: resposta.message }, { status: resposta.status ?? 500 })
+      }
+      return Response.json(resposta)
+    }
+    if (url.endsWith('/proxima') && avancoPartida) {
+      const resposta = typeof avancoPartida === 'function'
+        ? await avancoPartida()
+        : await avancoPartida
+      if (resposta instanceof Error) {
+        return Response.json({ detail: resposta.message }, { status: resposta.status ?? 500 })
+      }
+      return Response.json(resposta)
+    }
     if (url.endsWith('/admin/resumo')) return Response.json({ catalogos: [], auditorias: [] })
     if (url.endsWith('/admin/csrf')) return Response.json({ token: 'csrf-teste-administrativo' })
     if (/\/admin\/catalogos\/[^/]+\/reativar$/.test(url)) return Response.json({ status: 'ATIVO', versao: 1, perguntas_elegiveis: 15 })
@@ -204,7 +241,7 @@ async function montar(t, {
   await act(async () => { renderer = create(createElement(App)) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
   t.after(async () => { await act(async () => renderer.unmount()); globalThis.window = windowOriginal; globalThis.fetch = fetchOriginal; globalThis.localStorage = storageOriginal; globalThis.document = documentOriginal })
-  return { renderer, focos, atributosTitulo, requisicoes, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
+  return { renderer, focos, atributosTitulo, requisicoes, storage, button(label) { return renderer.root.findAllByType('button').find((item) => texto(item) === label) }, texto() { return texto(renderer.root) } }
 }
 
 test('cabeçalho mostra a sessão autenticada sem duplicar o indicador na home', async (t) => {
@@ -300,10 +337,11 @@ test('histórico respeita cancelamento e confirmação de formulário sujo', asy
 })
 
 test('histórico protege partida clássica ativa ao voltar', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174010'
   const ui = await montar(t, {
     categorias: [{ id: 'cat', slug: 'geral', nome: 'Geral', descricao: '', modo: 'QUIZ_CLASSICO' }],
     partida: {
-      partida_id: 'partida-historico', jogador: 'Levi', categoria: 'geral',
+      partida_id: partidaId, jogador: 'Levi', categoria: 'geral',
       status: 'EM_ANDAMENTO', pontuacao: 0, acertos: 0, erros: 0,
       pergunta_atual: { id: 1, pergunta: 'Pergunta preservada?', alternativas: ['A', 'B', 'C', 'D'] },
     },
@@ -311,12 +349,12 @@ test('histórico protege partida clássica ativa ao voltar', async (t) => {
   await act(async () => ui.button('Continuar para os jogos').props.onClick())
   await act(async () => ui.button('Jogar').props.onClick())
   await act(async () => ui.renderer.root.findByProps({ className: 'categoria-card' }).props.onClick())
-  assert.equal(window.location.pathname, '/quiz')
+  assert.equal(window.location.pathname, `/quiz/${partidaId}`)
   await act(async () => window.history.back())
   assert.ok(ui.button('Continuar jogando'))
   assert.match(ui.texto(), /Pergunta preservada/)
   await act(async () => ui.button('Continuar jogando').props.onClick())
-  assert.equal(window.location.pathname, '/quiz')
+  assert.equal(window.location.pathname, `/quiz/${partidaId}`)
   assert.match(ui.texto(), /Pergunta preservada/)
   await act(async () => window.history.back())
   await act(async () => ui.button('Abandonar partida').props.onClick())
@@ -364,10 +402,173 @@ test('resposta pendente não reabre Quiz Clássico após navegação pelo histó
   assert.doesNotMatch(ui.texto(), /Não deve reaparecer/)
 })
 
-test('F5 em rota sem estado não reconstrói partida e conteúdo privado exige sessão', async (t) => {
+test('rota /quiz sem identificador retorna ao início sem criar partida', async (t) => {
   const quiz = await montar(t, { caminhoInicial: '/quiz' })
   assert.equal(window.location.pathname, '/')
   assert.ok(quiz.button('Continuar para os jogos'))
+  assert.equal(quiz.requisicoes.filter(({ url, opcoes }) => url.endsWith('/partidas') && opcoes.method === 'POST').length, 0)
+})
+
+test('F5 recupera a mesma partida, ordem e prazo sem criar duplicata', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174000'
+  const prazo = new Date(Date.now() + 12_000).toISOString()
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${partidaId}`,
+    partidaRecuperada: {
+      partida_id: partidaId, jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO',
+      iniciada_em: new Date().toISOString(), pergunta_disponibilizada_em: new Date().toISOString(),
+      prazo_resposta_em: prazo, finalizada_em: null, pontuacao: 120, acertos: 1, erros: 0,
+      fase: 'AGUARDANDO_RESPOSTA', ordem_atual: 2, total_perguntas: 10,
+      resultado_ultima_resposta: null,
+      pergunta_atual: { id: 2, pergunta: 'Questão recuperada?', alternativas: ['A', 'B', 'C', 'D'] },
+    },
+  })
+  assert.equal(window.location.pathname, `/quiz/${partidaId}`)
+  assert.match(quiz.texto(), /Questão recuperada/)
+  assert.match(quiz.texto(), /02 \/ 10/)
+  assert.equal(quiz.storage.get('quizhub-classic-active-partida'), partidaId)
+  assert.equal(quiz.requisicoes.filter(({ url, opcoes }) => url.endsWith('/partidas') && opcoes.method === 'POST').length, 0)
+})
+
+test('F5 após resposta recupera o feedback e permite avançar', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174001'
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${partidaId}`,
+    partidaRecuperada: {
+      partida_id: partidaId, jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO',
+      iniciada_em: new Date().toISOString(), pergunta_disponibilizada_em: null,
+      prazo_resposta_em: null, finalizada_em: null, pontuacao: 130, acertos: 1, erros: 0,
+      fase: 'AGUARDANDO_AVANCO', ordem_atual: 1, total_perguntas: 10,
+      pergunta_atual: { id: 1, pergunta: 'Questão já respondida?', alternativas: ['A', 'B', 'C', 'D'] },
+      resultado_ultima_resposta: {
+        pergunta_id: 1, alternativa_selecionada: 0, explicacao: 'Feedback preservado.',
+        correta: true, alternativa_correta: 0, timeout: false, pontos_ganhos: 130,
+      },
+    },
+  })
+  assert.match(quiz.texto(), /Feedback preservado/)
+  assert.ok(quiz.button('Próxima pergunta →'))
+})
+
+test('F5 após avanço confirmado com resposta HTTP perdida recupera a próxima questão', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174008'
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${partidaId}`,
+    storageInicial: { 'quizhub-classic-active-partida': partidaId },
+    partidaRecuperada: {
+      partida_id: partidaId, jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO',
+      iniciada_em: new Date().toISOString(), pergunta_disponibilizada_em: new Date().toISOString(),
+      prazo_resposta_em: new Date(Date.now() + 12_000).toISOString(), finalizada_em: null,
+      pontuacao: 120, acertos: 1, erros: 0, fase: 'AGUARDANDO_RESPOSTA',
+      ordem_atual: 2, total_perguntas: 10, resultado_ultima_resposta: null,
+      pergunta_atual: { id: 2, pergunta: 'Questão após avanço confirmado?', alternativas: ['A', 'B', 'C', 'D'] },
+    },
+  })
+  assert.match(quiz.texto(), /Questão após avanço confirmado/)
+  assert.match(quiz.texto(), /02 \/ 10/)
+  assert.equal(quiz.requisicoes.filter(({ url, opcoes }) => url.endsWith('/partidas') && opcoes.method === 'POST').length, 0)
+})
+
+test('falha temporária de rede permite recuperar a mesma partida sem POST', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174002'
+  let tentativas = 0
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${partidaId}`,
+    partidaRecuperada: () => {
+      tentativas += 1
+      if (tentativas === 1) return Object.assign(new Error('indisponível'), { status: 503 })
+      return {
+        partida_id: partidaId, jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO',
+        iniciada_em: new Date().toISOString(), pergunta_disponibilizada_em: new Date().toISOString(),
+        prazo_resposta_em: new Date(Date.now() + 10_000).toISOString(), finalizada_em: null,
+        pontuacao: 0, acertos: 0, erros: 0, fase: 'AGUARDANDO_RESPOSTA',
+        ordem_atual: 1, total_perguntas: 10, resultado_ultima_resposta: null,
+        pergunta_atual: { id: 1, pergunta: 'Rede recuperada?', alternativas: ['A', 'B', 'C', 'D'] },
+      }
+    },
+  })
+  assert.match(quiz.texto(), /Não foi possível recuperar a partida/)
+  await act(async () => quiz.button('Tentar novamente').props.onClick())
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)) })
+  assert.match(quiz.texto(), /Rede recuperada/)
+  assert.equal(tentativas, 2)
+  assert.equal(quiz.requisicoes.filter(({ url, opcoes }) => url.endsWith('/partidas') && opcoes.method === 'POST').length, 0)
+})
+
+test('HTTP 409 ao responder sincroniza feedback confirmado pelo servidor', async (t) => {
+  const partidaId = '123e4567-e89b-42d3-a456-426614174003'
+  let leituras = 0
+  const base = {
+    partida_id: partidaId, jogador: 'Levi', categoria: 'geral', status: 'EM_ANDAMENTO',
+    iniciada_em: new Date().toISOString(), finalizada_em: null,
+    pontuacao: 0, acertos: 0, erros: 0, ordem_atual: 1, total_perguntas: 10,
+    pergunta_atual: { id: 1, pergunta: 'Resposta concorrente?', alternativas: ['A', 'B', 'C', 'D'] },
+  }
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${partidaId}`,
+    partidaRecuperada: () => {
+      leituras += 1
+      if (leituras === 1) return {
+        ...base, fase: 'AGUARDANDO_RESPOSTA', resultado_ultima_resposta: null,
+        pergunta_disponibilizada_em: new Date().toISOString(),
+        prazo_resposta_em: new Date(Date.now() + 10_000).toISOString(),
+      }
+      return {
+        ...base, fase: 'AGUARDANDO_AVANCO', pergunta_disponibilizada_em: null,
+        prazo_resposta_em: null, pontuacao: 120, acertos: 1,
+        resultado_ultima_resposta: {
+          pergunta_id: 1, alternativa_selecionada: 0, explicacao: 'Resposta sincronizada.',
+          correta: true, alternativa_correta: 0, timeout: false, pontos_ganhos: 120,
+        },
+      }
+    },
+    respostaPartida: Object.assign(new Error('pergunta já respondida'), { status: 409 }),
+  })
+  const alternativa = quiz.renderer.root.findByProps({ className: 'alternativas' }).findAllByType('button')[0]
+  await act(async () => alternativa.props.onClick())
+  assert.match(quiz.texto(), /Resposta sincronizada/)
+  assert.equal(leituras, 2)
+})
+
+test('deep link alheio não apaga outra partida ativa armazenada', async (t) => {
+  const ativa = '123e4567-e89b-42d3-a456-426614174004'
+  const alheia = '123e4567-e89b-42d3-a456-426614174005'
+  const erro = Object.assign(new Error('partida inexistente'), { status: 404 })
+  const quiz = await montar(t, {
+    caminhoInicial: `/quiz/${alheia}`,
+    partidaRecuperada: erro,
+    storageInicial: { 'quizhub-classic-active-partida': ativa },
+  })
+  assert.match(quiz.texto(), /inexistente ou inacessível/)
+  assert.equal(quiz.storage.get('quizhub-classic-active-partida'), ativa)
+})
+
+test('partida finalizada reabre a tela de resultado', async (t) => {
+  const finalId = '123e4567-e89b-42d3-a456-426614174006'
+  const finalizada = await montar(t, {
+    caminhoInicial: `/quiz/${finalId}`,
+    partidaRecuperada: {
+      partida_id: finalId, jogador: 'Levi', categoria: 'geral', status: 'FINALIZADA',
+      iniciada_em: new Date().toISOString(), pergunta_disponibilizada_em: null,
+      prazo_resposta_em: null, finalizada_em: new Date().toISOString(), pontuacao: 500,
+      acertos: 5, erros: 5, fase: 'FINALIZADA', ordem_atual: 10,
+      total_perguntas: 10, pergunta_atual: null, resultado_ultima_resposta: null,
+    },
+  })
+  assert.equal(window.location.pathname, '/resultado')
+  assert.match(finalizada.texto(), /Teste concluído/)
+  assert.equal(finalizada.storage.has('quizhub-classic-active-partida'), false)
+})
+
+test('sessão expirada não cria uma partida substituta', async (t) => {
+  const expiradaId = '123e4567-e89b-42d3-a456-426614174007'
+  const erro = Object.assign(new Error('identidade expirada'), { status: 401 })
+  const expirada = await montar(t, {
+    caminhoInicial: `/quiz/${expiradaId}`,
+    partidaRecuperada: erro,
+  })
+  assert.match(expirada.texto(), /identidade de visitante expirou/)
+  assert.equal(expirada.requisicoes.filter(({ url, opcoes }) => url.endsWith('/partidas') && opcoes.method === 'POST').length, 0)
 })
 
 test('boas-vindas separa visitante e autenticado antes do menu de jogos', async (t) => {

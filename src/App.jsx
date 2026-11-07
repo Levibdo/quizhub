@@ -17,8 +17,8 @@ import TelaMeuConteudo from './components/TelaMeuConteudo'
 import TelaAdmin from './components/TelaAdmin'
 import AppShell from './components/layout/AppShell'
 import useModalAcessivel from './hooks/useModalAcessivel'
-import { criarPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
-import { obterVisitanteId } from './utils/visitante'
+import { criarPartida, obterPartida, enviarResposta, avancarPergunta, cadastrarUsuario, login, logout, obterUsuarioAtual, listarCategoriasJogaveis } from './services/api'
+import { limparPartidaClassicaAtiva, obterPartidaClassicaAtiva, partidaIdDaRota, salvarPartidaClassicaAtiva } from './utils/partidaClassica'
 
 const TEMPO_POR_PERGUNTA = 15
 const TOTAL_PERGUNTAS = 10
@@ -31,8 +31,9 @@ const ROTAS_TELA = {
 
 function telaDaLocalizacao() {
   if (window.location.pathname?.startsWith('/nem-a-pato')) return 'nem-pato'
+  if (window.location.pathname === '/quiz' || window.location.pathname?.startsWith('/quiz/')) return 'jogando'
   const encontrada = Object.entries(ROTAS_TELA).find(([, caminho]) => caminho === window.location.pathname)?.[0] ?? 'inicio'
-  return ['categorias', 'jogando', 'resultado'].includes(encontrada) ? 'inicio' : encontrada
+  return ['categorias', 'resultado'].includes(encontrada) ? 'inicio' : encontrada
 }
 
 function App() {
@@ -49,6 +50,9 @@ function App() {
   const [resultadoResposta, setResultadoResposta] = useState(null)
   const [requisicaoEmAndamento, setRequisicaoEmAndamento] = useState(false)
   const [erro, setErro] = useState('')
+  const [recuperandoPartida, setRecuperandoPartida] = useState(false)
+  const [erroRecuperacao, setErroRecuperacao] = useState('')
+  const [tentativaRecuperacao, setTentativaRecuperacao] = useState(0)
   const enviandoRef = useRef(false)
   const respostaConfirmadaRef = useRef(false)
   const avancandoRef = useRef(false)
@@ -78,13 +82,13 @@ function App() {
   }, [])
   const { modalRef: modalSaidaQuizRef, aoPressionarTecla: conterFocoSaidaQuiz } = useModalAcessivel({ aberto: Boolean(confirmarSaidaQuiz), aoFechar: fecharSaidaQuiz, focoInicialRef: cancelarSaidaQuizRef, retornoFocoRef: retornoSaidaQuizRef })
 
-  const navegar = useCallback((destino, { substituir = false, registrar = true } = {}) => {
+  const navegar = useCallback((destino, { substituir = false, registrar = true, caminho: caminhoInformado } = {}) => {
     versaoNavegacaoRef.current += 1
     if (!['admin', 'login'].includes(destino)) setLoginAdministrativo(false)
     setErro('')
     setErroAuth('')
     if (registrar && destino !== 'nem-pato') {
-      const caminho = ROTAS_TELA[destino] ?? '/'
+      const caminho = caminhoInformado ?? ROTAS_TELA[destino] ?? '/'
       if (window.location.pathname !== caminho) {
         const posicao = substituir ? posicaoHistoricoRef.current : posicaoHistoricoRef.current + 1
         window.history[substituir ? 'replaceState' : 'pushState']({ quizhubTela: destino, quizhubPosicao: posicao }, '', caminho)
@@ -93,6 +97,43 @@ function App() {
     }
     setTela(destino)
   }, [])
+
+  const aplicarPartidaRecuperada = useCallback((recuperada) => {
+    if (recuperada.fase === 'EXPIRADA') {
+      limparPartidaClassicaAtiva()
+      setPartida(null)
+      setErroRecuperacao('Esta partida expirou e não pode mais ser continuada.')
+      return
+    }
+    setCategoriaSelecionada(recuperada.categoria)
+    setPartida(recuperada)
+    setPerguntaAtual(Math.max(0, (recuperada.ordem_atual ?? 1) - 1))
+    const prazo = Date.parse(recuperada.prazo_resposta_em ?? '')
+    setTempoRestante(Number.isFinite(prazo)
+      ? Math.max(0, Math.ceil((prazo - Date.now()) / 1000))
+      : TEMPO_POR_PERGUNTA)
+    if (recuperada.fase === 'AGUARDANDO_AVANCO') {
+      setRespostaSelecionada(recuperada.resultado_ultima_resposta?.alternativa_selecionada ?? null)
+      setResultadoResposta({ ...recuperada, ...recuperada.resultado_ultima_resposta })
+      respostaConfirmadaRef.current = true
+    } else {
+      setRespostaSelecionada(null)
+      setResultadoResposta(null)
+      respostaConfirmadaRef.current = false
+    }
+    timeoutEnviadoRef.current = false
+    if (recuperada.fase === 'FINALIZADA') {
+      limparPartidaClassicaAtiva()
+      navegar('resultado', { substituir: true })
+    }
+  }, [navegar])
+
+  const sincronizarPartida = useCallback(async (partidaId) => {
+    const recuperada = await obterPartida(partidaId)
+    salvarPartidaClassicaAtiva(partidaId)
+    aplicarPartidaRecuperada(recuperada)
+    return recuperada
+  }, [aplicarPartidaRecuperada])
 
   useEffect(() => {
     const versao = ++versaoSessao.current
@@ -118,9 +159,48 @@ function App() {
 
   useEffect(() => {
     if (!window.history.state?.quizhubTela && tela !== 'nem-pato') {
-      window.history.replaceState?.({ quizhubTela: tela, quizhubPosicao: posicaoHistoricoRef.current }, '', ROTAS_TELA[tela] ?? '/')
+      const caminho = tela === 'jogando' ? window.location.pathname : ROTAS_TELA[tela] ?? '/'
+      window.history.replaceState?.({ quizhubTela: tela, quizhubPosicao: posicaoHistoricoRef.current }, '', caminho)
     }
   }, [tela])
+
+  useEffect(() => {
+    if (tela !== 'jogando' || partida) return undefined
+    if (statusSessao === 'carregando' || statusSessao === 'erro') return undefined
+    let ativo = true
+    Promise.resolve().then(async () => {
+      if (!ativo) return
+      const partidaRota = partidaIdDaRota()
+      const partidaId = partidaRota ?? obterPartidaClassicaAtiva()
+      if (!partidaId) {
+        navegar('inicio', { substituir: true })
+        return
+      }
+      if (!partidaRota) {
+        navegar('jogando', { substituir: true, caminho: `/quiz/${partidaId}` })
+      }
+      setRecuperandoPartida(true)
+      setErroRecuperacao('')
+      try {
+        await sincronizarPartida(partidaId)
+      } catch (error) {
+        if (!ativo) return
+        if (error.status === 401) {
+          setErroRecuperacao('Sua sessão ou identidade de visitante expirou. Entre novamente para continuar.')
+        } else if (error.status === 404) {
+          if (obterPartidaClassicaAtiva() === partidaId) {
+            limparPartidaClassicaAtiva()
+          }
+          setErroRecuperacao('Partida inexistente ou inacessível para este jogador.')
+        } else {
+          setErroRecuperacao(`Não foi possível recuperar a partida. ${error.message}`)
+        }
+      } finally {
+        if (ativo) setRecuperandoPartida(false)
+      }
+    })
+    return () => { ativo = false }
+  }, [navegar, partida, statusSessao, sincronizarPartida, tela, tentativaRecuperacao])
 
   useEffect(() => {
     if (tela === 'jogando' || tela === 'nem-pato') return
@@ -330,6 +410,7 @@ function App() {
       setStatusSessao('anonimo')
       setJogador('')
       setPartida(null)
+      limparPartidaClassicaAtiva()
       setResultadoResposta(null)
       setRespostaSelecionada(null)
       navegar(destino)
@@ -370,11 +451,11 @@ function App() {
       const novaPartida = await criarPartida(
         usuario ? undefined : jogador,
         categoria,
-        usuario ? undefined : obterVisitanteId(),
       )
       if (versaoNavegacao !== versaoNavegacaoRef.current) return
       setCategoriaSelecionada(novaPartida.categoria)
       setPartida(novaPartida)
+      salvarPartidaClassicaAtiva(novaPartida.partida_id)
       setPerguntaAtual(0)
       setTempoRestante(TEMPO_POR_PERGUNTA)
       setRespostaSelecionada(null)
@@ -382,7 +463,7 @@ function App() {
       timeoutEnviadoRef.current = false
       resultadoSalvoRef.current = false
       respostaConfirmadaRef.current = false
-      navegar('jogando')
+      navegar('jogando', { caminho: `/quiz/${novaPartida.partida_id}` })
     } catch (error) {
       setErro(error.message)
       if (error.status === 401 || (usuario && error.status === 422 &&
@@ -414,13 +495,21 @@ function App() {
       respostaConfirmadaRef.current = true
       setResultadoResposta(resultado)
     } catch (error) {
+      if (error.status === 409 && partida?.partida_id) {
+        try {
+          await sincronizarPartida(partida.partida_id)
+          return
+        } catch (sincronizacao) {
+          setErro(`Não foi possível sincronizar a partida. ${sincronizacao.message}`)
+        }
+      }
       setErro(error.message)
       setRespostaSelecionada(null)
     } finally {
       enviandoRef.current = false
       setRequisicaoEmAndamento(false)
     }
-  }, [partida, resultadoResposta])
+  }, [partida, resultadoResposta, sincronizarPartida])
 
   useEffect(() => {
     if (
@@ -445,6 +534,7 @@ function App() {
   function abandonarQuizClassico() {
     setConfirmarSaidaQuiz(null)
     setPartida(null)
+    limparPartidaClassicaAtiva()
     setResultadoResposta(null)
     setRespostaSelecionada(null)
     navegar('inicio')
@@ -463,6 +553,7 @@ function App() {
     setErro('')
     try {
       if (resultadoResposta.status === 'FINALIZADA') {
+        limparPartidaClassicaAtiva()
         salvarEFinalizar(resultadoResposta)
         return
       }
@@ -475,6 +566,14 @@ function App() {
       timeoutEnviadoRef.current = false
       respostaConfirmadaRef.current = false
     } catch (error) {
+      if (error.status === 409 && partida?.partida_id) {
+        try {
+          await sincronizarPartida(partida.partida_id)
+          return
+        } catch (sincronizacao) {
+          setErro(`Não foi possível sincronizar a partida. ${sincronizacao.message}`)
+        }
+      }
       setErro(error.message)
     } finally {
       avancandoRef.current = false
@@ -587,7 +686,7 @@ function App() {
             item.origem === 'USUARIO' ? `privada:${item.id}` : item.slug
           ) === categoriaSelecionada)}
           perguntaAtual={perguntaAtual}
-          totalPerguntas={TOTAL_PERGUNTAS}
+          totalPerguntas={partida.total_perguntas ?? TOTAL_PERGUNTAS}
           tempoTotal={TEMPO_POR_PERGUNTA}
           pontuacao={resultadoResposta?.pontuacao ?? partida.pontuacao}
           tempoRestante={tempoRestante}
@@ -599,6 +698,30 @@ function App() {
           proximaPergunta={proximaPergunta}
           avancando={avancando}
         />
+      )}
+      {tela === 'jogando' && !pergunta && (
+        <section className="quiz-recovery" aria-labelledby="quiz-recovery-title">
+          <section className="quiz-recovery-card">
+            <h1 id="quiz-recovery-title">
+              {recuperandoPartida ? 'Recuperando sua partida…' : 'Não foi possível abrir a partida'}
+            </h1>
+            {recuperandoPartida ? (
+              <p role="status">Aguarde enquanto sincronizamos o progresso salvo.</p>
+            ) : (
+              <>
+                <p role="alert">{erroRecuperacao || 'Não há uma partida ativa para recuperar.'}</p>
+                {erroRecuperacao && !erroRecuperacao.includes('inacessível') && !erroRecuperacao.includes('expirou') && (
+                  <button type="button" onClick={() => setTentativaRecuperacao((valor) => valor + 1)}>
+                    Tentar novamente
+                  </button>
+                )}
+                <button type="button" className="button-secondary" onClick={() => navegar('inicio', { substituir: true })}>
+                  Voltar ao início
+                </button>
+              </>
+            )}
+          </section>
+        </section>
       )}
       {tela === 'resultado' && partida && (
         <TelaResultado

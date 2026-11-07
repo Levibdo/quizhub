@@ -1,13 +1,11 @@
 from datetime import datetime
-from uuid import UUID
-
+from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
 class CriarPartida(BaseModel):
     jogador: str | None = None
     categoria: str
-    visitante_id: UUID | None = None
 
     @field_validator("jogador")
     @classmethod
@@ -42,6 +40,7 @@ class PartidaPublica(BaseModel):
     status: str
     iniciada_em: datetime
     pergunta_disponibilizada_em: datetime | None
+    prazo_resposta_em: datetime | None
     finalizada_em: datetime | None
     pontuacao: int
     acertos: int
@@ -55,3 +54,25 @@ class ResultadoResposta(PartidaPublica):
     alternativa_correta: int
     timeout: bool
     pontos_ganhos: int
+
+
+class FeedbackRespostaRecuperado(BaseModel):
+    pergunta_id: int
+    alternativa_selecionada: int | None
+    explicacao: str
+    correta: bool | None
+    alternativa_correta: int
+    timeout: bool
+    pontos_ganhos: int
+
+
+class PartidaRecuperada(PartidaPublica):
+    fase: Literal[
+        "AGUARDANDO_RESPOSTA",
+        "AGUARDANDO_AVANCO",
+        "FINALIZADA",
+        "EXPIRADA",
+    ]
+    ordem_atual: int | None
+    total_perguntas: int
+    resultado_ultima_resposta: FeedbackRespostaRecuperado | None = None

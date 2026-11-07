@@ -459,13 +459,16 @@ export function listarCategoriasJogaveis() {
   return requisitar('/api/v1/categorias/jogaveis', { method: 'GET' })
 }
 
-export function criarPartida(jogador, categoria, visitanteId) {
+export function criarPartida(jogador, categoria) {
   const dados = { jogador, categoria }
-  if (visitanteId !== undefined) dados.visitante_id = visitanteId
   return requisitar('/api/v1/partidas', {
     method: 'POST',
     body: JSON.stringify(dados),
   })
+}
+
+export function obterPartida(partidaId) {
+  return requisitar(`/api/v1/partidas/${partidaId}`, { method: 'GET' })
 }
 
 export function listarRanking(categoria = null, limit = 10) {

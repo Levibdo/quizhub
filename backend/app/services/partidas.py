@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import (
     Categoria,
@@ -18,7 +18,13 @@ from app.models import (
     Resposta,
     Usuario,
 )
-from app.schemas.partidas import PartidaPublica, PerguntaPublica, ResultadoResposta
+from app.schemas.partidas import (
+    FeedbackRespostaRecuperado,
+    PartidaPublica,
+    PartidaRecuperada,
+    PerguntaPublica,
+    ResultadoResposta,
+)
 from app.services.catalogos_oficiais import (
     exigir_catalogo_ativo,
     predicado_catalogo_ativo,
@@ -72,6 +78,9 @@ class PartidasPersistentes:
             iniciada_em=partida.iniciada_em,
             pergunta_disponibilizada_em=(
                 pergunta_partida.disponibilizada_em if pergunta_partida else None
+            ),
+            prazo_resposta_em=(
+                pergunta_partida.prazo_resposta_em if pergunta_partida else None
             ),
             finalizada_em=partida.finalizada_em,
             pontuacao=partida.pontuacao,
@@ -239,7 +248,109 @@ class PartidasPersistentes:
 
     @staticmethod
     def _consulta_partida_bloqueada(partida_id: UUID):
-        return select(Partida).where(Partida.id == partida_id).with_for_update()
+        return (
+            select(Partida)
+            .where(Partida.id == partida_id)
+            .options(joinedload(Partida.jogador), joinedload(Partida.categoria))
+            .with_for_update(of=Partida)
+        )
+
+    @staticmethod
+    def _exigir_propriedade(
+        partida: Partida,
+        usuario: Usuario | None,
+        visitante_id: UUID | None,
+    ) -> None:
+        jogador = partida.jogador
+        usuario_autorizado = (
+            usuario is not None and jogador.usuario_id == usuario.id
+        )
+        visitante_autorizado = (
+            visitante_id is not None
+            and jogador.usuario_id is None
+            and jogador.visitante_id == visitante_id
+        )
+        if not usuario_autorizado and not visitante_autorizado:
+            # Nao diferencia inexistencia de falta de propriedade.
+            raise HTTPException(status_code=404, detail="partida inexistente")
+
+    def recuperar(
+        self,
+        db: Session,
+        partida_id: str,
+        usuario: Usuario | None,
+        visitante_id: UUID | None,
+    ) -> PartidaRecuperada:
+        partida = db.scalar(
+            select(Partida)
+            .where(Partida.id == self._uuid_partida(partida_id))
+            .options(
+                joinedload(Partida.jogador),
+                joinedload(Partida.categoria),
+                selectinload(Partida.perguntas_partida).joinedload(
+                    PartidaPergunta.resposta
+                ),
+            )
+        )
+        if partida is None:
+            raise HTTPException(status_code=404, detail="partida inexistente")
+        self._exigir_propriedade(partida, usuario, visitante_id)
+
+        ocorrencias = sorted(partida.perguntas_partida, key=lambda item: item.ordem)
+        total = len(ocorrencias)
+        if partida.status != "EM_ANDAMENTO":
+            fase = "FINALIZADA" if partida.status == "FINALIZADA" else "EXPIRADA"
+            return PartidaRecuperada(
+                **self._publica(partida, None).model_dump(),
+                fase=fase,
+                ordem_atual=total if total else None,
+                total_perguntas=total,
+            )
+
+        pendentes = [
+            item
+            for item in ocorrencias
+            if item.disponibilizada_em is not None and item.resposta is None
+        ]
+        if len(pendentes) == 1:
+            atual = pendentes[0]
+            return PartidaRecuperada(
+                **self._publica(partida, atual).model_dump(),
+                fase="AGUARDANDO_RESPOSTA",
+                ordem_atual=atual.ordem,
+                total_perguntas=total,
+            )
+        if len(pendentes) > 1:
+            raise HTTPException(
+                status_code=409, detail="estado persistido da partida inconsistente"
+            )
+
+        respondidas = [
+            item
+            for item in ocorrencias
+            if item.disponibilizada_em is not None and item.resposta is not None
+        ]
+        if not respondidas:
+            raise HTTPException(
+                status_code=409, detail="estado persistido da partida inconsistente"
+            )
+        ultima = respondidas[-1]
+        resposta = ultima.resposta
+        return PartidaRecuperada(
+            **self._publica(partida, ultima).model_dump(),
+            fase="AGUARDANDO_AVANCO",
+            ordem_atual=ultima.ordem,
+            total_perguntas=total,
+            resultado_ultima_resposta=FeedbackRespostaRecuperado(
+                pergunta_id=ultima.pergunta_id,
+                alternativa_selecionada=resposta.alternativa_selecionada,
+                explicacao=ultima.explicacao_snapshot,
+                correta=resposta.correta,
+                alternativa_correta=ultima.alternativa_correta_snapshot,
+                timeout=resposta.timeout,
+                pontos_ganhos=resposta.pontos_ganhos,
+            ),
+        )
 
     def responder(
         self,
@@ -247,6 +358,8 @@ class PartidasPersistentes:
         partida_id: str,
         pergunta_id: int,
         alternativa: int,
+        usuario: Usuario | None,
+        visitante_id: UUID | None,
     ) -> ResultadoResposta:
         try:
             partida = db.scalar(
@@ -254,6 +367,7 @@ class PartidasPersistentes:
             )
             if partida is None:
                 raise HTTPException(status_code=404, detail="partida inexistente")
+            self._exigir_propriedade(partida, usuario, visitante_id)
             if partida.status != "EM_ANDAMENTO":
                 raise HTTPException(
                     status_code=409, detail="partida já finalizada ou expirada"
@@ -368,12 +482,20 @@ class PartidasPersistentes:
             db.rollback()
             raise
 
-    def avancar(self, db: Session, partida_id: str, pergunta_id: int) -> PartidaPublica:
+    def avancar(
+        self,
+        db: Session,
+        partida_id: str,
+        pergunta_id: int,
+        usuario: Usuario | None,
+        visitante_id: UUID | None,
+    ) -> PartidaPublica:
         """Libera a proxima pergunta uma vez, sem renovar prazo em tentativas repetidas."""
         try:
             partida = db.scalar(self._consulta_partida_bloqueada(self._uuid_partida(partida_id)))
             if partida is None:
                 raise HTTPException(status_code=404, detail="partida inexistente")
+            self._exigir_propriedade(partida, usuario, visitante_id)
             if partida.status != "EM_ANDAMENTO":
                 raise HTTPException(status_code=409, detail="partida encerrada")
             anterior = db.scalar(select(PartidaPergunta).where(
