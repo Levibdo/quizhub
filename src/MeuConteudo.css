@@ -469,13 +469,21 @@
   .content-mode-selector button { padding-inline: .5rem; font-size: .8rem; }
 
   .content-tabs {
-    margin-right: -.85rem;
-    margin-left: -.85rem;
-    padding-right: .85rem;
-    padding-left: .85rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-right: 0;
+    margin-left: 0;
+    padding-right: 0;
+    padding-left: 0;
+    overflow-x: visible;
   }
 
-  .content-tabs button { flex: 0 0 auto; font-size: .78rem; }
+  .content-tabs button {
+    width: 100%;
+    padding-inline: .55rem;
+    font-size: .72rem;
+    white-space: normal;
+  }
   .content-section-heading > button { width: 100%; }
 
   .content-category-card__copy > div {
