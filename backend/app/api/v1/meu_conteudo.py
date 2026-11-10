@@ -25,6 +25,7 @@ from app.schemas.meu_conteudo_importacoes import (
     PreviewImportacaoPrivada,
     ResultadoImportacaoPrivada,
 )
+from app.schemas.ranking_pessoal import CategoriaRankingPessoal
 from app.security import usuario_atual
 from app.services.meu_conteudo_categorias import (
     CategoriaNaoEncontrada,
@@ -44,6 +45,7 @@ from app.services.meu_conteudo_importacoes import (
     TokenPreviewInvalido,
     meu_conteudo_importacoes_service,
 )
+from app.services.ranking_pessoal import ranking_pessoal_service
 from app.models import Pergunta, PerguntaNemPato
 
 
@@ -122,6 +124,13 @@ def obter_resumo(
     db: Session = Depends(get_db), usuario: Usuario = Depends(usuario_atual)
 ):
     return meu_conteudo_categorias_service.resumo(db, usuario.id)
+
+
+@router.get("/ranking", response_model=list[CategoriaRankingPessoal])
+def listar_ranking_pessoal(
+    db: Session = Depends(get_db), usuario: Usuario = Depends(usuario_atual)
+):
+    return ranking_pessoal_service.listar(db, usuario.id)
 
 
 @router.get("/categorias", response_model=list[CategoriaUsuarioResposta])

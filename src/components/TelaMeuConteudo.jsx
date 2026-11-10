@@ -9,6 +9,7 @@ import {
 import PainelPerguntas from './meu-conteudo/PainelPerguntas'
 import PainelImportacao from './meu-conteudo/PainelImportacao'
 import PainelGeradorPrompt from './meu-conteudo/PainelGeradorPrompt'
+import PainelRankingPessoal from './meu-conteudo/PainelRankingPessoal'
 import useModalAcessivel from '../hooks/useModalAcessivel'
 
 const MODOS = [
@@ -305,7 +306,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
       )}
 
       <nav className="content-tabs" aria-label="Seções de Meu Conteúdo">
-        {[["categorias", "Categorias"], ["perguntas", "Perguntas"], ["importar", "Importar"], ["prompt", "Gerar prompt"]].map(([id, nome]) => <button key={id} type="button" disabled={importando || enviando} aria-current={aba === id ? 'page' : undefined} onClick={(evento) => trocarAba(id, evento)}>{nome}</button>)}
+        {[["categorias", "Categorias"], ["perguntas", "Perguntas"], ["ranking", "Meu ranking"], ["importar", "Importar"], ["prompt", "Gerar prompt"]].map(([id, nome]) => <button key={id} type="button" disabled={importando || enviando} aria-current={aba === id ? 'page' : undefined} onClick={(evento) => trocarAba(id, evento)}>{nome}</button>)}
       </nav>
 
       {sucesso && <p className="content-message" role="status">{sucesso}</p>}
@@ -358,6 +359,9 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
           aoAtualizarResumo={atualizarResumo} aoExpirarSessao={aoExpirarSessao}
           aoAlterarSujo={alterarFormularioSujo} aoSolicitarDescarte={executarOuConfirmar}
         />
+      )}
+      {!carregando && !erroCarregamento && aba === 'ranking' && (
+        <PainelRankingPessoal key={modo} modo={modo} aoExpirarSessao={aoExpirarSessao} />
       )}
       {!carregando && !erroCarregamento && aba === 'importar' && (
         <PainelImportacao

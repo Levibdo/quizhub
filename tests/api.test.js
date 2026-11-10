@@ -66,6 +66,16 @@ test('ranking global usa limite e filtro opcionais no endpoint público', async 
   assert.ok(chamadas.every(({ opcoes }) => opcoes.method === 'GET' && opcoes.credentials === 'include'))
 })
 
+test('ranking pessoal usa endpoint privado somente de leitura com cookie', async () => {
+  globalThis.fetch = async (url, opcoes) => {
+    assert.equal(url, 'http://127.0.0.1:8001/api/v1/meu-conteudo/ranking')
+    assert.equal(opcoes.method, 'GET')
+    assert.equal(opcoes.credentials, 'include')
+    return Response.json([])
+  }
+  assert.deepEqual(await api.listarRankingPessoal(), [])
+})
+
 test('logout 204 não interpreta JSON', async () => {
   globalThis.fetch = async (_url, opcoes) => {
     assert.equal(opcoes.credentials, 'include')

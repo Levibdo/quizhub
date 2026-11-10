@@ -106,6 +106,10 @@ export function obterResumoMeuConteudo() {
   return requisitar('/api/v1/meu-conteudo/resumo', { method: 'GET' })
 }
 
+export function listarRankingPessoal() {
+  return requisitar('/api/v1/meu-conteudo/ranking', { method: 'GET' })
+}
+
 export function listarCategoriasMeuConteudo(modo) {
   const parametros = new URLSearchParams({ modo })
   return requisitar(`/api/v1/meu-conteudo/categorias?${parametros}`, { method: 'GET' })

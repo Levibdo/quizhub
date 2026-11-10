@@ -39,7 +39,7 @@ function texto(node) {
   return (node.children || []).map(texto).join('')
 }
 
-async function setup(t, { autenticado = true, categorias = [], perguntas = null, interceptar, clipboard } = {}) {
+async function setup(t, { autenticado = true, categorias = [], perguntas = null, ranking = [], interceptar, clipboard } = {}) {
   const fetchOriginal = globalThis.fetch
   const windowOriginal = globalThis.window
   const storageOriginal = globalThis.localStorage
@@ -74,6 +74,7 @@ async function setup(t, { autenticado = true, categorias = [], perguntas = null,
         : Response.json({ detail: 'não autenticado' }, { status: 401 })
     }
     if (url.endsWith('/meu-conteudo/resumo')) return Response.json(resumo())
+    if (url.endsWith('/meu-conteudo/ranking')) return Response.json(ranking)
     if (url.includes('/meu-conteudo/perguntas/')) {
       const modo = url.includes('/classico') ? 'QUIZ_CLASSICO' : 'NEM_A_PATO'
       const base = url.match(/\/perguntas\/(classico|nem-a-pato)$/)
@@ -755,4 +756,57 @@ test('troca de modo limpa prompt e oferece apenas categorias correspondentes', a
   assert.equal(ui.renderer.root.findAllByProps({ 'aria-label': 'Prompt gerado' }).length, 0)
   assert.equal(ui.field('prompt-category').findAllByType('option').some((item) => texto(item) === 'Estimativas'), true)
   assert.equal(ui.field('prompt-category').findAllByType('option').some((item) => texto(item) === 'História'), false)
+})
+
+test('ranking pessoal lista somente partidas retornadas por categoria e mostra estado vazio', async (t) => {
+  const ranking = [
+    {
+      categoria_id: categoriaClassica.id,
+      categoria_nome: 'História',
+      partidas: [
+        { posicao: 1, partida_id: '00000000-0000-0000-0000-000000000002', pontuacao: 1200 },
+        { posicao: 2, partida_id: '00000000-0000-0000-0000-000000000001', pontuacao: 900 },
+      ],
+    },
+    { categoria_id: categoriaSecundaria.id, categoria_nome: 'Ciência', partidas: [] },
+  ]
+  const ui = await setup(t, { categorias: [categoriaClassica, categoriaSecundaria], ranking })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Meu ranking').props.onClick({ currentTarget: { focus() {} } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Melhores partidas/)
+  assert.match(ui.texto(), /História/)
+  assert.match(ui.texto(), /1ºPartida00000000-0000-0000-0000-0000000000021200pontos/)
+  assert.match(ui.texto(), /2ºPartida00000000-0000-0000-0000-000000000001900pontos/)
+  assert.match(ui.texto(), /Nenhuma partida concluída nesta categoria/)
+  assert.equal(ui.chamadas.filter((item) => item.url.endsWith('/meu-conteudo/ranking')).length, 1)
+})
+
+test('ranking pessoal informa ausência de categorias e não consulta Nem a Pato', async (t) => {
+  const ui = await setup(t)
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Meu ranking').props.onClick({ currentTarget: { focus() {} } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Nenhuma categoria própria/)
+  const consultasAntes = ui.chamadas.filter((item) => item.url.endsWith('/meu-conteudo/ranking')).length
+  await act(async () => ui.button('Nem a Pato').props.onClick({ currentTarget: { focus() {} } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Disponível no Quiz Clássico/)
+  assert.equal(ui.chamadas.filter((item) => item.url.endsWith('/meu-conteudo/ranking')).length, consultasAntes)
+})
+
+test('ranking pessoal trata sessão expirada', async (t) => {
+  const ui = await setup(t, {
+    interceptar: async ({ url }) => url.endsWith('/meu-conteudo/ranking')
+      ? Response.json({ detail: 'não autenticado' }, { status: 401 })
+      : null,
+  })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  await act(async () => ui.button('Meu ranking').props.onClick({ currentTarget: { focus() {} } }))
+  await ui.esperar()
+  assert.ok(ui.button('Entrar'))
+  assert.ok(!ui.button('Meu Conteúdo'))
 })

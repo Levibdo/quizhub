@@ -4039,6 +4039,88 @@ select:disabled {
 }
 
 /* Meu Conteúdo */
+.personal-ranking__intro {
+  margin: 0 0 1.25rem;
+  color: var(--color-text-muted, #b9b4c7);
+}
+
+.personal-ranking__categories {
+  display: grid;
+  gap: 1rem;
+}
+
+.personal-ranking__category {
+  padding: 1rem;
+  border: 1px solid rgba(151, 91, 255, .24);
+  border-radius: 1rem;
+  background: rgba(15, 10, 31, .68);
+}
+
+.personal-ranking__category h3 {
+  margin: 0 0 .75rem;
+}
+
+.personal-ranking__empty {
+  margin: 0;
+  color: var(--color-text-muted, #b9b4c7);
+}
+
+.personal-ranking__list {
+  display: grid;
+  gap: .6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personal-ranking__item {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem;
+  border-radius: .75rem;
+  background: rgba(255, 255, 255, .04);
+}
+
+.personal-ranking__position {
+  color: #d6bbff;
+  font-size: 1.1rem;
+}
+
+.personal-ranking__game,
+.personal-ranking__score {
+  display: grid;
+  gap: .2rem;
+}
+
+.personal-ranking__game code {
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-ranking__score {
+  justify-items: end;
+}
+
+.personal-ranking__game small,
+.personal-ranking__score small {
+  color: var(--color-text-muted, #b9b4c7);
+}
+
+@media (max-width: 560px) {
+  .personal-ranking__item {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+
+  .personal-ranking__score {
+    grid-column: 2;
+    justify-items: start;
+  }
+}
+
 .content-screen {
   width: min(72rem, 100%);
   margin: 0 auto;
