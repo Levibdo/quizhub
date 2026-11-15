@@ -1,939 +1,596 @@
 # QuizHub
 
-O QuizHub é uma aplicação web de perguntas e jogos, com frontend React/Vite,
-API FastAPI e persistência PostgreSQL. O projeto oferece o **Quiz Clássico**,
-o multiplayer **Nem a Pato** e uma área autenticada de **Meu Conteúdo** para
-gerenciar catálogos privados.
+O QuizHub é uma plataforma web de perguntas e jogos com dois modos: o **Quiz
+Clássico**, individual, e o **Nem a Pato**, multiplayer. A aplicação também
+oferece conteúdo privado para jogadores autenticados e um fluxo editorial
+administrativo completo para catálogos oficiais.
 
-> Este documento descreve o que está implementado no repositório. Topologias,
-> nomes de serviços, portas externas e caminhos de uma implantação específica
-> não são requisitos universais do QuizHub.
+> **Status:** versão definitiva implantada e em modo de manutenção desde
+> **15/11/2026**.
+> **Aplicação pública:** <https://quizhub.tailef8ba8.ts.net/>
+> **Tag de produção:** `production/2026-11-15-final-74f4ae5`
+
+## Sumário
+
+- [Funcionalidades](#funcionalidades)
+- [Arquitetura e tecnologias](#arquitetura-e-tecnologias)
+- [Instalação com Docker Compose](#instalação-com-docker-compose)
+- [Instalação manual](#instalação-manual)
+- [Banco de dados e migrations](#banco-de-dados-e-migrations)
+- [Administração de conteúdo](#administração-de-conteúdo)
+- [API](#api)
+- [Segurança](#segurança)
+- [Manutenção operacional](#manutenção-operacional)
+- [Testes e qualidade](#testes-e-qualidade)
+- [Solução de problemas](#solução-de-problemas)
+- [Produção e limitações](#produção-e-limitações)
+- [Licença](#licença)
 
 ## Funcionalidades
 
 ### Quiz Clássico
 
-- Partidas de múltipla escolha com 10 perguntas sem repetição.
-- Prazo de 15 segundos por pergunta, controlado pelo backend.
-- Seleção das perguntas, correção, timeout, pontuação e progressão
-  autoritativos no servidor.
-- Pontuação por acerto: `100 + (segundos restantes × 10)`, até 250 pontos por
-  pergunta.
-- Revelação da resposta correta e da explicação somente depois da resposta ou
-  do timeout.
-- Categorias oficiais e, para usuários autenticados, categorias próprias
-  elegíveis.
-- Resultado com pontuação, acertos e erros.
-- Ranking global das melhores partidas oficiais finalizadas, consultado pelo
-  frontend em `GET /api/v1/ranking` e calculado a partir do PostgreSQL.
-- Perfis visitantes usam o UUID pseudônimo `quizhub-visitante-id`, persistido
-  no `localStorage` do navegador. Ele agrupa resultados futuros no ranking,
-  mas não autentica o visitante nem é vinculado automaticamente a uma conta.
+- Partida individual com 10 perguntas sem repetição.
+- Prazo de 15 segundos por pergunta. Cada acerto vale
+  `100 + (segundos restantes × 10)`, entre 100 e 250 pontos; erro ou timeout
+  vale zero. Uma partida pode chegar a 2.500 pontos.
+- Seleção das perguntas, correção, prazo, pontuação e progressão controlados
+  pelo backend.
+- A resposta correta e a explicação só são reveladas depois da resposta ou do
+  timeout.
+- Recuperação da mesma partida após F5, fechamento da aba ou perda temporária
+  de rede, preservando UUID, sequência, respostas e prazo original.
+- Proteção contra respostas duplicadas e sincronização após conflitos de
+  concorrência.
+- Categorias oficiais e categorias privadas elegíveis do próprio jogador.
+- Ranking público de partidas oficiais concluídas.
 
-## Sistema de Ranking
-
-O ranking do Quiz Clássico é público e tem o PostgreSQL como fonte oficial.
-O frontend consulta a API ao abrir a classificação e ao trocar os filtros; a
-chave legada `quizhub-ranking` pode continuar no `localStorage`, mas não é
-usada como fallback quando a API falha.
-
-### Pontuação e elegibilidade
-
-- Cada partida possui 10 perguntas e cada resposta correta vale
-  `100 + (segundos restantes × 10)` pontos. O backend arredonda a diferença
-  positiva até o prazo para cima e limita o resultado ao intervalo de 0 a 15,
-  portanto cada questão vale de 100 a 250 pontos e uma partida pode chegar a
-  2.500 pontos.
-- Resposta incorreta ou timeout vale zero. Pontuação, acertos e erros são
-  calculados e persistidos pelo backend; o cliente não envia o resultado a
-  ser classificado.
-- Entram no ranking somente partidas com status `FINALIZADA`, pertencentes à
-  temporada consultada e a categorias de origem `OFICIAL`, modo
-  `QUIZ_CLASSICO` e não excluídas logicamente.
-- Categorias privadas e partidas do Nem a Pato nunca entram nesse ranking.
-  Uma categoria oficial posteriormente desativada continua elegível no
-  histórico; exclusão lógica, por outro lado, a remove das consultas.
-
-### Identidade, melhor partida e classificação
-
-Cada identidade aparece no máximo uma vez por consulta, representada por sua
-melhor partida na temporada e no filtro escolhidos:
-
-1. usuário autenticado: agrupamento por `usuarios.id`;
-2. visitante atual: agrupamento pelo `visitante_id` UUID persistido no perfil
-   do navegador;
-3. visitante histórico sem UUID: identidade individual por `jogadores.id`,
-   sem tentativa de agrupar retroativamente nomes iguais.
-
-O `visitante_id` não é autenticação, não concede acesso a partidas e não é
-vinculado automaticamente a uma conta criada depois. Dois navegadores com o
-mesmo nome continuam sendo identidades diferentes; apagar o armazenamento
-local cria outra identidade para partidas futuras.
-
-A melhor partida de cada identidade e a classificação final usam, nesta
-ordem:
-
-1. maior pontuação;
-2. maior quantidade de acertos;
-3. conclusão mais antiga;
-4. menor UUID da partida, como desempate determinístico.
-
-Partidas históricas `FINALIZADA` sem `finalizada_em` são aceitas para
-compatibilidade, mas ficam depois das partidas datadas quando os demais
-critérios empatam. As posições retornadas são sequenciais dentro do resultado
-limitado, sem compartilhar posição em empates.
-
-### Ranking global, categorias e temporadas
-
-`GET /api/v1/ranking` usa a temporada `ATIVA` por padrão. A migration `0013`
-criou a Temporada 1, associou as partidas históricas existentes a ela e
-adicionou proteção para existir no máximo uma temporada ativa. Novas partidas
-recebem a temporada ativa no servidor; o cliente não escolhe nem altera essa
-associação.
-
-Parâmetros públicos:
-
-| Parâmetro | Formato | Comportamento |
-| --- | --- | --- |
-| `categoria` | slug ou UUID | Restringe a uma categoria oficial elegível. |
-| `temporada` | número positivo ou UUID | Consulta uma temporada ativa ou encerrada. Temporadas planejadas não são públicas. |
-| `limit` | inteiro de 1 a 100 | Padrão `10`; o limite é aplicado na consulta SQL. |
-
-Exemplos:
-
-```http
-GET /api/v1/ranking?limit=10
-GET /api/v1/ranking?categoria=tecnologia&temporada=1&limit=20
-GET /api/v1/ranking/temporadas
-```
-
-Resposta ilustrativa, sem dados reais:
-
-```json
-[
-  {
-    "posicao": 1,
-    "jogador": "Jogador exemplo",
-    "categoria": {
-      "id": "11111111-2222-4333-8444-555555555555",
-      "slug": "tecnologia",
-      "nome": "Tecnologia"
-    },
-    "pontuacao": 2150,
-    "acertos": 9,
-    "erros": 1,
-    "finalizada_em": "2026-01-15T18:30:00Z"
-  }
-]
-```
-
-`GET /api/v1/ranking/temporadas` lista temporadas `ATIVA` e `ENCERRADA`, com
-a ativa primeiro, e expõe `id`, `numero`, `nome`, `status`, `inicia_em` e
-`encerra_em`:
-
-```json
-[
-  {
-    "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-    "numero": 1,
-    "nome": "Temporada 1",
-    "status": "ATIVA",
-    "inicia_em": "2026-01-01T00:00:00Z",
-    "encerra_em": null
-  }
-]
-```
-
-Temporada inexistente ou planejada no filtro retorna `404`; limites fora do
-intervalo retornam `422`. Pela implementação atual, se não existir temporada
-ativa, a consulta sem filtro produz uma lista vazia. A criação de uma nova
-partida, em contraste, é recusada com `503` enquanto não houver temporada
-ativa.
-
-### Limitações atuais
-
-- Não existe ranking oficial do Nem a Pato; seu placar pertence à própria
-  partida e permanece separado do Quiz Clássico.
-- Não há paginação por cursor ou offset: a API retorna apenas os primeiros
-  `limit` registros.
-- Não há soma de pontos entre partidas, ranking acumulado entre temporadas ou
-  fusão automática de uma identidade visitante com uma conta.
-- Existe uma primitiva transacional interna para uma futura virada de
-  temporada, mas não há endpoint público nem comando CLI para ativá-la.
-- O endpoint não devolve a identidade interna do usuário ou visitante e não
-  oferece busca por jogador.
+O ranking público usa a pontuação oficial persistida no PostgreSQL e considera
+somente partidas oficiais `FINALIZADA`. Cada identidade aparece por sua melhor
+partida. O desempate usa, nesta ordem, pontuação, acertos, conclusão mais antiga
+e UUID da partida. Categorias privadas e partidas do Nem a Pato não entram
+nesse ranking. Os filtros públicos aceitam categoria, temporada e limite.
 
 ### Nem a Pato
 
-- Salas por código para 3 a 6 participantes ativos.
-- Partidas com 10 rodadas e perguntas de resposta numérica.
-- Palpites inteiros, não negativos e estritamente crescentes.
-- Turnos circulares, desafio ao último palpite, penalização por “patos” e
-  placar compartilhado.
-- Timer autoritativo de 120 segundos por rodada, com tratamento de timeout com
-  e sem palpites.
-- Finalização, classificação, empates, cancelamento por jogadores
-  insuficientes e revanche na mesma sala.
-- Polling HTTP para sincronização; não há WebSocket no fluxo atual.
-- Recuperação após atualização da página por credencial específica do
-  participante, armazenada localmente pelo navegador.
-- Idempotência de palpites e desafios por `client_action_id` e proteção
-  transacional para operações concorrentes.
-- Catálogo oficial e, quando a sala pertence a um usuário autenticado,
-  conteúdo privado autorizado desse usuário.
+- Salas multiplayer por código para 3 a 6 participantes ativos, com entrada,
+  lobby, início e abandono.
+- Partidas de 10 rodadas com perguntas de resposta numérica.
+- Palpites inteiros, não negativos e estritamente crescentes, turnos
+  circulares, desafio ao último palpite e penalização por “patos”.
+- Prazo autoritativo de 120 segundos por rodada, incluindo tratamento de
+  timeout com ou sem palpites.
+- Finalização, classificação, empates, cancelamento por jogadores insuficientes
+  e opção de jogar novamente na mesma sala.
+- Estado persistido no PostgreSQL e recuperação da participação do jogador.
+- Perguntas oficiais elegíveis do modo `NEM_A_PATO`.
 
-### Autenticação e Meu Conteúdo
+O multiplayer usa polling HTTP; não há transporte WebSocket implementado.
+
+### Autenticação
 
 - Cadastro, login, consulta da sessão e logout.
-- Senhas armazenadas com o mecanismo recomendado do `pwdlib` (Argon2 na
-  instalação atual).
-- Sessão JWT de 8 horas em cookie `HttpOnly`, `SameSite=Lax`; a opção
-  `Secure` é configurável por ambiente.
-- Perfis explícitos `JOGADOR` e `ADMIN`; novos cadastros recebem somente
-  `JOGADOR`. O painel `/admin` e os endpoints administrativos validam o perfil
-  no backend e retornam `401` sem sessão ou `403` sem permissão.
-- Categorias privadas separadas entre Quiz Clássico e Nem a Pato.
-- CRUD de categorias e perguntas próprias, com exclusão lógica.
-- Limites implementados de 10 categorias e 200 perguntas por usuário e por
-  modo.
-- Importação privada de XLSX, CSV e JSON em duas etapas: prévia e confirmação.
-- Prévia limitada a 5 MiB e 100 registros; o token de confirmação expira em
-  15 minutos e o backend revalida arquivo, propriedade e quota.
-- Gerador de prompts para uma IA externa. O QuizHub apenas monta e copia as
-  instruções; não chama nem valida factualmente um serviço de IA. O prompt
-  solicita um arquivo JSON compatível com o importador e prevê saída textual
-  como alternativa quando a ferramenta externa não puder anexar arquivos.
+- Senhas protegidas com Argon2.
+- Sessão por JWT em cookie `HttpOnly`, com `Secure` em produção e política
+  `SameSite` configurada pelo backend.
+- Perfis `JOGADOR` e `ADMIN`.
+- Identidade visitante assinada para proteger a propriedade de partidas
+  clássicas sem transformar um UUID público em credencial.
 
-## Arquitetura
+### Meu Conteúdo
 
-```text
-Navegador
-   │
-   │ HTTP/HTTPS + JSON (e multipart nas importações)
-   ▼
-React 19 + Vite 8
-   │
-   ▼
-FastAPI + SQLAlchemy
-   │
-   ▼
-PostgreSQL
-```
+A área autenticada possui cinco abas, na ordem mantida pela interface:
 
-- O frontend usa `VITE_API_URL` quando ela contém uma URL HTTP(S) válida. Sem
-  essa variável, builds de produção usam a mesma origem da página (adequada a
-  proxy reverso), enquanto o servidor de desenvolvimento usa
-  `http://127.0.0.1:8001`.
-- A API expõe `/health`, `/docs` e rotas sob `/api/v1`.
-- O backend carrega `backend/.env` sem sobrescrever variáveis já definidas no
-  ambiente do processo.
-- O Nem a Pato mantém salas, participantes, partidas, rodadas, palpites e
-  desafios no PostgreSQL. O frontend sincroniza o estado por polling.
-- As partidas materializam snapshots das perguntas para preservar o conteúdo
-  histórico mesmo após mudanças no catálogo.
+1. categorias;
+2. perguntas;
+3. meu ranking;
+4. importar;
+5. gerar prompt.
 
-## Tecnologias principais
+Ela permite:
 
-| Camada | Tecnologia |
+- criar, editar e desativar categorias próprias;
+- gerenciar perguntas próprias do Quiz Clássico e do Nem a Pato;
+- importar conteúdo privado com pré-visualização e confirmação;
+- gerar prompts auxiliares para preparação de conteúdo;
+- consultar as melhores partidas concluídas do próprio usuário, agrupadas
+  somente por categorias que ele criou.
+
+A navegação é responsiva, possui semântica de abas e suporte a teclado. Na aba
+**Perguntas**, nenhuma listagem é carregada na entrada: o usuário precisa
+selecionar explicitamente um filtro, pesquisar ou escolher todas as categorias.
+Limpar os filtros retorna ao estado inicial, que é diferente do estado de uma
+busca sem resultados. Cadastro, edição, exclusão e paginação permanecem
+disponíveis depois da consulta.
+
+### Painel administrativo
+
+O painel web para `ADMIN` inclui:
+
+- resumo e dashboard;
+- consulta de perguntas e catálogos oficiais;
+- criação de catálogo e de rascunho versionado;
+- categorias e perguntas versionadas dentro do rascunho;
+- importação oficial **JSON** com pré-visualização, validação e confirmação;
+- revisão por pergunta, verificação de fontes e decisões editoriais;
+- solicitação de correção, retorno à edição, aprovação e reabertura;
+- publicação incremental transacional;
+- consulta do histórico e reativação segura de versões arquivadas;
+- auditoria administrativa.
+
+Importar não publica automaticamente. A publicação exige que o rascunho passe
+pelos estados e validações editoriais correspondentes.
+
+## Arquitetura e tecnologias
+
+| Camada | Tecnologias principais |
 | --- | --- |
-| Frontend | React 19, JavaScript, Vite 8 |
-| API | Python, FastAPI, Uvicorn |
-| Persistência | PostgreSQL, SQLAlchemy 2, psycopg 3 |
-| Migrações | Alembic |
-| Autenticação | PyJWT, `pwdlib[argon2]`, cookie HttpOnly |
-| Arquivos | openpyxl, CSV e JSON da biblioteca padrão |
-| Testes | `node:test` no frontend; `unittest` no backend |
+| Frontend | React, Vite, JavaScript e CSS |
+| API | Python, FastAPI e Pydantic |
+| Persistência | PostgreSQL 16, SQLAlchemy e Alembic |
+| Autenticação | JWT em cookie e Argon2 |
+| Testes | Pytest, Vitest e Playwright nas homologações visuais |
+| Ambiente local | Docker Compose |
 
-As versões Python exatas estão fixadas em `backend/requirements.txt`; as
-versões JavaScript ficam em `package.json` e `package-lock.json`.
+O frontend consome a API sob `/api/v1`. O PostgreSQL é a fonte de verdade para
+partidas, respostas, salas, conteúdo e rankings. Snapshots e vínculos
+versionados preservam o significado histórico mesmo depois da evolução dos
+catálogos.
 
-## Estrutura do projeto
+## Instalação com Docker Compose
 
-```text
-quizhub/
-├── compose.yaml                 # ambiente local completo da equipe
-├── Dockerfile                   # frontend de desenvolvimento
-├── backend/
-│   ├── Dockerfile               # API e inicialização local
-│   ├── alembic/                 # migrations incrementais (0001 a 0018)
-│   ├── app/
-│   │   ├── api/v1/              # endpoints HTTP
-│   │   ├── cli/                 # comandos administrativos
-│   │   ├── db/                  # sessão e seed de demonstração
-│   │   ├── models/              # modelos SQLAlchemy
-│   │   ├── schemas/             # contratos Pydantic
-│   │   └── services/            # regras de negócio
-│   ├── dados_oficiais/          # catálogos oficiais canônicos e manifesto
-│   ├── tests/                   # testes unitários e de integração
-│   ├── .env.example
-│   ├── alembic.ini
-│   └── requirements.txt
-├── public/
-├── src/
-│   ├── components/
-│   ├── hooks/
-│   ├── services/
-│   └── utils/
-├── tests/                       # testes do frontend
-├── package.json
-├── package-lock.json
-├── vite.config.js
-└── README.md
-```
+### Requisitos
 
-## Como executar o QuizHub localmente — Guia da equipe
+- Docker com Compose v2;
+- portas locais livres, por padrão `5433`, `8001` e `5173`.
 
-O caminho recomendado para uma instalação nova usa Docker Compose. Ele cria
-um PostgreSQL exclusivo, aplica as migrations até `0019`, prepara e ativa os
-dois catálogos canônicos versionados e inicia API e frontend. Nenhum acesso a
-banco ou arquivo privado é necessário.
+### Configuração
 
-### Pré-requisitos
-
-- Git;
-- Docker Engine com o plugin Docker Compose;
-- portas locais 5173, 8001 e 5433 livres (ou valores alternativos no `.env`).
-
-### Primeira instalação
+Copie os exemplos e ajuste apenas valores locais:
 
 ```bash
-git clone https://github.com/Levibdo/quizhub.git
-cd quizhub
 cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-O `.env` da raiz contém somente configurações do Compose local. Antes de
-subir o ambiente, substitua `POSTGRES_PASSWORD` e `JWT_SECRET` por valores
-locais próprios; não versione esse arquivo.
+As variáveis mais relevantes são:
+
+- raiz: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`;
+- backend: `DATABASE_URL`, `JWT_SECRET`, `JWT_COOKIE_SECURE`,
+  `CORS_ORIGINS` e `CSRF_TRUSTED_ORIGINS`;
+- frontend: variáveis `VITE_*` existentes no build, quando necessárias.
+
+Use um e-mail sintático válido ao cadastrar a primeira conta, por exemplo
+`admin@example.com`. Nunca reutilize segredos de produção no ambiente local.
+
+### Inicialização
 
 ```bash
-docker compose config --quiet
-docker compose up --build -d
-docker compose ps
+docker compose up --build
 ```
 
-Na primeira inicialização, o backend:
+O Compose publica as portas apenas no loopback e inicia os serviços nesta
+dependência lógica:
 
-1. aguarda o PostgreSQL ficar saudável;
-2. executa `alembic upgrade 0019`;
-3. valida, importa e ativa idempotentemente os catálogos canônicos;
-4. inicia o Uvicorn na porta interna 8001.
+1. PostgreSQL 16 fica saudável;
+2. o serviço efêmero `migrate` aplica a revisão explícita `0023`;
+3. o backend só inicia se o migrador terminar com sucesso;
+4. o frontend inicia para desenvolvimento local.
 
-O bootstrap possui duas travas: precisa das flags locais definidas pelo
-Compose e recusa bancos cujo nome não comece com `quizhub_local`. Ele não deve
-ser reutilizado como procedimento de produção.
+O backend não executa migrations silenciosamente ao subir. Ele valida o schema
+e, no modo local previsto pelo Compose, pode inicializar os catálogos canônicos
+quando configurado. O runner de migrations usa advisory lock para serializar a
+operação.
 
 Endereços padrão:
 
-- aplicação: `http://localhost:5173`;
-- API: `http://localhost:8001`;
-- saúde: `http://localhost:8001/health`;
-- documentação HTTP: `http://localhost:8001/docs`;
-- PostgreSQL no host: `localhost:5433`.
+- frontend: <http://127.0.0.1:5173>;
+- API: <http://127.0.0.1:8001>;
+- health: <http://127.0.0.1:8001/health>;
+- PostgreSQL: `127.0.0.1:5433`.
 
-### Contas locais
-
-Jogadores podem usar **Criar conta** na interface. Não existe senha, usuário
-ou administrador padrão. Para criar o primeiro ADMIN no banco local, execute
-o comando abaixo e informe uma senha de teste de forma interativa:
+Para acompanhar ou encerrar:
 
 ```bash
-docker compose exec backend \
-  python -m app.cli admin criar-inicial \
-  --nome "Administrador local" --email admin@example.test
-```
-
-O comando é recusado se já houver um ADMIN. Nunca use nesse ambiente uma
-senha real de outro serviço.
-
-### Dados disponíveis para testes
-
-O ambiente carrega a cópia versionada e homologada dos catálogos oficiais:
-
-- 400 perguntas do Quiz Clássico;
-- 100 perguntas do Nem a Pato;
-- suas 506 referências editoriais.
-
-Esses JSONs ficam em `backend/dados_oficiais/`; a inicialização não depende
-de planilhas ou arquivos privados. Ranking e histórico começam vazios e só
-recebem as partidas realizadas no banco local. **Meu Conteúdo** pode ser
-testado com a conta criada pelo próprio colega e arquivos sintéticos nos
-formatos documentados nesta página.
-
-### Parar, reiniciar e redefinir
-
-```bash
-# parar sem perder o banco local
-docker compose stop
-
-# reiniciar o mesmo ambiente
-docker compose start
-
-# remover contêineres e rede, preservando o volume do banco
+docker compose ps
+docker compose logs -f backend migrate
 docker compose down
-
-# acompanhar os logs
-docker compose logs -f backend frontend
 ```
 
-Para apagar **somente os dados locais deste Compose** e recomeçar, confirme
-antes que o projeto exibido por `docker compose ls` é `quizhub-local` e use:
+Para atualizar uma instalação local, obtenha o código desejado e reconstrua:
+
+```bash
+docker compose up --build -d
+```
+
+Remover volumes apaga o banco. Faça isso somente em ambiente local descartável
+e depois de conferir o projeto e os volumes selecionados:
 
 ```bash
 docker compose down --volumes
-docker compose up --build -d
 ```
 
-### Atualizar o código
+Não use esse comando em uma instalação com dados que precisem ser preservados.
 
-Com o workspace sem alterações locais que precisem ser preservadas:
+### Primeira conta administrativa
 
-```bash
-git pull --ff-only
-docker compose up --build -d
-```
+O cadastro público cria um `JOGADOR`. A promoção inicial para `ADMIN` é uma
+operação controlada do operador, fora da interface pública. Faça-a apenas no
+banco local explicitamente identificado e nunca documente ou compartilhe
+credenciais. Contas administrativas subsequentes devem seguir o procedimento
+operacional adotado para o ambiente.
 
-As migrations e o bootstrap idempotente rodam novamente. O volume local é
-mantido.
-
-### Solução de problemas
-
-- **Porta ocupada:** altere `FRONTEND_PORT`, `BACKEND_PORT` ou
-  `POSTGRES_PORT` no `.env` e recrie os contêineres.
-- **Backend não fica saudável:** consulte `docker compose logs backend` e
-  `docker compose logs database`; confira se as credenciais do `.env` foram
-  alteradas depois que o volume foi criado.
-- **Credenciais do banco divergiram:** restaure os valores anteriores ou,
-  somente se os dados locais puderem ser descartados, redefina o volume pelo
-  procedimento acima.
-- **Login funciona em uma origem e falha em outra:** use consistentemente
-  `localhost` ou `127.0.0.1`; cookies pertencem ao host usado pelo navegador.
-- **Build desatualizado:** execute `docker compose up --build -d`.
-- **Verificação do schema:** `docker compose exec backend python -m alembic current`.
-
-O fluxo manual sem Docker continua documentado abaixo para desenvolvimento
-avancçado.
-
-## Pré-requisitos
-
-- Git.
-- Python compatível com as dependências fixadas em
-  `backend/requirements.txt`.
-- Node.js compatível com a versão instalada do Vite 8 e npm.
-- PostgreSQL acessível e um banco vazio criado para o ambiente.
-
-O repositório não fixa uma versão de Python ou Node em arquivos como
-`.python-version`, `.nvmrc` ou no campo `engines`. Se uma dependência recusar a
-versão local, siga o requisito informado pelo próprio gerenciador.
-
-## Configuração do ambiente
-
-O arquivo de referência é `backend/.env.example`:
-
-| Variável | Uso |
-| --- | --- |
-| `DATABASE_URL` | Conexão SQLAlchemy com PostgreSQL. |
-| `JWT_SECRET` | Segredo forte usado nos tokens de sessão e nas prévias de importação. |
-| `JWT_COOKIE_SECURE` | Use `true` quando a aplicação for servida por HTTPS. |
-| `CORS_ORIGINS` | Lista opcional, separada por vírgulas, de origens adicionais. |
-| `VITE_API_URL` | URL base da API, definida no ambiente do frontend. |
-
-Exemplo de formato, com valores fictícios:
-
-```dotenv
-DATABASE_URL=postgresql+psycopg://USUARIO:SENHA@localhost:5432/NOME_DO_BANCO
-JWT_SECRET=SUBSTITUA_POR_UM_SEGREDO_ALEATORIO_FORTE
-JWT_COOKIE_SECURE=false
-CORS_ORIGINS=
-```
-
-Não versione `.env`, senhas ou tokens. `JWT_SECRET` é necessário para login e
-para a importação privada. Em produção HTTPS, configure
-`JWT_COOKIE_SECURE=true`.
-
-## Instalação e execução local
+## Instalação manual
 
 ### Linux
 
+Requisitos: Python compatível com o projeto, Node.js/npm e PostgreSQL 16.
+
 ```bash
-git clone https://github.com/Levibdo/quizhub.git
-cd quizhub/backend
-
+cd backend
 python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
+.venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
-# Edite .env localmente, crie o banco PostgreSQL e só então aplique as migrations.
-python -m alembic upgrade head
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-Em outro terminal:
+Configure um PostgreSQL local cujo nome comece com `quizhub_local` e ajuste a
+`DATABASE_URL`. O runner também exige o ambiente, modo e alvo explícitos:
 
 ```bash
-cd quizhub
-npm ci
+export QUIZHUB_SCHEMA_REVISION=0023
+export QUIZHUB_MIGRATION_MODE=local
+export QUIZHUB_LOCAL_ENVIRONMENT=development
+.venv/bin/python -m app.db.migrations migrate
+```
+
+Depois inicie a API:
+
+```bash
+.venv/bin/python -m app.db.migrations check
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+Em outro terminal, a partir da raiz:
+
+```bash
+npm ci --include=optional
 npm run dev
 ```
 
 ### macOS
 
-Depois de instalar Git, Python, Node.js/npm e PostgreSQL pelo método de sua
-preferência, os comandos são os mesmos do Linux:
-
-```bash
-git clone https://github.com/Levibdo/quizhub.git
-cd quizhub/backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-cp .env.example .env
-python -m alembic upgrade head
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
-```
-
-Em outro terminal, na raiz do repositório:
-
-```bash
-npm ci
-npm run dev
-```
+Instale PostgreSQL 16, Python e Node.js por um gerenciador confiável. Os
+comandos e variáveis são os mesmos do Linux. Em Macs com Apple Silicon, não copie um
+virtualenv criado em outra arquitetura: recrie-o localmente.
 
 ### Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/Levibdo/quizhub.git
-cd quizhub\backend
-
+cd backend
 py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
-# Edite .env localmente, crie o banco PostgreSQL e só então aplique as migrations.
-python -m alembic upgrade head
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+$env:QUIZHUB_SCHEMA_REVISION = "0023"
+$env:QUIZHUB_MIGRATION_MODE = "local"
+$env:QUIZHUB_LOCAL_ENVIRONMENT = "development"
+.\.venv\Scripts\python.exe -m app.db.migrations migrate
+.\.venv\Scripts\python.exe -m app.db.migrations check
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-Em outro PowerShell:
+Em outro terminal, na raiz do projeto:
 
 ```powershell
-cd quizhub
-npm ci
+npm ci --include=optional
 npm run dev
 ```
 
-Se a política do PowerShell impedir a ativação do ambiente virtual, use o
-executável do ambiente diretamente, sem alterar a política global:
+Executar diretamente o Python do virtualenv evita alterar globalmente a
+política de execução do PowerShell.
 
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
-```
+### Segurança das migrations
 
-### Endereços locais
-
-- Frontend Vite: normalmente `http://localhost:5173`.
-- API: `http://127.0.0.1:8001`.
-- Saúde: `http://127.0.0.1:8001/health`.
-- OpenAPI/Swagger: `http://127.0.0.1:8001/docs`.
-
-Para usar outra URL da API:
-
-```bash
-# Linux/macOS
-VITE_API_URL=http://127.0.0.1:8001 npm run dev
-```
-
-```powershell
-# Windows PowerShell
-$env:VITE_API_URL = "http://127.0.0.1:8001"
-npm run dev
-```
-
-Como o frontend envia cookies com `credentials: include`, a origem usada pelo
-navegador precisa estar permitida pelo CORS. Para origens adicionais às
-aceitas no desenvolvimento, configure `CORS_ORIGINS` no backend.
+O alvo versionado é explicitamente `0023`. O modo local exige ambiente de
+desenvolvimento e o prefixo de banco permitido pelo runner. O modo controlado
+para banco persistente exige autorização operacional adicional. Configuração
+ausente ou incompatível interrompe a inicialização; não existe fallback para
+uma migration automática inesperada.
 
 ## Banco de dados e migrations
 
-A partir de `backend/`, com `DATABASE_URL` apontando para o banco correto:
+O repositório possui um único head Alembic: `0023`.
 
-```bash
-python -m alembic current
-python -m alembic heads
-python -m alembic upgrade head
-python -m alembic check
-```
-
-O head versionado é `0019` (`0019_operacoes_administrativas_idempotentes`). Antes de aplicar
-migrations:
-
-1. confira host e nome do banco;
-2. faça backup quando houver dados relevantes;
-3. não use um banco de produção em testes de integração;
-4. não execute downgrade sem revisar a migration e o conteúdo existente.
-
-As migrations `0001` a `0019` formam uma única cadeia incremental:
-
-| Intervalo | Responsabilidade principal |
+| Revisão | Alteração principal |
 | --- | --- |
-| `0001`–`0004` | Infraestrutura inicial, categorias, perguntas, jogadores, partidas, respostas e snapshots. |
-| `0005`–`0008` | Usuários, autenticação, explicações obrigatórias e categorias oficiais básicas. |
-| `0009`–`0010` | Fundação do Nem a Pato e desafios persistentes. |
-| `0011` | Conteúdo privado de usuários e snapshots imutáveis. |
-| `0012` | Identidade pseudônima `visitante_id` para o ranking. |
-| `0013` | Temporadas, backfill histórico e associação das partidas. |
-| `0014`–`0015` | Metadados editoriais, fontes e catálogos oficiais versionados. |
-| `0016`–`0017` | Categoria oficial Macabro e metadados editoriais completos do Nem a Pato. |
-| `0018` | Perfis `JOGADOR`/`ADMIN` e auditoria administrativa. |
-| `0019` | Registros persistentes de idempotência para futuras operações administrativas sensíveis. |
+| `0001` | infraestrutura inicial |
+| `0002` | categorias e perguntas |
+| `0003` | jogadores e partidas |
+| `0004` | perguntas e respostas das partidas |
+| `0005` | usuários e vínculo com jogador |
+| `0006` | explicação inicialmente opcional |
+| `0007` | explicação obrigatória |
+| `0008` | categorias oficiais básicas |
+| `0009` | persistência do Nem a Pato |
+| `0010` | resolução persistente de desafios |
+| `0011` | conteúdo do usuário e snapshots imutáveis |
+| `0012` | identidade pseudônima de visitante |
+| `0013` | temporadas do ranking |
+| `0014` | metadados editoriais opcionais |
+| `0015` | catálogos oficiais versionados e proveniência |
+| `0016` | categoria Macabro |
+| `0017` | metadados editoriais do Nem a Pato |
+| `0018` | perfil `ADMIN` e auditoria administrativa |
+| `0019` | idempotência administrativa |
+| `0020` | rascunhos oficiais |
+| `0021` | revisão e aprovação editorial |
+| `0022` | vínculo da publicação incremental |
+| `0023` | categorias oficiais versionadas, snapshots históricos e proveniência legada |
 
-As migrations criam e evoluem a estrutura, fazem os backfills declarados e
-garantem categorias fundamentais. Os catálogos canônicos não são carregados
-automaticamente apenas por executar `alembic upgrade head`; validação,
-importação e ativação são operações distintas e controladas.
+A migration `0023` preserva perguntas oficiais históricas sem inventar
+proveniência ausente. Conteúdo novo e versionado continua sujeito aos vínculos
+completos e às constraints correspondentes. Não execute downgrade como
+estratégia rotineira de rollback: para banco persistente, valide backup e
+restauração antes da janela de mudança.
 
-### Seed opcional de demonstração
+## Administração de conteúdo
+
+Há três conjuntos distintos:
+
+1. **catálogos canônicos no Git**: arquivos JSON e manifesto usados como fonte
+   controlada de bootstrap e referência;
+2. **conteúdo oficial no PostgreSQL**: versões, rascunhos, categorias,
+   perguntas, fontes e estados editoriais efetivamente usados pela aplicação;
+3. **conteúdo privado**: categorias e perguntas pertencentes ao usuário.
+
+Os arquivos canônicos incluem `quiz_classico_v2.json`,
+`nem_a_pato_macabro_v1.json` e `manifest.json`. Suas quantidades não devem ser
+interpretadas como o total existente em uma produção específica.
+
+### Importações
+
+- **Privada:** a área Meu Conteúdo aceita XLSX, CSV e JSON em duas etapas:
+  pré-visualização e confirmação. O backend limita o arquivo a 5 MiB e 100
+  registros, aplica quotas, revalida o arquivo na confirmação e usa um token de
+  prévia com validade limitada.
+- **Oficial versionada:** o painel administrativo aceita JSON, preserva fontes
+  estruturadas e cria conteúdo em rascunho; não publica automaticamente.
+- **Legada:** `POST /api/v1/perguntas/importar` aceita XLSX sob sessão `ADMIN`.
+  É uma superfície compatível com o fluxo anterior e não substitui o processo
+  editorial versionado.
+
+CSV/XLSX não são oferecidos pela interface como importação oficial versionada.
+
+## API
+
+Todas as rotas abaixo usam o prefixo `/api/v1`, salvo `/health`.
+
+| Área | Métodos e caminhos principais | Acesso |
+| --- | --- | --- |
+| Saúde | `GET /health` | público |
+| Autenticação | `POST /auth/cadastro`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | misto |
+| Categorias | `GET /categorias`, `GET /categorias/jogaveis` | público/contextual |
+| Quiz Clássico | `POST /partidas`, `GET /partidas/{id}`, `POST /partidas/{id}/respostas`, `POST /partidas/{id}/proxima` | proprietário autenticado ou visitante assinado |
+| Ranking público | `GET /ranking`, `GET /ranking/temporadas` | público |
+| Nem a Pato | `/nem-pato/salas` e operações de lobby, partida, rodada, palpite e desafio | participantes |
+| Meu Conteúdo | `/meu-conteudo/resumo`, `/categorias`, perguntas e importações | `JOGADOR` autenticado |
+| Ranking pessoal | `GET /meu-conteudo/ranking` | usuário autenticado; somente categorias e partidas próprias |
+| Administração | `/admin/resumo`, `/dashboard`, `/catalogos`, `/perguntas`, `/auditorias` | `ADMIN` |
+| Editorial | `/admin/catalogos/.../rascunhos`, importação JSON, revisão, aprovação, publicação e reativação | `ADMIN`, CSRF e controles de concorrência |
+
+Consulte os schemas e routers versionados antes de automatizar integrações: os
+campos obrigatórios, headers de concorrência e respostas de erro fazem parte do
+contrato real.
+
+## Segurança
+
+- Senhas são derivadas com Argon2; não são armazenadas em texto puro.
+- O JWT de sessão fica em cookie `HttpOnly`; em produção, o cookie deve ser
+  `Secure` e servido exclusivamente por HTTPS.
+- CORS usa lista de origens explícitas.
+- Escritas clássicas validam `Origin`/`Referer`; origens públicas legítimas
+  devem constar em `CSRF_TRUSTED_ORIGINS` quando necessário.
+- Operações administrativas mutáveis exigem origem confiável e token CSRF
+  vinculado à sessão.
+- Endpoints sensíveis usam `Idempotency-Key`; alterações versionadas usam
+  `If-Match` onde o contrato exige controle otimista.
+- Autorização por propriedade é aplicada no backend para conteúdo privado e
+  partidas, não apenas escondida no frontend.
+- Publicação e reativação de catálogos são transacionais e auditadas.
+- Snapshots preservam partidas e rankings históricos.
+- O Compose local restringe PostgreSQL, backend e frontend ao loopback. Em
+  outros ambientes, limite `listen_addresses`, HBA e firewall às origens
+  realmente necessárias.
+
+As dependências diretas estão registradas nos arquivos do projeto, mas isso
+não significa que toda dependência transitiva esteja imutavelmente fixada em
+todos os ambientes. Use instalação reproduzível do frontend e valide o
+ambiente Python da release.
+
+## Manutenção operacional
+
+### Backup seguro do PostgreSQL
+
+`backend/scripts/backup_postgres.py` interpreta a `DATABASE_URL` com
+SQLAlchemy, valida driver/host/porta/banco, usa um `PGPASSFILE` temporário
+protegido e chama `pg_dump` sem shell. O próprio utilitário exige que o dump
+seja não vazio e legível por `pg_restore --list`.
+
+Exemplo para um banco **local descartável**:
 
 ```bash
 cd backend
-python -m app.db.seed
+.venv/bin/python scripts/backup_postgres.py \
+  --env-file .env \
+  --output ../backups/quizhub-local.dump \
+  --expected-host 127.0.0.1 \
+  --expected-port 5433 \
+  --expected-database quizhub_local
+sha256sum ../backups/quizhub-local.dump
+pg_restore --list ../backups/quizhub-local.dump >/dev/null
 ```
 
-O seed é idempotente e adiciona categorias oficiais ausentes do Quiz Clássico
-e 15 perguntas demonstrativas. Ele não alimenta o Nem a Pato e não deve ser
-tratado como catálogo de produção.
+Crie o diretório de destino com permissões restritas antes da execução. Uma
+restauração deve ser ensaiada em PostgreSQL 16 descartável, nunca diretamente
+sobre o banco de origem. Preserve o SHA-256 e compare contagens e integridade
+antes e depois das migrations.
 
-## Administração dos catálogos
+### Encerramento de partidas abandonadas
 
-Execute os comandos dentro de `backend`, com o ambiente virtual ativo e a
-conexão explicitamente conferida.
+`backend/scripts/encerrar_partidas_abandonadas.py` é uma operação manual:
 
-### Primeiro administrador
+- dry-run é o padrão;
+- a inatividade mínima aceita é 72 horas;
+- execução exige IDs explícitos, confirmação do banco e justificativa;
+- a transação revalida estado e atividade sob lock;
+- respostas, participantes, rodadas, palpites, pontuações e rankings são
+  preservados;
+- não há expiração automática recorrente.
 
-Depois de aplicar a migration `0018`, crie o primeiro administrador por um
-terminal confiável. O comando solicita e confirma a senha sem gravá-la em
-argumentos, arquivos ou histórico do shell, exige ao menos 12 caracteres e é
-recusado quando já existe um perfil `ADMIN`:
+Dry-run seletivo:
 
 ```bash
-python -m app.cli admin criar-inicial --nome "Administrador" --email admin@example.com
+cd backend
+.venv/bin/python scripts/encerrar_partidas_abandonadas.py \
+  --env-file .env \
+  --classic-id UUID_DA_PARTIDA \
+  --room-id UUID_DA_SALA \
+  --min-inactivity-hours 72 \
+  --report ../relatorios/encerramento-dry-run.json
 ```
 
-Não há credencial administrativa padrão nem promoção automática de usuários.
-Confirme sempre o `DATABASE_URL` de destino antes de executar o bootstrap.
-
-### Categorias oficiais e prompt administrativo
+Execução controlada, somente em janela autorizada:
 
 ```bash
-python -m app.cli categoria listar
-python -m app.cli categoria criar
-python -m app.cli prompt gerar
+.venv/bin/python scripts/encerrar_partidas_abandonadas.py \
+  --env-file .env \
+  --classic-id UUID_DA_PARTIDA \
+  --room-id UUID_DA_SALA \
+  --min-inactivity-hours 72 \
+  --execute \
+  --confirm-database NOME_EXATO_DO_BANCO \
+  --justification "manutencao operacional autorizada" \
+  --report ../relatorios/encerramento-executado.json
 ```
 
-O gerador do CLI monta texto para uma ferramenta de IA externa; ele não envia
-requisições a essa ferramenta nem importa automaticamente a resposta.
-
-### Quiz Clássico
-
-```bash
-python -m app.cli perguntas validar caminho/perguntas.xlsx
-python -m app.cli perguntas importar caminho/perguntas.xlsx
-
-python -m app.cli perguntas validar caminho/perguntas.csv
-python -m app.cli perguntas importar caminho/perguntas.csv
-
-python -m app.cli perguntas validar caminho/perguntas.json
-python -m app.cli perguntas importar caminho/perguntas.json
-```
-
-XLSX e CSV usam as colunas:
-
-```text
-categoria_id,enunciado,alternativa_a,alternativa_b,alternativa_c,alternativa_d,alternativa_correta,explicacao
-```
-
-`alternativa_correta` é um índice entre `0` (A) e `3` (D). O CSV usa vírgula e
-UTF-8 (com ou sem BOM). O JSON aceito pelo importador tem esta estrutura:
-
-```json
-{
-  "modo": "quiz_classico",
-  "categoria_id": "geral",
-  "perguntas": [
-    {
-      "enunciado": "Pergunta?",
-      "alternativas": ["A", "B", "C", "D"],
-      "alternativa_correta": 0,
-      "explicacao": "Explicação da resposta."
-    }
-  ]
-}
-```
-
-O endpoint legado `POST /api/v1/perguntas/importar` aceita XLSX, exige sessão
-com perfil `ADMIN` e registra o resultado na auditoria administrativa.
-
-### Nem a Pato
-
-```bash
-python -m app.cli nem-pato perguntas validar caminho/perguntas.xlsx
-python -m app.cli nem-pato perguntas importar caminho/perguntas.xlsx
-python -m app.cli nem-pato perguntas listar
-python -m app.cli nem-pato perguntas resumo
-python -m app.cli nem-pato perguntas criar
-```
-
-O validador e o importador também aceitam CSV e JSON. Os campos são:
-
-```text
-categoria_id,enunciado,resposta_numerica,explicacao,unidade,fonte,ativa
-```
-
-- Obrigatórios: `categoria_id`, `enunciado`, `resposta_numerica` e
-  `explicacao`.
-- Opcionais: `unidade`, `fonte` e `ativa`.
-- `resposta_numerica` deve ser um inteiro entre `0` e
-  `9223372036854775807`.
-- XLSX não deve usar fórmula nesse campo e está sujeito à precisão inteira do
-  formato; para inteiros muito grandes, prefira JSON ou CSV.
-- O JSON desse modo é um array de objetos na raiz.
-
-Os catálogos oficiais canônicos ficam em `backend/dados_oficiais/`:
-
-- `quiz_classico_v2.json`: 400 perguntas, distribuídas entre quatro
-  categorias oficiais;
-- `nem_a_pato_macabro_v1.json`: 100 perguntas numéricas da categoria
-  Macabro;
-- `manifest.json`: associa cada arquivo ao `catalogo_id`, versão de schema,
-  SHA-256 e estado editorial `PRONTO`.
-
-O manifesto indica que o arquivo foi homologado para o fluxo editorial; ele
-não prova, isoladamente, que uma versão esteja importada ou ativa em um banco.
-Não adicione planilhas pessoais, exportações, rascunhos ou conteúdo privado ao
-diretório canônico.
-
-## API resumida
-
-Todas as rotas abaixo ficam sob `/api/v1`:
-
-| Área | Rotas principais |
-| --- | --- |
-| Autenticação | `/auth/cadastro`, `/auth/login`, `/auth/logout`, `/auth/me` |
-| Categorias | `/categorias`, `/categorias/jogaveis` |
-| Quiz Clássico | `/partidas`, `/partidas/{id}/respostas`, `/partidas/{id}/proxima` |
-| Nem a Pato | `/nem-pato/salas/...` |
-| Meu Conteúdo | `/meu-conteudo/resumo`, categorias, perguntas e importações |
-| Administração | `/admin/resumo` (perfil `ADMIN`; catálogos e auditorias recentes) |
-| Importação legada | `/perguntas/importar` (perfil `ADMIN`) |
-| Ranking | `/ranking` (público; aceita `categoria`, `temporada` e `limit`), `/ranking/temporadas` |
-
-Consulte `/docs` para os payloads exatos e os códigos de resposta.
+`--all-eligible` existe apenas para inventário em dry-run. Antes de qualquer
+execução persistente, coloque a aplicação em manutenção, pare novas escritas,
+gere e valide um backup e revise individualmente os IDs elegíveis.
 
 ## Testes e qualidade
 
-### Frontend
-
-Na raiz do repositório:
+### Backend
 
 ```bash
+cd backend
+.venv/bin/python -m pytest
+.venv/bin/alembic heads
+```
+
+Testes que dependem de PostgreSQL devem usar uma instância PostgreSQL 16
+descartável e uma URL de teste inequivocamente separada de qualquer banco
+persistente.
+
+### Frontend
+
+Na raiz do projeto:
+
+```bash
+npm ci --include=optional
 npm test
 npm run lint
 npm run build
 ```
 
-- `npm test` executa `node --test tests/*.test.js`.
-- `npm run build` gera o frontend em `dist/`.
-- `npm run preview` serve o build apenas para inspeção local; não é uma
-  recomendação de servidor de produção.
+Na homologação definitiva de **15/11/2026** foram registrados:
 
-### Backend
+- backend: **488 testes aprovados**;
+- frontend: **182 testes aprovados**;
+- operação PostgreSQL: **4 testes aprovados**;
+- ESLint aprovado;
+- build Vite aprovado.
 
-Dentro de `backend/`, com o ambiente virtual ativo:
-
-```bash
-python -m unittest discover -s tests -p "test_*.py" -v
-```
-
-Os testes de integração em `backend/tests/integration/` possuem variáveis e
-proteções próprias para bancos PostgreSQL descartáveis, por exemplo
-`NEM_A_PATO_TEST_DATABASE_URL` nos cenários multiplayer e
-`RANKING_TEST_DATABASE_URL`/`RANKING_TEST_DATABASE_NAME` no ranking real.
-
-Antes de executar uma integração PostgreSQL:
-
-- abra o arquivo do teste e confira as variáveis exigidas;
-- use somente um banco temporário com o padrão de nome aceito pelo teste;
-- confirme que a URL não aponta para desenvolvimento ou produção;
-- considere que a suíte pode criar, esvaziar ou reconstruir dados/schema no
-  banco autorizado.
-
-Não há `pytest` em `backend/requirements.txt`; instalar ou documentar pytest
-não é necessário para a suíte atual.
-
-## Build e implantação
-
-Gere o frontend estático com:
-
-```bash
-npm ci
-npm run build
-```
-
-Os Dockerfiles e o Compose versionados destinam-se ao desenvolvimento local
-da equipe. Eles não substituem configuração de Caddy/Nginx, unidade systemd ou
-outros controles necessários a uma implantação de produção.
-
-Requisitos mínimos para produção:
-
-- servir `dist/` por um servidor HTTP de produção;
-- encaminhar rotas da API ao Uvicorn executado sem `--reload`;
-- configurar fallback da SPA para `index.html` nas rotas do frontend e deep
-  links do Nem a Pato;
-- usar HTTPS e `JWT_COOKIE_SECURE=true`;
-- configurar `VITE_API_URL` no build ou usar proxy reverso coerente com a URL
-  pública;
-- permitir no CORS somente as origens necessárias quando frontend e API forem
-  de origens diferentes;
-- manter PostgreSQL fora da exposição pública e realizar backups;
-- executar Uvicorn por um gerenciador de processos com reinício e logs;
-- dimensionar workers, pool de conexões e recursos com medições do ambiente,
-  não com números copiados de outra máquina.
-
-Exemplo genérico, sem assumir gerenciador de processos ou quantidade de
-workers:
-
-```bash
-cd backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
-```
-
-Um proxy reverso pode encaminhar `/api/`, `/health` e `/docs` para a API. Se a
-API ficar em outro domínio, ajuste `VITE_API_URL`, cookies, HTTPS e CORS como
-um conjunto. Tailscale Funnel, Caddy e Nginx são opções de infraestrutura, não
-dependências do código versionado.
-
-Quando frontend e API compartilham a mesma origem pública, o build de produção
-pode omitir `VITE_API_URL` e usará `window.location.origin`. Se a API estiver
-em outra origem, informe-a explicitamente durante o build:
-
-```bash
-VITE_API_URL=https://api.exemplo.invalid npm run build
-```
-
-Antes do deploy, confira o JavaScript gerado para garantir que nenhuma porta
-exclusiva de desenvolvimento foi incluída:
-
-```bash
-if rg -n ":8001" dist/assets/*.js; then
-  echo "ERRO: bundle de produção contém a porta de desenvolvimento"
-  exit 1
-fi
-```
-
-Quando uma API externa tiver sido configurada, confirme também sua origem com
-`rg -n "https://api\.exemplo\.invalid" dist/assets/*.js`. No modo same-origin,
-a origem é obtida de `window.location.origin` em tempo de execução e não precisa
-aparecer como domínio literal no arquivo gerado.
-
-Uma `VITE_API_URL` inválida, com protocolo diferente de HTTP(S), credenciais,
-consulta ou fragmento interrompe a inicialização em vez de selecionar outro
-servidor silenciosamente.
-
-## Segurança e privacidade
-
-- Nunca versione `.env`, segredos JWT, credenciais PostgreSQL ou tokens de
-  participantes.
-- Use um `JWT_SECRET` aleatório, longo e exclusivo por ambiente.
-- Ative o cookie `Secure` somente junto de HTTPS e mantenha o cookie HttpOnly.
-- Restrinja CORS; `allow_credentials` está ativo porque o frontend usa cookie
-  de sessão.
-- A credencial do Nem a Pato fica no `localStorage` para recuperação da sala.
-  Evite scripts de terceiros e trate qualquer XSS como comprometimento dessa
-  credencial.
-- A identidade pseudônima de visitante e as credenciais de sala pertencem ao
-  perfil do navegador; limpar o armazenamento local gera uma nova identidade
-  para partidas futuras e remove as credenciais locais.
-- A chave legada `quizhub-ranking` pode permanecer no navegador por
-  compatibilidade, mas não é usada como fonte do ranking global.
-- Valide arquivos antes de importar e revise a confirmação. A prévia privada
-  não substitui as validações definitivas do backend.
-- Não exponha diretamente PostgreSQL nem execute testes destrutivos em bancos
-  com dados reais.
+Esses totais são evidência daquela release, não uma contagem permanente para
+commits futuros.
 
 ## Solução de problemas
 
 ### A API não conecta ao PostgreSQL
 
-1. confira se PostgreSQL está ativo;
-2. confira host, porta, usuário e nome do banco em `DATABASE_URL`;
-3. execute `python -m alembic current` dentro de `backend/`;
-4. não publique a URL completa em logs ou chamados, pois ela pode conter uma
-   senha.
+- confirme que o PostgreSQL 16 está saudável e que host, porta e banco da
+  `DATABASE_URL` correspondem ao ambiente local;
+- dentro do Compose, use o nome do serviço `database`, não `localhost`;
+- confira os logs de `database`, `migrate` e `backend` sem imprimir a URL ou
+  credenciais.
 
-### Login retorna erro sobre `JWT_SECRET`
+### A inicialização para na migration
 
-Copie `backend/.env.example` para `backend/.env` e defina um segredo forte.
-Reinicie o processo do backend depois da alteração.
+- não substitua o alvo explícito por `head`;
+- confira `QUIZHUB_SCHEMA_REVISION=0023`, o modo local, o ambiente
+  `development` e o prefixo `quizhub_local` do banco;
+- corrija a causa e execute novamente o serviço `migrate`; não altere
+  manualmente `alembic_version`.
+
+### Login informa que `JWT_SECRET` está ausente
+
+Defina um segredo local forte no ambiente do backend. Não o inclua no Git, em
+logs ou em comandos compartilhados.
 
 ### O frontend não alcança a API
 
-- confira `/health` diretamente;
-- confira `VITE_API_URL` e se ela possui protocolo correto;
-- lembre que variáveis `VITE_*` são incorporadas ao iniciar/buildar o
-  frontend;
-- se o navegador reportar CORS, adicione a origem exata a `CORS_ORIGINS` em
-  vez de desativar a proteção.
+- teste `/health` diretamente;
+- confira `VITE_API_URL` antes de iniciar ou compilar o frontend, pois
+  variáveis `VITE_*` são incorporadas ao build;
+- se houver erro de CORS ou CSRF, cadastre a origem exata em `CORS_ORIGINS` e
+  `CSRF_TRUSTED_ORIGINS`, sem desativar as proteções.
 
-### Cookie de login não é enviado
+### O cookie de login não é enviado
 
-- em HTTP local, mantenha `JWT_COOKIE_SECURE=false`;
-- em produção, use HTTPS e `JWT_COOKIE_SECURE=true`;
-- confira domínio, origem, proxy e CORS;
-- não tente resolver o problema expondo o token ao JavaScript.
+Em HTTP local, use `JWT_COOKIE_SECURE=false`. Em produção, use HTTPS e
+`JWT_COOKIE_SECURE=true`. Confira também origem, proxy, CORS e domínio; não
+exponha o JWT ao JavaScript como solução alternativa.
 
 ### Uma categoria não inicia partida
 
-Ela precisa estar ativa, não excluída, pertencer ao modo escolhido e possuir
-pelo menos 10 perguntas elegíveis. Conteúdo privado só pode ser usado pelo seu
-proprietário autenticado.
+A categoria precisa estar ativa, não excluída, pertencer ao modo escolhido e
+ter pelo menos 10 perguntas elegíveis. Conteúdo privado só pode ser usado pelo
+seu proprietário autenticado.
 
-### Deep link da SPA retorna 404 em produção
+### Um deep link da SPA retorna 404
 
-Configure o servidor dos arquivos estáticos para entregar `index.html` nas
-rotas de frontend que não correspondam a um arquivo. Não encaminhe por engano
-as rotas `/api/` para a SPA.
+O servidor de arquivos estáticos deve entregar `index.html` para rotas do
+frontend que não correspondam a arquivos. Rotas `/api/` devem continuar sendo
+encaminhadas à API.
 
-### PowerShell bloqueia a ativação do venv
+### PowerShell bloqueia a ativação do virtualenv
 
-Execute o Python do ambiente virtual diretamente, como mostrado na instalação
-Windows, sem mudar a política global da máquina.
+Execute o Python do ambiente virtual diretamente, como no exemplo Windows,
+sem mudar a política global da máquina.
 
-## Estado e limites conhecidos
+## Produção e limitações
 
-- Visitantes são agrupados no ranking pelo UUID guardado no perfil atual do
-  navegador; navegadores ou perfis diferentes permanecem identidades distintas.
-- O multiplayer usa polling HTTP; frequência e capacidade devem ser validadas
-  no ambiente de implantação.
-- A saúde em `/health` confirma que o processo responde, mas não executa uma
-  verificação profunda do PostgreSQL.
-- Operações administrativas feitas pela API exigem perfil `ADMIN`; os comandos
-  locais continuam destinados apenas a operadores com acesso ao ambiente e ao
-  banco explicitamente configurado.
-- O endpoint legado `POST /api/v1/perguntas/importar` não possui uma chave ou
-  autenticação exclusiva do importador, mas também não é anônimo: ele reutiliza
-  obrigatoriamente a sessão por cookie e a autorização `ADMIN`. Aceita apenas
-  XLSX, altera perguntas oficiais e registra sucesso ou rejeição na auditoria.
-  Por continuar sendo uma superfície de escrita legada, deve permanecer atrás
-  de HTTPS, cookie seguro e controle estrito das contas administrativas; não
-  substitui o fluxo versionado dos catálogos oficiais.
-- Não há configuração de infraestrutura de produção versionada.
-- Compatibilidade visual e de teclado em navegadores/dispositivos específicos
-  ainda exige validação no ambiente alvo.
+Na implantação definitiva:
+
+- backend ativo: `3c579ff93c8285cac4b19b297acbcfb9ed50ff46`;
+- frontend e documentação final: `74f4ae54da5b47116b1ce62857555ec1b80b41aa`;
+- schema: Alembic `0023`;
+- tag: `production/2026-11-15-final-74f4ae5`.
+
+A diferença entre os commits é intencional: o commit final consolida o
+frontend e os artefatos documentais posteriores sem exigir uma troca
+desnecessária do backend já homologado.
+
+Limitações atuais:
+
+- não há gestão avançada de usuários no painel;
+- não há gestão avançada de temporadas;
+- perguntas oficiais publicadas não são excluídas diretamente pela interface;
+- a importação oficial versionada pela interface é JSON, não CSV/XLSX;
+- não existe expiração recorrente automática de partidas abandonadas;
+- o ranking oficial é do Quiz Clássico; o Nem a Pato não possui ranking oficial
+  equivalente;
+- o multiplayer usa polling;
+- `/health` confirma o processo, mas não é um diagnóstico profundo de todas as
+  dependências.
 
 ## Licença
 
