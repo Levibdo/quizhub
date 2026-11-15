@@ -4162,7 +4162,7 @@ select:disabled {
 }
 
 .content-mode-selector button[aria-pressed="true"],
-.content-tabs button[aria-current="page"] { border-color: var(--color-accent); box-shadow: inset 0 -3px var(--color-accent); }
+.content-tabs button[aria-selected="true"] { border-color: var(--color-accent); box-shadow: inset 0 -3px var(--color-accent); }
 .content-tabs span[aria-disabled="true"] { opacity: .48; }
 .content-tabs small { margin-left: .35rem; }
 

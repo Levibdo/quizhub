@@ -187,7 +187,7 @@
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
-.content-tabs button[aria-current='page'] {
+.content-tabs button[aria-selected='true'] {
   border-color: rgba(167, 122, 216, .3);
   color: var(--color-text);
   background: linear-gradient(180deg, rgba(108, 58, 166, .2), rgba(108, 58, 166, .06));
@@ -359,6 +359,13 @@
   background: rgba(8, 7, 14, .82);
 }
 
+.question-filters__clear {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+#content-active-panel:focus { outline: none; }
+
 .import-guidance,
 .import-picker,
 .import-result { padding: clamp(1rem, 3vw, 1.5rem); }
@@ -457,16 +464,22 @@
     background-position: 66% center;
   }
 
-  .content-screen {
-    padding: 1rem max(.85rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom));
+  .content-screen { padding: .35rem max(.85rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)); }
+
+  .content-header { padding: 1rem; }
+  .content-header > .button-ghost { width: 100%; }
+  .content-header h1 { margin-block: .25rem; font-size: clamp(2.05rem, 11vw, 2.8rem); }
+  .content-header p { margin-block: .35rem .7rem; }
+
+  .content-mode-selector { margin-top: .65rem; }
+  .content-mode-selector button { padding-inline: .5rem; font-size: .8rem; }
+
+  .content-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
   }
 
-  .content-header { padding: 1.25rem 1rem; }
-  .content-header > .button-ghost { width: 100%; }
-  .content-header h1 { font-size: clamp(2.15rem, 12vw, 3rem); }
-
-  .content-mode-selector { margin-top: 1rem; }
-  .content-mode-selector button { padding-inline: .5rem; font-size: .8rem; }
+  .content-summary div { padding: .7rem .8rem; }
 
   .content-tabs {
     display: grid;
@@ -484,6 +497,8 @@
     font-size: .72rem;
     white-space: normal;
   }
+  .content-tabs button:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .question-filters__clear { width: 100%; }
   .content-section-heading > button { width: 100%; }
 
   .content-category-card__copy > div {

@@ -214,6 +214,22 @@ test('formulário limpo permite trocar de aba sem confirmação', async (t) => {
   assert.match(ui.texto(), /Perguntas próprias/)
 })
 
+test('abas expõem semântica e navegação por teclado', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica] })
+  await act(async () => ui.button('Meu Conteúdo').props.onClick())
+  await ui.esperar()
+  const categorias = ui.button('Categorias')
+  assert.equal(categorias.props.role, 'tab')
+  assert.equal(categorias.props['aria-selected'], true)
+  assert.equal(ui.renderer.root.findByProps({ role: 'tablist' }).props['aria-label'], 'Seções de Meu Conteúdo')
+  let prevenido = false
+  await act(async () => categorias.props.onKeyDown({ key: 'ArrowRight', preventDefault() { prevenido = true } }))
+  await ui.esperar()
+  assert.equal(prevenido, true)
+  assert.equal(ui.button('Perguntas').props['aria-selected'], true)
+  assert.ok(ui.renderer.root.findByProps({ role: 'tabpanel' }))
+})
+
 test('pergunta alterada protege troca de modo e confirmação descarta o rascunho', async (t) => {
   const ui = await setup(t, { categorias: [categoriaClassica], perguntas: [] })
   await act(async () => ui.button('Meu Conteúdo').props.onClick())
@@ -377,11 +393,15 @@ const perguntaNemPato = {
   resposta_numerica: '40075', unidade: 'km', explicacao: 'Circunferência equatorial', fonte: 'Institucional', ativa: true, excluida_em: null,
 }
 
-async function abrirPerguntas(ui) {
+async function abrirPerguntas(ui, { carregar = true } = {}) {
   await act(async () => ui.button('Meu Conteúdo').props.onClick())
   await ui.esperar()
   await act(async () => ui.button('Perguntas').props.onClick())
   await ui.esperar()
+  if (carregar) {
+    await act(async () => ui.renderer.root.findByProps({ id: 'question-filter-category' }).props.onChange({ target: { value: '__todas__' } }))
+    await ui.esperar()
+  }
 }
 
 async function abrirImportacao(ui) {
@@ -582,8 +602,56 @@ test('perguntas listam por modo, filtram categoria e estado e paginam sem invent
   assert.match(ui.texto(), /Nenhuma pergunta encontrada/)
   await act(async () => ui.button('Nem a Pato').props.onClick())
   await ui.esperar()
+  assert.match(ui.texto(), /Use os filtros para visualizar suas perguntas/)
+  await act(async () => ui.field('question-filter-category').props.onChange({ target: { value: '__todas__' } }))
+  await ui.esperar()
   assert.match(ui.texto(), /Quantos quilômetros/)
   assert.doesNotMatch(ui.texto(), /Pergunta clássica/)
+})
+
+test('aba Perguntas não consulta inicialmente e só lista após filtro explícito', async (t) => {
+  const ui = await setup(t, { categorias: [categoriaClassica], perguntas: [perguntaClassica] })
+  await abrirPerguntas(ui, { carregar: false })
+  assert.match(ui.texto(), /Use os filtros para visualizar suas perguntas/)
+  assert.equal(ui.chamadas.filter((item) => item.opcoes.method === 'GET' && item.url.includes('/meu-conteudo/perguntas/')).length, 0)
+
+  await act(async () => ui.field('question-filter-category').props.onChange({ target: { value: '__todas__' } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Quem chegou primeiro/)
+  assert.equal(ui.chamadas.filter((item) => item.opcoes.method === 'GET' && item.url.includes('/meu-conteudo/perguntas/')).length, 1)
+
+  await act(async () => ui.button('Limpar filtros').props.onClick())
+  await ui.esperar()
+  assert.match(ui.texto(), /Use os filtros para visualizar suas perguntas/)
+  assert.doesNotMatch(ui.texto(), /Quem chegou primeiro/)
+  assert.equal(ui.chamadas.filter((item) => item.opcoes.method === 'GET' && item.url.includes('/meu-conteudo/perguntas/')).length, 1)
+  assert.ok(ui.button('Nova pergunta'))
+})
+
+test('limpar filtros invalida requisição pendente e não repopula perguntas', async (t) => {
+  let resolverConsulta
+  const consultaPendente = new Promise((resolve) => { resolverConsulta = resolve })
+  const ui = await setup(t, {
+    categorias: [categoriaClassica],
+    perguntas: [perguntaClassica],
+    interceptar: ({ url, opcoes }) => {
+      if (opcoes.method === 'GET' && url.includes('/meu-conteudo/perguntas/classico')) {
+        return consultaPendente
+      }
+      return null
+    },
+  })
+  await abrirPerguntas(ui, { carregar: false })
+  await act(async () => ui.field('question-filter-category').props.onChange({ target: { value: '__todas__' } }))
+  await ui.esperar()
+  assert.match(ui.texto(), /Carregando perguntas/)
+
+  await act(async () => ui.button('Limpar filtros').props.onClick())
+  assert.match(ui.texto(), /Use os filtros para visualizar suas perguntas/)
+  resolverConsulta(Response.json([perguntaClassica]))
+  await ui.esperar()
+  assert.match(ui.texto(), /Use os filtros para visualizar suas perguntas/)
+  assert.doesNotMatch(ui.texto(), /Quem chegou primeiro/)
 })
 
 test('cadastro clássico valida quatro alternativas e cria pergunta sem duplo envio', async (t) => {
@@ -777,8 +845,8 @@ test('ranking pessoal lista somente partidas retornadas por categoria e mostra e
   await ui.esperar()
   assert.match(ui.texto(), /Melhores partidas/)
   assert.match(ui.texto(), /História/)
-  assert.match(ui.texto(), /1ºPartida00000000-0000-0000-0000-0000000000021200pontos/)
-  assert.match(ui.texto(), /2ºPartida00000000-0000-0000-0000-000000000001900pontos/)
+  assert.match(ui.texto(), /1ºPartida#000000001200pontos/)
+  assert.match(ui.texto(), /2ºPartida#00000000900pontos/)
   assert.match(ui.texto(), /Nenhuma partida concluída nesta categoria/)
   assert.equal(ui.chamadas.filter((item) => item.url.endsWith('/meu-conteudo/ranking')).length, 1)
 })

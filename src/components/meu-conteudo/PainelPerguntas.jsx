@@ -125,7 +125,7 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
   const [ativaFiltro, setAtivaFiltro] = useState('')
   const [temMais, setTemMais] = useState(false)
-  const [carregando, setCarregando] = useState(true)
+  const [carregando, setCarregando] = useState(false)
   const [carregandoMais, setCarregandoMais] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
@@ -136,19 +136,28 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
   const requisicaoRef = useRef(0)
   const perguntasRef = useRef([])
   const retornoFocoRef = useRef(null)
+  const filtrosAplicados = categoriaFiltro !== '' || ativaFiltro !== ''
 
   const fecharExclusao = useCallback(() => {
     setExclusao(null)
   }, [])
 
   const carregar = useCallback(async ({ acumular = false } = {}) => {
+    if (!filtrosAplicados) {
+      perguntasRef.current = []
+      setPerguntas([])
+      setTemMais(false)
+      setCarregando(false)
+      setCarregandoMais(false)
+      return
+    }
     const requisicao = ++requisicaoRef.current
     if (acumular) setCarregandoMais(true); else setCarregando(true)
     setErro('')
     try {
       const pagina = await listarPerguntasMeuConteudo(modo, {
-        categoria_id: categoriaFiltro || undefined,
-        ativa: ativaFiltro === '' ? '' : ativaFiltro === 'true',
+        categoria_id: categoriaFiltro === '__todas__' || categoriaFiltro === '' ? undefined : categoriaFiltro,
+        ativa: ativaFiltro === '__todos__' || ativaFiltro === '' ? '' : ativaFiltro === 'true',
         offset: acumular ? perguntasRef.current.length : 0, limit: LIMITE_PAGINA,
       })
       if (requisicao !== requisicaoRef.current) return
@@ -163,12 +172,13 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
     } finally {
       if (requisicao === requisicaoRef.current) { setCarregando(false); setCarregandoMais(false) }
     }
-  }, [ativaFiltro, aoExpirarSessao, categoriaFiltro, modo])
+  }, [ativaFiltro, aoExpirarSessao, categoriaFiltro, filtrosAplicados, modo])
 
   useEffect(() => {
+    if (!filtrosAplicados) return undefined
     const inicio = window.setTimeout(() => carregar(), 0)
     return () => { window.clearTimeout(inicio); requisicaoRef.current += 1 }
-  }, [carregar])
+  }, [carregar, filtrosAplicados])
 
   const categoriasAtivas = categorias.filter((categoria) => categoria.ativa && !categoria.excluida_em)
   const categoriasFormulario = formulario?.id && !categoriasAtivas.some((categoria) => categoria.id === formulario.categoria_id)
@@ -201,10 +211,34 @@ export default function PainelPerguntas({ modo, categorias, uso, aoAtualizarResu
   return <section className="questions-panel" aria-labelledby="questions-title">
     <div className="content-section-heading"><div><span className="content-eyebrow">Perguntas próprias</span><h2 id="questions-title">Perguntas</h2></div><button disabled={enviando || uso?.perguntas.usadas >= uso?.perguntas.limite || !categoriasAtivas.length} onClick={(evento) => aoSolicitarDescarte(() => { setFormulario({}); setSucesso(''); setErro('') }, evento)}>Nova pergunta</button></div>
     {!categoriasAtivas.length && <p className="content-state" role="status">Crie e ative uma categoria deste modo antes de cadastrar perguntas.</p>}
-    <div className="question-filters"><label htmlFor="question-filter-category">Categoria</label><select id="question-filter-category" value={categoriaFiltro} onChange={(e) => { requisicaoRef.current += 1; setCategoriaFiltro(e.target.value) }}><option value="">Todas</option>{categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select><label htmlFor="question-filter-active">Estado</label><select id="question-filter-active" value={ativaFiltro} onChange={(e) => { requisicaoRef.current += 1; setAtivaFiltro(e.target.value) }}><option value="">Todos</option><option value="true">Ativas</option><option value="false">Inativas</option></select></div>
+    <div className="question-filters">
+      <label htmlFor="question-filter-category">Categoria</label>
+      <select id="question-filter-category" value={categoriaFiltro} onChange={(e) => { requisicaoRef.current += 1; setCategoriaFiltro(e.target.value) }}>
+        <option value="">Selecione uma categoria</option>
+        <option value="__todas__">Todas as categorias</option>
+        {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+      </select>
+      <label htmlFor="question-filter-active">Estado</label>
+      <select id="question-filter-active" value={ativaFiltro} onChange={(e) => { requisicaoRef.current += 1; setAtivaFiltro(e.target.value) }}>
+        <option value="">Selecione um estado</option>
+        <option value="__todos__">Todos os estados</option>
+        <option value="true">Ativas</option><option value="false">Inativas</option>
+      </select>
+      {filtrosAplicados && <button type="button" className="button-secondary question-filters__clear" onClick={() => {
+        requisicaoRef.current += 1
+        perguntasRef.current = []
+        setPerguntas([])
+        setTemMais(false)
+        setErro('')
+        setCarregando(false)
+        setCarregandoMais(false)
+        setCategoriaFiltro('')
+        setAtivaFiltro('')
+      }}>Limpar filtros</button>}
+    </div>
     {sucesso && <p className="content-message" role="status">{sucesso}</p>}{erro && <p className="mensagem-erro" role="alert">{erro}</p>}
     {formulario && <Formulario key={formulario.id ?? `nova-${modo}`} categorias={categoriasFormulario} pergunta={formulario.id ? formulario : null} enviando={enviando} aoSalvar={salvar} aoAlterarSujo={aoAlterarSujo} aoCancelar={(evento) => aoSolicitarDescarte(() => { setFormulario(null); aoAlterarSujo(false) }, evento)} />}
-    {carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Ajuste os filtros ou crie a primeira pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={(evento) => aoSolicitarDescarte(() => { setFormulario(pergunta); setSucesso(''); setErro('') }, evento)}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setExclusao(pergunta) }}>Excluir</button></div></li>)}</ul>}
+    {!filtrosAplicados ? <div className="content-empty content-empty--filters"><strong>Use os filtros para visualizar suas perguntas.</strong><p>Selecione uma categoria ou um estado. Para ver tudo, escolha “Todas as categorias”.</p></div> : carregando ? <p className="content-state" role="status">Carregando perguntas...</p> : perguntas.length === 0 ? <div className="content-empty"><strong>Nenhuma pergunta encontrada.</strong><p>Os filtros selecionados não encontraram perguntas. Ajuste-os ou cadastre uma nova pergunta.</p></div> : <ul className="question-list">{perguntas.map((pergunta) => <li key={pergunta.id} className="question-list__item"><div><span className={pergunta.ativa ? 'content-badge content-badge--active' : 'content-badge'}>{pergunta.ativa ? 'Ativa' : 'Inativa'}</span><h3>{pergunta.enunciado}</h3><p>{categorias.find((c) => c.id === pergunta.categoria_id)?.nome ?? 'Categoria indisponível'}</p></div><div className="content-category-card__actions"><button className="button-secondary" disabled={enviando} onClick={(evento) => aoSolicitarDescarte(() => { setFormulario(pergunta); setSucesso(''); setErro('') }, evento)}>Editar</button><button className="button-secondary" disabled={enviando} onClick={() => executarMutacao(() => editarPerguntaMeuConteudo(modo, pergunta.id, { ativa: !pergunta.ativa }), pergunta.ativa ? 'Pergunta desativada.' : 'Pergunta ativada.')}>{pergunta.ativa ? 'Desativar' : 'Ativar'}</button><button className="button-ghost" disabled={enviando} onClick={(evento) => { retornoFocoRef.current = evento.currentTarget; setExclusao(pergunta) }}>Excluir</button></div></li>)}</ul>}
     {temMais && !carregando && <button className="button-secondary question-load-more" disabled={carregandoMais} onClick={() => carregar({ acumular: true })}>{carregandoMais ? 'Carregando...' : 'Carregar mais'}</button>}
     {exclusao && <ModalExcluirPergunta pergunta={exclusao} enviando={enviando} aoCancelar={fecharExclusao} retornoFocoRef={retornoFocoRef} aoConfirmar={() => executarMutacao(() => excluirPerguntaMeuConteudo(modo, exclusao.id), 'Pergunta excluída.')} />}
   </section>

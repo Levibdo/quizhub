@@ -17,6 +17,14 @@ const MODOS = [
   { id: 'NEM_A_PATO', nome: 'Nem a Pato' },
 ]
 
+const ABAS = [
+  ['categorias', 'Categorias'],
+  ['perguntas', 'Perguntas'],
+  ['ranking', 'Meu ranking'],
+  ['importar', 'Importar'],
+  ['prompt', 'Gerar prompt'],
+]
+
 function mensagemErro(error, contexto) {
   if (error.status === 409) return error.message
   if (error.status === 422) return error.message || 'Revise os dados informados.'
@@ -126,17 +134,18 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
   const requisicaoRef = useRef(0)
   const retornoFocoRef = useRef(null)
   const retornoDescarteRef = useRef(null)
+  const abasRef = useRef(new Map())
   const [formularioSujo, setFormularioSujo] = useState(false)
   const [descarte, setDescarte] = useState(null)
 
-  const alterarFormularioSujo = useCallback((sujo) => setFormularioSujo(sujo), [])
-  const fecharDescarte = useCallback(() => setDescarte((atual) => { atual?.aoCancelar?.(); return null }), [])
+  const alterarFormularioSujo = useCallback((sujo) => setFormularioSujo(sujo), [setFormularioSujo])
+  const fecharDescarte = useCallback(() => setDescarte((atual) => { atual?.aoCancelar?.(); return null }), [setDescarte])
   const executarOuConfirmar = useCallback((acao, evento, aoCancelar) => {
     if (enviandoRef.current) return
     if (!formularioSujo) { acao(); return }
     retornoDescarteRef.current = evento?.currentTarget ?? null
     setDescarte({ acao, aoCancelar })
-  }, [formularioSujo])
+  }, [formularioSujo, setDescarte])
 
   useEffect(() => {
     if (!registrarAcaoMarca) return undefined
@@ -207,6 +216,20 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
   function trocarAba(novaAba, evento) {
     if (novaAba === aba) return
     executarOuConfirmar(() => { setFormulario(null); setFormularioSujo(false); setAba(novaAba) }, evento)
+  }
+
+  function navegarAbas(evento, idAtual) {
+    const indice = ABAS.findIndex(([id]) => id === idAtual)
+    let destino
+    if (evento.key === 'ArrowRight') destino = (indice + 1) % ABAS.length
+    else if (evento.key === 'ArrowLeft') destino = (indice - 1 + ABAS.length) % ABAS.length
+    else if (evento.key === 'Home') destino = 0
+    else if (evento.key === 'End') destino = ABAS.length - 1
+    else return
+    evento.preventDefault()
+    const [novoId] = ABAS[destino]
+    abasRef.current.get(novoId)?.focus()
+    trocarAba(novoId, evento)
   }
 
   async function salvarCategoria(dados) {
@@ -305,8 +328,15 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
         </section>
       )}
 
-      <nav className="content-tabs" aria-label="Seções de Meu Conteúdo">
-        {[["categorias", "Categorias"], ["perguntas", "Perguntas"], ["ranking", "Meu ranking"], ["importar", "Importar"], ["prompt", "Gerar prompt"]].map(([id, nome]) => <button key={id} type="button" disabled={importando || enviando} aria-current={aba === id ? 'page' : undefined} onClick={(evento) => trocarAba(id, evento)}>{nome}</button>)}
+      <nav className="content-tabs" aria-label="Seções de Meu Conteúdo" role="tablist">
+        {ABAS.map(([id, nome]) => <button
+          key={id} id={`content-tab-${id}`} role="tab" type="button"
+          ref={(elemento) => { if (elemento) abasRef.current.set(id, elemento); else abasRef.current.delete(id) }}
+          disabled={importando || enviando} aria-selected={aba === id}
+          aria-controls="content-active-panel" tabIndex={aba === id ? 0 : -1}
+          onKeyDown={(evento) => navegarAbas(evento, id)}
+          onClick={(evento) => trocarAba(id, evento)}
+        >{nome}</button>)}
       </nav>
 
       {sucesso && <p className="content-message" role="status">{sucesso}</p>}
@@ -314,6 +344,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
       {erroCarregamento && <div className="content-state content-state--error" role="alert"><p>{erroCarregamento}</p><button type="button" onClick={() => carregar(modo)}>Tentar novamente</button></div>}
       {carregando && <div className="content-state" role="status">Carregando seu conteúdo...</div>}
 
+      <div id="content-active-panel" role="tabpanel" aria-labelledby={`content-tab-${aba}`} tabIndex={0}>
       {!carregando && !erroCarregamento && aba === 'categorias' && (
         <section className="content-categories" aria-labelledby="content-categories-title">
           <div className="content-section-heading">
@@ -378,6 +409,7 @@ export default function TelaMeuConteudo({ voltar, aoExpirarSessao, registrarAcao
           modo={modo} categorias={categorias} uso={uso}
         />
       )}
+      </div>
 
       {exclusao && <ModalExclusao categoria={exclusao} enviando={enviando} erro={erroExclusao} aoConfirmar={confirmarExclusao} aoCancelar={fecharExclusao} retornoFocoRef={retornoFocoRef} />}
       {descarte && <ModalDescarte retornoFocoRef={retornoDescarteRef} aoCancelar={fecharDescarte} aoConfirmar={() => { const acao = descarte.acao; setDescarte(null); setFormularioSujo(false); acao() }} />}

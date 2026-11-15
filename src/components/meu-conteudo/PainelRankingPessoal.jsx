@@ -57,7 +57,12 @@ export default function PainelRankingPessoal({ modo, aoExpirarSessao }) {
                   {categoria.partidas.map((partida) => (
                     <li key={partida.partida_id} className="personal-ranking__item">
                       <strong className="personal-ranking__position">{partida.posicao}º</strong>
-                      <span className="personal-ranking__game"><small>Partida</small><code>{partida.partida_id}</code></span>
+                      <span className="personal-ranking__game">
+                        <small>Partida</small>
+                        <code title={partida.partida_id} aria-label={`Identificador completo da partida: ${partida.partida_id}`}>
+                          #{partida.partida_id.slice(0, 8)}
+                        </code>
+                      </span>
                       <span className="personal-ranking__score"><strong>{partida.pontuacao}</strong><small>pontos</small></span>
                     </li>
                   ))}
