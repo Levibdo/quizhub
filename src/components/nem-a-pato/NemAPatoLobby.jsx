@@ -60,7 +60,9 @@ function NemAPatoLobby({
         aoSolicitarSaida={aoSolicitarSaida}
       />
       {mensagemSemSessao && <p className="np-message np-message--error" role="alert">{mensagemSemSessao}</p>}
-      {sucesso && <p className="np-message" role="status">{sucesso}</p>}
+      {sucesso && sala?.status === 'AGUARDANDO' && (
+        <p className="np-toast" role="status" aria-live="polite">{sucesso}</p>
+      )}
       {!sala && sessao && !erro && <p className="np-sync" role="status">Recuperando sua participação...</p>}
       {!sala && sessao && erro && (
         <button className="button-secondary np-retry" type="button" disabled={carregando} onClick={aoTentarRecuperar}>

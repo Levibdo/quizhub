@@ -3,6 +3,27 @@
   min-height: 100vh;
 }
 
+.app-shell--immersive {
+  min-height: 100dvh;
+  overflow-x: clip;
+  background:
+    linear-gradient(180deg, rgba(5, 3, 13, .08), rgba(7, 4, 15, .3)),
+    url('/images/cenario-nem-a-pato.webp') center / cover no-repeat;
+}
+
+.app-shell--immersive .site-header {
+  background: rgba(7, 4, 15, .42);
+  box-shadow: 0 1px rgba(255, 255, 255, .05);
+  backdrop-filter: blur(.45rem);
+}
+
+.immersive-frame {
+  width: 100%;
+  min-height: calc(100dvh - var(--header-height));
+  margin: 0;
+  padding: 0;
+}
+
 .admin-draft-categories,
 .admin-import-json {
   margin: 1rem 0;

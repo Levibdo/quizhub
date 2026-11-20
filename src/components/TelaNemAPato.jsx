@@ -222,6 +222,12 @@ function TelaNemAPato({ voltarInicio, registrarAcaoMarca }) {
     }
   }, [estadoSala?.partida?.rodada?.id, estadoSala?.partida?.rodada?.status, estadoSala?.partida?.rodada?.termina_em])
 
+  useEffect(() => {
+    if (sucesso !== 'Código copiado.') return undefined
+    const temporizador = globalThis.setTimeout(() => setSucesso(''), 2500)
+    return () => globalThis.clearTimeout(temporizador)
+  }, [sucesso])
+
   async function iniciarParticipacao(acao) {
     if (operacaoRef.current) return
     operacaoRef.current = true
