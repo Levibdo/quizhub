@@ -90,13 +90,13 @@ function NemAPatoLobby({
             />
           )}
           {sala.status === 'EM_PARTIDA' && (
-            <section className="np-started" aria-labelledby="np-started-title">
+            <section className="np-started" aria-label="Partida em andamento">
               <p className="np-started__eyebrow">Sala {sala.codigo}</p>
-              <h2 id="np-started-title">A PARTIDA COMEÇOU</h2>
+              <h2 className="np-started__summary">A PARTIDA COMEÇOU</h2>
               {partida ? (
                 <>
                   {partida.numero > 1 && <p className="np-started__eyebrow">REVANCHE</p>}
-                  <p>Partida {partida.numero} · {partida.total_rodadas} rodadas · {Math.floor(partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
+                  <p className="np-started__summary">Partida {partida.numero} · {partida.total_rodadas} rodadas · {Math.floor(partida.duracao_rodada_segundos / 60)} minutos por rodada</p>
                   <NemAPatoScoreboard jogadores={partida.jogadores} />
                 </>
               ) : <p role="status">Recuperando a partida...</p>}
