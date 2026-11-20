@@ -5,10 +5,11 @@ Clássico**, individual, e o **Nem a Pato**, multiplayer. A aplicação também
 oferece conteúdo privado para jogadores autenticados e um fluxo editorial
 administrativo completo para catálogos oficiais.
 
-> **Status:** versão definitiva implantada e em modo de manutenção desde
-> **15/11/2026**.
+> **Status:** versão definitiva em produção, com modernização visual do
+> **Nem a Pato implantada em 20/11/2026**.
 > **Aplicação pública:** <https://quizhub.tailef8ba8.ts.net/>
-> **Tag de produção:** `production/2026-11-15-final-74f4ae5`
+> **Release frontend:** `d8e7566c6bbc63babeb4dcdcf0e7bd74e774fcec`
+> **Tag de produção anterior:** `production/2026-11-15-final-74f4ae5`
 
 ## Sumário
 
@@ -66,6 +67,22 @@ nesse ranking. Os filtros públicos aceitam categoria, temporada e limite.
 - Perguntas oficiais elegíveis do modo `NEM_A_PATO`.
 
 O multiplayer usa polling HTTP; não há transporte WebSocket implementado.
+
+#### Interface modernizada
+
+A release frontend de **20/11/2026** modernizou a apresentação do Nem a Pato
+sem alterar regras, contratos de API ou persistência. A interface foi dividida
+em componentes de entrada, lobby, HUD, placar, rodada, resultado da rodada e
+resultado final. Os estilos antes duplicados foram consolidados em
+`NemAPato.css`.
+
+Durante as partidas, o modo reutiliza o mesmo cenário temático da tela inicial,
+com contraste localizado para preservar a leitura. A rodada apresenta barra de
+tempo proporcional ao prazo autoritativo enviado pelo backend, placar compacto,
+controles responsivos e estados de foco preservados. A experiência foi validada
+em desktop e dispositivos móveis, com navegação por teclado, foco de modais,
+zoom de 200%, partidas completas de três e seis jogadores, recuperação após F5,
+timeout, desafio, revanche e concorrência de ações.
 
 ### Autenticação
 
@@ -512,6 +529,19 @@ Na homologação definitiva de **15/11/2026** foram registrados:
 Esses totais são evidência daquela release, não uma contagem permanente para
 commits futuros.
 
+Na homologação integrada da modernização do Nem a Pato, concluída em
+**20/11/2026**, foram registrados:
+
+- frontend: **183 testes aprovados**;
+- **161 verificações integradas** dos fluxos multiplayer;
+- partidas completas com três e seis jogadores em PostgreSQL 16 descartável;
+- ESLint e build Vite aprovados;
+- ausência de erros HTTP 5xx e de violações críticas ou sérias na auditoria de
+  acessibilidade;
+- comparação visual do Quiz Clássico sem regressões identificadas.
+
+O backend não foi alterado por essa release visual.
+
 ## Solução de problemas
 
 ### A API não conecta ao PostgreSQL
@@ -571,13 +601,12 @@ sem mudar a política global da máquina.
 Na implantação definitiva:
 
 - backend ativo: `3c579ff93c8285cac4b19b297acbcfb9ed50ff46`;
-- frontend e documentação final: `74f4ae54da5b47116b1ce62857555ec1b80b41aa`;
+- frontend modernizado: `d8e7566c6bbc63babeb4dcdcf0e7bd74e774fcec`;
 - schema: Alembic `0023`;
-- tag: `production/2026-11-15-final-74f4ae5`.
+- última tag anterior à modernização: `production/2026-11-15-final-74f4ae5`.
 
-A diferença entre os commits é intencional: o commit final consolida o
-frontend e os artefatos documentais posteriores sem exigir uma troca
-desnecessária do backend já homologado.
+A diferença entre os commits é intencional: a release de 20/11 modifica apenas
+o frontend do Nem a Pato e não exige troca do backend já homologado.
 
 Limitações atuais:
 
