@@ -8,7 +8,7 @@ administrativo completo para catálogos oficiais.
 > **Status:** versão definitiva em produção, com modernização visual do
 > **Nem a Pato implantada em 20/11/2026**.
 > **Aplicação pública:** <https://quizhub.tailef8ba8.ts.net/>
-> **Release frontend:** `d8e7566c6bbc63babeb4dcdcf0e7bd74e774fcec`
+> **Release frontend:** `c8c3034ab1d5ef0fb4ecef5569c676dfcffc6276`
 > **Tag de produção anterior:** `production/2026-11-15-final-74f4ae5`
 
 ## Sumário
@@ -83,6 +83,12 @@ controles responsivos e estados de foco preservados. A experiência foi validada
 em desktop e dispositivos móveis, com navegação por teclado, foco de modais,
 zoom de 200%, partidas completas de três e seis jogadores, recuperação após F5,
 timeout, desafio, revanche e concorrência de ações.
+
+A correção estrutural final integrou entrada, lobby, partida e resultados ao
+layout completo da aplicação. A navegação original do QuizHub permanece no
+fluxo da página, sem sobrepor a área do jogo; o cenário ocupa toda a área útil
+sem a moldura externa das demais telas. Avisos e ações mantêm altura natural,
+e a confirmação de cópia do código da sala é exibida como notificação breve.
 
 ### Autenticação
 

@@ -585,6 +585,7 @@ function App() {
 
   return (
     <AppShell
+      imersivo={tela === 'nem-pato'}
       aoClicarMarca={clicarMarca}
       usuario={statusSessao === 'autenticado' ? usuario : null}
       navegacao={{

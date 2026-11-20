@@ -163,6 +163,9 @@ test('home abre a entrada Nem a Pato sem remover Quiz Clássico', async (t) => {
   assert.ok(ui.view().includes('NEM A PATO!'))
   assert.ok(ui.button('Criar sala'))
   assert.ok(ui.button('Entrar em sala'))
+  assert.equal(ui.renderer.root.findByType('main').props.className, 'immersive-frame')
+  assert.equal(ui.renderer.root.findAllByProps({ className: 'site-header' }).length, 1)
+  assert.equal(ui.renderer.root.findByProps({ className: 'np-screen np-screen--entry' }).props['aria-labelledby'], 'np-title')
 })
 
 test('criar sala persiste token no namespace e entra no lobby sem mostrar token', async (t) => {
@@ -337,6 +340,7 @@ test('código da sala copia somente após confirmação e oferece seleção manu
   await act(async () => ui.button('Copiar código').props.onClick())
   assert.equal(copiado, 'K7M4QX')
   assert.match(ui.view(), /Código copiado/)
+  assert.equal(ui.renderer.root.findByProps({ role: 'status' }).props.className, 'np-toast')
 
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} })
   await act(async () => ui.button('Copiar código').props.onClick())
