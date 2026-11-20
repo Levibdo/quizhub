@@ -19,14 +19,26 @@ function NemAPatoRound({
   aoFecharDesafio,
   aoSolicitarDesafio,
 }) {
+  const percentualTempo = Math.max(0, Math.min(100, (tempoExibido / partida.duracao_rodada_segundos) * 100))
+
   return (
     <section className="np-round" aria-labelledby="np-round-title">
       <header className="np-round__header">
         <p className="np-round__counter">Rodada {rodada.numero} de {partida.total_rodadas}</p>
-        <p className={tempoExibido <= 10 ? 'np-timer np-timer--urgent' : 'np-timer'} aria-label={`${tempoExibido} segundos restantes`}>
+        <p className={tempoExibido <= 10 ? 'np-timer np-timer--urgent' : 'np-timer'} aria-label={`${tempoExibido} segundos restantes`} aria-live={tempoExibido <= 10 ? 'polite' : 'off'}>
           <span>Tempo</span><strong>{formatarTempo(tempoExibido)}</strong>
         </p>
       </header>
+      <div
+        className={tempoExibido <= 10 ? 'np-timer-track np-timer-track--urgent' : 'np-timer-track'}
+        role="progressbar"
+        aria-label="Tempo restante da rodada"
+        aria-valuemin="0"
+        aria-valuemax={partida.duracao_rodada_segundos}
+        aria-valuenow={tempoExibido}
+      >
+        <span style={{ width: `${percentualTempo}%` }} />
+      </div>
       <h3 id="np-round-title" className="np-visually-hidden">Pergunta</h3>
       <p className="np-round__question">{rodada.pergunta?.enunciado}</p>
       {rodada.pergunta?.unidade && <p className="np-round__unit">Responda em <strong>{rodada.pergunta.unidade}</strong></p>}
