@@ -893,6 +893,42 @@ test('erro de palpite crescente é amigável e F5 recupera rodada ativa', async 
   assert.ok(ui.view().includes('Seu palpite precisa ser maior que 100.'))
 })
 
+test('polling preserva o palpite ainda não enviado durante a rodada', async (t) => {
+  const players = [participante(1, 'Levi', true), participante(2, 'Jorge'), participante(3, 'Luana')]
+  const ativa = partidaNp5(players, 1, 'EM_ANDAMENTO')
+  let polling
+  const ui = setup(t, async (url) => {
+    if (url.endsWith('/auth/me')) return response({ detail: 'não autenticado' }, 401)
+    return response({
+      sala: sala('K7M4QX', players, 6, 'EM_PARTIDA'),
+      participante: players[0],
+      partida: ativa,
+    })
+  }, {
+    path: '/nem-a-pato/sala/K7M4QX',
+    stored: { 'quizhub-nem-pato-sessoes': JSON.stringify({ K7M4QX: { codigo: 'K7M4QX', token: 'levi-token' } }) },
+  })
+  globalThis.window.setInterval = (callback) => {
+    polling = callback
+    return 118
+  }
+  globalThis.window.clearInterval = (id) => {
+    if (id === 118) polling = undefined
+  }
+  ui.onCleanup(() => { polling = undefined })
+
+  await ui.render()
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  const input = ui.renderer.root.findByProps({ id: 'np-guess' })
+  await act(async () => input.props.onChange({ target: { value: '1234' } }))
+  assert.equal(ui.renderer.root.findByProps({ id: 'np-guess' }).props.value, '1234')
+  assert.equal(typeof polling, 'function')
+
+  await act(async () => polling())
+
+  assert.equal(ui.renderer.root.findByProps({ id: 'np-guess' }).props.value, '1234')
+})
+
 
 function partidaNp6(players, euId, status = "EM_ANDAMENTO") {
   const base = partidaNp5(players, euId, "EM_ANDAMENTO", [{ jogador: 0, valor: 500 }])
